@@ -9,6 +9,9 @@
  * - Guardar respuestas progresivamente en la DB
  * - Navegar al finalizar
  * - Gestionar la mascota como interfaz reactiva
+ *
+ * Maneja errores de auth gracefully redirigiendo a /jugar
+ * en vez de crashear.
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -16,6 +19,7 @@ import { SesionVocales } from '@/components/actividades/vocales/SesionVocales';
 import { useStudentProgress } from '@/contexts/StudentProgressContext';
 import { Mascota, type EstadoMascota } from '@/components/mascota/Mascota';
 import { MascotaDialogo } from '@/components/mascota/MascotaDialogo';
+import { AuthGuardNino } from '@/components/ui/AuthGuardNino';
 import type { ResumenSesion } from '@/lib/actividades/masteryTracker';
 import type { Vocal } from '@/lib/actividades/generadorVocales';
 import {
@@ -34,11 +38,11 @@ export default function VocalesPage() {
     addEstrellas,
     addSticker,
     marcarVocalDominada,
-    recargarProgreso,
   } = useStudentProgress();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false);
   const [estadoMascota, setEstadoMascota] = useState<EstadoMascota>('feliz');
   const [dialogoMascota, setDialogoMascota] = useState('');
   const inicioRef = useRef(Date.now());
@@ -73,10 +77,16 @@ export default function VocalesPage() {
         setReady(true);
         inicioRef.current = Date.now();
       }
-    }).catch(() => {
-      // Si falla la DB, permitir jugar sin guardado
+    }).catch((err) => {
       if (!cancelled) {
-        setReady(true);
+        // Si es error de auth/ownership, mostrar guard amigable
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('NEXT_REDIRECT') || msg.includes('no autorizado') || msg.includes('Acceso')) {
+          setAuthFailed(true);
+        } else {
+          // Si falla la DB por otra razón, permitir jugar sin guardado
+          setReady(true);
+        }
       }
     });
 
@@ -130,8 +140,8 @@ export default function VocalesPage() {
 
       if (!sessionId) return;
 
-      // Guardar respuesta en DB inmediatamente
-      try {
+      // Guardar respuesta en DB inmediatamente (con retry simple)
+      const guardarConRetry = async (intentos = 2) => {
         await guardarRespuestaIndividual({
           sessionId,
           studentId: estudiante.id,
@@ -145,17 +155,34 @@ export default function VocalesPage() {
         });
 
         // Actualizar progreso de habilidad en DB inmediatamente
-        await actualizarProgresoInmediato({
+        const resultado = await actualizarProgresoInmediato({
           studentId: estudiante.id,
           skillId: `vocal-${datos.vocal.toLowerCase()}`,
           categoria: 'vocales',
           correcto: datos.correcto,
         });
-      } catch {
-        console.warn('Error guardando respuesta progresiva (offline?)');
+
+        // BLOCKER B2 FIX: Usar resultado del servidor como fuente de verdad
+        if (resultado.dominada) {
+          marcarVocalDominada(datos.vocal);
+        }
+        return resultado;
+      };
+
+      try {
+        await guardarConRetry();
+      } catch (err) {
+        // Retry una vez tras breve delay
+        try {
+          await new Promise((r) => setTimeout(r, 1000));
+          await guardarConRetry(1);
+        } catch {
+          // Log real error, no silenciar
+          console.error('[VocalesPage] Error persistiendo respuesta tras retry:', err);
+        }
       }
     },
-    [sessionId, estudiante],
+    [sessionId, estudiante, marcarVocalDominada],
   );
 
   // ── Callback cuando se gana una estrella ──
@@ -219,6 +246,11 @@ export default function VocalesPage() {
     [sessionId, estudiante, addSticker, router],
   );
 
+  // ── Auth failure → mostrar guard amigable ──
+  if (authFailed) {
+    return <AuthGuardNino tipo="sin-sesion" />;
+  }
+
   // ── Loading ──
   if (!estudiante || !ready) {
     return (
@@ -254,7 +286,12 @@ export default function VocalesPage() {
             visible={!!dialogoMascota}
           />
         )}
-        <Mascota estado={estadoMascota} size="sm" />
+        <Mascota
+          estado={estadoMascota}
+          size="sm"
+          tipo={estudiante.mascotaTipo ?? undefined}
+          nombre={estudiante.mascotaNombre ?? undefined}
+        />
       </div>
 
       {/* Sesión de vocales — componente único, fuente de verdad */}

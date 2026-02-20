@@ -116,15 +116,7 @@ const PARES_RIMAS: Array<{
   },
 ];
 
-/** Mezcla un array aleatoriamente */
-function mezclar<T>(arr: T[]): T[] {
-  const copia = [...arr];
-  for (let i = copia.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copia[i], copia[j]] = [copia[j], copia[i]];
-  }
-  return copia;
-}
+import { mezclar } from '@/lib/utils/random';
 
 // ─────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -291,13 +283,15 @@ function JuegoLetras({ onComplete }: JuegoLetrasProps) {
   const [estadoLetra, setEstadoLetra] = useState<'jugando' | 'correcto' | 'incorrecto'>('jugando');
   const reconocidasRef = useRef<string[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   const letraActual = LETRAS_DIAGNOSTICO[indiceLetra];
 
   // Generar opciones para la letra actual
   useEffect(() => {
     if (indiceLetra >= LETRAS_DIAGNOSTICO.length) {
-      onComplete(reconocidasRef.current);
+      onCompleteRef.current(reconocidasRef.current);
       return;
     }
 
@@ -328,7 +322,6 @@ function JuegoLetras({ onComplete }: JuegoLetrasProps) {
       clearTimeout(ttsTimer);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indiceLetra]);
 
   const manejarSeleccion = useCallback(
@@ -618,13 +611,15 @@ function JuegoRimas({ onComplete }: JuegoRimasProps) {
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [estadoRima, setEstadoRima] = useState<'jugando' | 'correcto' | 'incorrecto'>('jugando');
   const aciertosRef = useRef(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   const parActual = PARES_RIMAS[indicePar];
 
   // Generar opciones mezcladas
   useEffect(() => {
     if (indicePar >= PARES_RIMAS.length) {
-      onComplete(aciertosRef.current);
+      onCompleteRef.current(aciertosRef.current);
       return;
     }
 
@@ -642,7 +637,6 @@ function JuegoRimas({ onComplete }: JuegoRimasProps) {
       hablar(`¿Cuál suena parecido a ${par.palabra}?`);
     }, 400);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indicePar]);
 
   const manejarSeleccion = useCallback(

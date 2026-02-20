@@ -2,11 +2,15 @@
 
 /**
  * Pantalla de selección de perfil del niño
- * El padre elige qué hijo va a jugar
+ * El padre elige qué hijo va a jugar.
+ *
+ * Maneja correctamente la ausencia de auth mostrando
+ * una pantalla amigable para niños en vez de errores técnicos.
  */
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStudentProgress } from '@/contexts/StudentProgressContext';
+import { AuthGuardNino } from '@/components/ui/AuthGuardNino';
 
 interface Estudiante {
   id: string;
@@ -26,14 +30,24 @@ const MASCOTA_EMOJIS: Record<string, string> = {
 export default function JugarPage() {
   const [estudiantes, setEstudiantes] = useState<Estudiante[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(false);
   const router = useRouter();
   const { setEstudiante } = useStudentProgress();
 
   useEffect(() => {
     fetch('/api/estudiantes')
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 401) {
+          setAuthError(true);
+          setLoading(false);
+          return null;
+        }
+        return r.json();
+      })
       .then((data) => {
-        setEstudiantes(data);
+        if (data) {
+          setEstudiantes(data);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -58,21 +72,14 @@ export default function JugarPage() {
     );
   }
 
+  // Sin sesión de padre → mostrar guard amigable
+  if (authError) {
+    return <AuthGuardNino tipo="sin-sesion" />;
+  }
+
+  // Padre logueado pero sin hijos → pedir que cree perfil
   if (estudiantes.length === 0) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-fondo p-6">
-        <span className="text-6xl">🐱</span>
-        <p className="text-xl font-bold text-texto text-center">
-          ¡Primero un padre debe crear tu perfil!
-        </p>
-        <a
-          href="/padre/login"
-          className="rounded-3xl bg-turquesa px-8 py-4 text-lg font-bold text-white shadow-md active:scale-95 transition-transform"
-        >
-          Ir a inicio
-        </a>
-      </main>
-    );
+    return <AuthGuardNino tipo="sin-perfil" />;
   }
 
   return (

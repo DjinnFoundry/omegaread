@@ -366,8 +366,39 @@ export async function cargarProgresoEstudiante(studentId: string) {
   const ORDEN_VOCALES = ['A', 'E', 'I', 'O', 'U'];
   const vocalActual = ORDEN_VOCALES.find((v) => !vocalesDominadas.includes(v)) ?? 'A';
 
-  // Sesión en curso (sin finalizar)?
-  const sesionEnCurso = sesiones.find((s) => !s.completada && !s.finalizadaEn);
+  // Issue #10: Auto-close orphaned sessions (inactive > 1 hour)
+  const UNA_HORA_MS = 60 * 60 * 1000;
+  const ahora = Date.now();
+  const sesionesHuerfanas = sesiones.filter(
+    (s) => !s.completada && !s.finalizadaEn &&
+    (ahora - new Date(s.iniciadaEn).getTime()) > UNA_HORA_MS
+  );
+
+  // Finalizar sesiones huérfanas automáticamente en background
+  if (sesionesHuerfanas.length > 0) {
+    for (const huerfana of sesionesHuerfanas) {
+      try {
+        await db
+          .update(sessions)
+          .set({
+            completada: false,
+            finalizadaEn: new Date(),
+            duracionSegundos: Math.round(
+              (ahora - new Date(huerfana.iniciadaEn).getTime()) / 1000
+            ),
+          })
+          .where(eq(sessions.id, huerfana.id));
+      } catch {
+        // Best effort — don't block loading
+      }
+    }
+  }
+
+  // Sesión en curso (sin finalizar, active < 1h)?
+  const sesionEnCurso = sesiones.find(
+    (s) => !s.completada && !s.finalizadaEn &&
+    (ahora - new Date(s.iniciadaEn).getTime()) <= UNA_HORA_MS
+  );
 
   return {
     totalEstrellas,

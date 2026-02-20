@@ -4,37 +4,21 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { hablar } from '@/lib/audio/tts';
 import { acierto as sonidoAcierto, error as sonidoError } from '@/lib/audio/sonidos';
 import { LetraGrande } from './LetraGrande';
+import { mezclar } from '@/lib/utils/random';
 import type { Vocal } from '@/lib/actividades/generadorVocales';
 
-/**
- * Props de ReconocerVocal.
- */
-export interface ReconocerVocalProps {
-  /** Vocal que el niño debe encontrar */
+interface ReconocerVocalProps {
   vocal: Vocal;
-  /** Letras distractoras (3 letras) */
   distractores: string[];
-  /** Callback al acertar */
   onAcierto: () => void;
-  /** Callback al errar */
   onError: () => void;
-}
-
-/** Mezcla un array aleatoriamente (Fisher-Yates) */
-function mezclar<T>(arr: T[]): T[] {
-  const copia = [...arr];
-  for (let i = copia.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copia[i], copia[j]] = [copia[j], copia[i]];
-  }
-  return copia;
 }
 
 /**
  * Actividad 1: "¿Dónde está la A?"
  *
  * La mascota dice "¡Busca la [vocal]!" por TTS.
- * Muestra 4 letras en grid 2×2 (1 correcta + 3 distractoras).
+ * Muestra 4 letras en grid 2x2 (1 correcta + 3 distractoras).
  * Feedback inmediato: sonido + visual.
  */
 export function ReconocerVocal({

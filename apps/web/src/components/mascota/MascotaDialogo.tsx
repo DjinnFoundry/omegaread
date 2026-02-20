@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { hablar, detenerHabla } from '@/lib/audio/tts';
+import { useEffect, useState, useRef } from 'react';
+import { hablar, detenerHabla, ttsDisponible } from '@/lib/audio/tts';
 
 /**
  * Props del componente MascotaDialogo.
@@ -20,18 +20,21 @@ export interface MascotaDialogoProps {
  * Usa Web Speech API para hablar en español.
  * Muestra texto en burbuja mientras habla (para lectores emergentes).
  * Se auto-oculta después de hablar.
+ *
+ * Si TTS no está disponible, muestra el texto visualmente
+ * con un timer de fallback basado en la longitud del texto.
+ *
+ * FIXED: No doble invocación de onFinish — usa ref para
+ * rastrear si ya se finalizó, y cleanup correcto en useEffect.
  */
 export function MascotaDialogo({ texto, onFinish, visible = true }: MascotaDialogoProps) {
   const [mostrar, setMostrar] = useState(false);
   const [textoMostrado, setTextoMostrado] = useState('');
+  const finalizadoRef = useRef(false);
+  const onFinishRef = useRef(onFinish);
 
-  const finalizarDialogo = useCallback(() => {
-    // Pequeño delay antes de ocultar para que se vea el texto completo
-    setTimeout(() => {
-      setMostrar(false);
-      onFinish?.();
-    }, 800);
-  }, [onFinish]);
+  // Keep ref in sync
+  onFinishRef.current = onFinish;
 
   useEffect(() => {
     if (!texto || !visible) {
@@ -39,28 +42,41 @@ export function MascotaDialogo({ texto, onFinish, visible = true }: MascotaDialo
       return;
     }
 
+    // Reset state for new texto
+    finalizadoRef.current = false;
     setMostrar(true);
     setTextoMostrado(texto);
 
-    // Habla el texto
+    const finalizar = () => {
+      if (finalizadoRef.current) return; // Guard against double invocation
+      finalizadoRef.current = true;
+      setTimeout(() => {
+        setMostrar(false);
+        onFinishRef.current?.();
+      }, 800);
+    };
+
+    // Speak the text (hablar calls onEnd when done, or immediately if TTS unavailable)
     hablar(texto, {
-      onEnd: finalizarDialogo,
+      onEnd: finalizar,
     });
 
-    // Fallback: auto-hide después de un tiempo basado en longitud del texto
+    // Fallback timer: auto-hide after time based on text length
+    // Only fires if TTS onEnd didn't fire (e.g., TTS silently fails)
     const tiempoFallback = Math.max(3000, texto.length * 100);
-    const fallbackTimer = setTimeout(() => {
-      setMostrar(false);
-      onFinish?.();
-    }, tiempoFallback);
+    const fallbackTimer = setTimeout(finalizar, tiempoFallback);
 
     return () => {
       clearTimeout(fallbackTimer);
       detenerHabla();
+      // Mark as finalized on cleanup to prevent stale callbacks
+      finalizadoRef.current = true;
     };
-  }, [texto, visible, finalizarDialogo, onFinish]);
+  }, [texto, visible]);
 
   if (!mostrar) return null;
+
+  const sinTTS = !ttsDisponible();
 
   return (
     <div className="relative flex justify-center animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -75,27 +91,36 @@ export function MascotaDialogo({ texto, onFinish, visible = true }: MascotaDialo
       >
         {/* Texto para lectores emergentes */}
         <p
-          className="text-lg font-medium leading-relaxed"
+          className={`font-medium leading-relaxed ${sinTTS ? 'text-xl' : 'text-lg'}`}
           style={{ color: '#5D4037' }}
         >
           {textoMostrado}
         </p>
 
-        {/* Indicador de que está hablando */}
-        <div className="mt-2 flex items-center justify-center gap-1">
-          <span
-            className="inline-block h-2 w-2 rounded-full animate-pulse"
-            style={{ backgroundColor: '#4ECDC4', animationDelay: '0ms' }}
-          />
-          <span
-            className="inline-block h-2 w-2 rounded-full animate-pulse"
-            style={{ backgroundColor: '#4ECDC4', animationDelay: '150ms' }}
-          />
-          <span
-            className="inline-block h-2 w-2 rounded-full animate-pulse"
-            style={{ backgroundColor: '#4ECDC4', animationDelay: '300ms' }}
-          />
-        </div>
+        {/* Indicador de que está hablando (solo si TTS disponible) */}
+        {!sinTTS && (
+          <div className="mt-2 flex items-center justify-center gap-1">
+            <span
+              className="inline-block h-2 w-2 rounded-full animate-pulse"
+              style={{ backgroundColor: '#4ECDC4', animationDelay: '0ms' }}
+            />
+            <span
+              className="inline-block h-2 w-2 rounded-full animate-pulse"
+              style={{ backgroundColor: '#4ECDC4', animationDelay: '150ms' }}
+            />
+            <span
+              className="inline-block h-2 w-2 rounded-full animate-pulse"
+              style={{ backgroundColor: '#4ECDC4', animationDelay: '300ms' }}
+            />
+          </div>
+        )}
+
+        {/* Indicador visual sin TTS: icono de lectura */}
+        {sinTTS && (
+          <div className="mt-2 flex items-center justify-center gap-1 text-sm" style={{ color: '#8D6E63' }}>
+            📖 <span>Lee el texto</span>
+          </div>
+        )}
 
         {/* Triangulito apuntando hacia abajo (hacia la mascota) */}
         <div

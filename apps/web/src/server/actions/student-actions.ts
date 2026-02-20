@@ -9,6 +9,7 @@
 import { db, students, sessions, responses, achievements, skillProgress } from '@omegaread/db';
 import { eq, desc, and, gte } from 'drizzle-orm';
 import { requireAuth, requireStudentOwnership } from '../auth';
+import { calcularEdad } from '@/lib/utils/fecha';
 import type { DiagnosticoNivel } from '@omegaread/db/schema';
 
 /** Crear perfil de niño */
@@ -26,12 +27,7 @@ export async function crearEstudiante(formData: FormData) {
 
   // Validar edad (3-10 años)
   const fechaNac = new Date(fechaNacStr);
-  const hoy = new Date();
-  let edad = hoy.getFullYear() - fechaNac.getFullYear();
-  const m = hoy.getMonth() - fechaNac.getMonth();
-  if (m < 0 || (m === 0 && hoy.getDate() < fechaNac.getDate())) {
-    edad--;
-  }
+  const edad = calcularEdad(fechaNac);
   if (edad < 3 || edad > 10) {
     return { ok: false, error: 'La edad debe estar entre 3 y 10 años' };
   }
@@ -156,16 +152,20 @@ export async function obtenerResumenProgreso(studentId: string) {
     }
   }
 
-  // Sugerencia personalizada basada en progreso
+  // Sugerencia personalizada basada en progreso (pool variado)
   const vocalParaSugerencia = proximaMeta ?? vocalesDominadas[vocalesDominadas.length - 1] ?? 'A';
-  const PALABRAS_SUGERENCIA: Record<string, string> = {
-    A: 'avión, agua, árbol',
-    E: 'elefante, estrella, escuela',
-    I: 'iglú, isla, imán',
-    O: 'oso, ojo, oveja',
-    U: 'uva, unicornio, uno',
-  };
-  const sugerenciaOffline = `Practiquen las vocales en casa: busquen objetos que empiecen con ${vocalParaSugerencia} (${PALABRAS_SUGERENCIA[vocalParaSugerencia] ?? 'avión, agua, árbol'}). ¡El aprendizaje también ocurre fuera de la pantalla!`;
+  const SUGERENCIAS_POOL: Array<(vocal: string) => string> = [
+    (v) => `Busquen objetos en casa que empiecen con la ${v}. ¡A ver cuantos encuentran!`,
+    (v) => `Dibujen juntos la letra ${v} bien grande con crayones de colores.`,
+    (v) => `Inventen una cancion donde todas las palabras empiecen con ${v}.`,
+    (v) => `Con plastilina, moldeen la forma de la ${v}. ¡Pueden decorarla!`,
+    (v) => `Lean un cuento y pidan al nino que diga "¡${v}!" cada vez que escuche esa vocal.`,
+    (v) => `Jueguen "Veo veo" buscando cosas que tengan la vocal ${v} en su nombre.`,
+    (v) => `Tracen la ${v} con el dedo en la espalda del otro. ¡A ver si adivinan!`,
+    (v) => `Aplaudan cada vez que escuchen la vocal ${v} en una conversacion. ¡Es muy divertido!`,
+  ];
+  const idxSugerencia = Math.floor(Date.now() / 86400000) % SUGERENCIAS_POOL.length;
+  const sugerenciaOffline = SUGERENCIAS_POOL[idxSugerencia](vocalParaSugerencia);
 
   return {
     estudiante,

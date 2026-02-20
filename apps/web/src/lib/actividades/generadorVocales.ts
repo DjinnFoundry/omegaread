@@ -6,6 +6,8 @@
  * de una misma sesión.
  */
 
+import { mezclar, seleccionarAleatorios } from '@/lib/utils/random';
+
 // ─────────────────────────────────────────────
 // TIPOS
 // ─────────────────────────────────────────────
@@ -109,31 +111,6 @@ const PALABRAS_POR_VOCAL: Record<Vocal, PalabraVocal[]> = {
     { palabraCompleta: 'PULPO', palabraConHueco: 'P_LPO', vocalFaltante: 'U', imagen: '🐙', pronunciacion: 'puuulpo' },
   ],
 };
-
-// ─────────────────────────────────────────────
-// UTILIDADES
-// ─────────────────────────────────────────────
-
-/**
- * Mezcla un array usando Fisher-Yates.
- * Devuelve una copia nueva (no muta el original).
- */
-function mezclar<T>(arr: T[]): T[] {
-  const copia = [...arr];
-  for (let i = copia.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copia[i], copia[j]] = [copia[j], copia[i]];
-  }
-  return copia;
-}
-
-/**
- * Selecciona N elementos aleatorios de un array.
- * Devuelve una copia nueva mezclada.
- */
-function seleccionarAleatorios<T>(arr: T[], n: number): T[] {
-  return mezclar(arr).slice(0, n);
-}
 
 // ─────────────────────────────────────────────
 // TRACKER DE SESIÓN (evita repeticiones)

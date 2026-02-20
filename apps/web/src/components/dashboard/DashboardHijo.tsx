@@ -3,6 +3,7 @@
 /**
  * Tarjeta de resumen de un hijo en el dashboard del padre
  */
+import { calcularEdad } from '@/lib/utils/fecha';
 
 interface DashboardHijoProps {
   nombre: string;
@@ -148,13 +149,4 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
   );
 }
 
-function calcularEdad(fechaNacimiento: Date): number {
-  const hoy = new Date();
-  const nacimiento = new Date(fechaNacimiento);
-  let edad = hoy.getFullYear() - nacimiento.getFullYear();
-  const m = hoy.getMonth() - nacimiento.getMonth();
-  if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
-    edad--;
-  }
-  return edad;
-}
+// calcularEdad imported from @/lib/utils/fecha
