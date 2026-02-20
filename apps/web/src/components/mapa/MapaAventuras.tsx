@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ZonaMapa } from './ZonaMapa';
 import { Mascota } from '@/components/mascota/Mascota';
 import { MascotaDialogo } from '@/components/mascota/MascotaDialogo';
@@ -38,6 +38,8 @@ export interface MapaAventurasProps {
   onZoneSelect?: (zona: ZonaId) => void;
   /** Callback cuando toca botón de stickers */
   onStickersClick?: () => void;
+  /** Nombre del niño para saludos personalizados */
+  nombreNino?: string;
 }
 
 const ZONAS: ZonaDefinicion[] = [
@@ -57,9 +59,28 @@ export function MapaAventuras({
   zonaRecomendada = 'bosque-letras',
   onZoneSelect,
   onStickersClick,
+  nombreNino,
 }: MapaAventurasProps) {
   const [dialogoMascota, setDialogoMascota] = useState('');
   const [estadoMascota, setEstadoMascota] = useState<EstadoMascota>('feliz');
+  const [saludoInicial, setSaludoInicial] = useState(false);
+
+  // Saludo de la mascota al llegar al mapa
+  useEffect(() => {
+    if (!saludoInicial) {
+      setSaludoInicial(true);
+      const zonaRec = ZONAS.find((z) => z.id === zonaRecomendada);
+      const saludo = nombreNino
+        ? `¡Hola ${nombreNino}! ${
+            zonaRec ? `¡Vamos al ${zonaRec.nombre}!` : '¡Elige dónde quieres jugar!'
+          }`
+        : zonaRec
+          ? `¡Vamos al ${zonaRec.nombre}!`
+          : '¡Elige dónde quieres jugar!';
+      setDialogoMascota(saludo);
+      setEstadoMascota('celebrando');
+    }
+  }, [saludoInicial, nombreNino, zonaRecomendada]);
 
   const manejarZonaClick = useCallback(
     (zona: ZonaDefinicion) => {
@@ -107,7 +128,7 @@ export function MapaAventuras({
             visible={!!dialogoMascota}
           />
         )}
-        <Mascota estado={estadoMascota} tamano={120} />
+        <Mascota estado={estadoMascota} tamano={160} />
       </div>
 
       {/* Grid de zonas - centro */}

@@ -6,6 +6,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useStudentProgress } from '@/contexts/StudentProgressContext';
 
 interface Estudiante {
   id: string;
@@ -26,6 +27,7 @@ export default function JugarPage() {
   const [estudiantes, setEstudiantes] = useState<Estudiante[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { setEstudiante } = useStudentProgress();
 
   useEffect(() => {
     fetch('/api/estudiantes')
@@ -38,8 +40,8 @@ export default function JugarPage() {
   }, []);
 
   function seleccionarNino(est: Estudiante) {
-    // Guardar estudiante activo en sessionStorage
-    sessionStorage.setItem('estudianteActivo', JSON.stringify(est));
+    // Guardar estudiante activo en context (que sincroniza con sessionStorage)
+    setEstudiante(est);
 
     if (!est.diagnosticoCompletado) {
       router.push('/jugar/diagnostico');

@@ -50,6 +50,17 @@ export interface SesionVocalesProps {
   nombreNino?: string;
   /** Callback cuando la sesión termina */
   onTerminar?: (resumen: ResumenSesion) => void;
+  /** Callback cuando el niño responde (para guardado progresivo) */
+  onRespuesta?: (datos: {
+    vocal: string;
+    actividad: string;
+    correcto: boolean;
+    tiempoMs: number;
+  }) => void;
+  /** Callback cuando el niño gana una estrella */
+  onEstrella?: () => void;
+  /** Callback cuando una vocal se marca como dominada */
+  onVocalDominada?: (vocal: string) => void;
   /** Vocal inicial (default: primera no dominada) */
   vocalInicial?: Vocal;
   /** Clase CSS adicional */
@@ -71,6 +82,9 @@ export interface SesionVocalesProps {
 export function SesionVocales({
   nombreNino = 'amiguito',
   onTerminar,
+  onRespuesta,
+  onEstrella,
+  onVocalDominada,
   vocalInicial,
   className = '',
 }: SesionVocalesProps) {
@@ -103,7 +117,6 @@ export function SesionVocales({
       setTiempoTranscurrido(transcurrido);
 
       if (transcurrido >= DURACION_MAX_MS) {
-        // Auto-cierre por tiempo
         finalizarSesion();
       }
     }, 1000);
@@ -122,7 +135,6 @@ export function SesionVocales({
       case 'completar':
         return generarEjercicioCompletar(vocalActual, sesionTrackerRef.current);
     }
-    // Usamos ejercicioKey como dependencia para forzar regeneración
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocalActual, actividadActual, nivelDificultad, ejercicioKey]);
 
@@ -165,6 +177,9 @@ export function SesionVocales({
 
     // ¿Mastery alcanzado en esta vocal?
     if (mastery.estaDominada(vocal)) {
+      // Notificar vocal dominada
+      onVocalDominada?.(vocal);
+
       // Buscar siguiente vocal no dominada
       const siguiente = mastery.siguienteVocal();
 
@@ -178,6 +193,7 @@ export function SesionVocales({
       setFase('transicion-vocal');
       setMostrarCelebracion(true);
       setEstrellas((e) => e + 1);
+      onEstrella?.();
       hablar(`¡Excelente! ¡Ya sabes la ${vocal}! Ahora vamos con la ${siguiente}`, {
         onEnd: () => {
           setMostrarCelebracion(false);
@@ -201,7 +217,7 @@ export function SesionVocales({
         setNivelDificultad((n) => Math.min(3, n + 1) as NivelDificultad);
       }
     }
-  }, [vocalActual, nivelDificultad, finalizarSesion]);
+  }, [vocalActual, nivelDificultad, finalizarSesion, onEstrella, onVocalDominada]);
 
   // ── Handlers de respuesta ──
   const manejarAcierto = useCallback(() => {
@@ -212,9 +228,18 @@ export function SesionVocales({
       correcto: true,
       tiempoMs,
     });
+
+    // Guardar respuesta progresivamente
+    onRespuesta?.({
+      vocal: vocalActual,
+      actividad: actividadActual,
+      correcto: true,
+      tiempoMs,
+    });
+
     // Avanzar tras un delay para que se vea el feedback
     setTimeout(avanzar, 300);
-  }, [vocalActual, actividadActual, avanzar]);
+  }, [vocalActual, actividadActual, avanzar, onRespuesta]);
 
   const manejarError = useCallback(() => {
     const tiempoMs = Date.now() - tiempoRespuestaRef.current;
@@ -224,9 +249,18 @@ export function SesionVocales({
       correcto: false,
       tiempoMs,
     });
+
+    // Guardar respuesta progresivamente
+    onRespuesta?.({
+      vocal: vocalActual,
+      actividad: actividadActual,
+      correcto: false,
+      tiempoMs,
+    });
+
     // Resetear timer para siguiente intento
     tiempoRespuestaRef.current = Date.now();
-  }, [vocalActual, actividadActual]);
+  }, [vocalActual, actividadActual, onRespuesta]);
 
   // ── Progreso visual ──
   const progreso = useMemo(() => {
