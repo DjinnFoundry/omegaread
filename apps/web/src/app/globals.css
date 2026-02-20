@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────
+   OmegaAnywhere — Variables de diseño
+   Paleta cálida para niños de 4-8 años
+   ───────────────────────────────────────────── */
+
+@theme {
+  /* Colores primarios */
+  --color-coral: #FF6B6B;
+  --color-turquesa: #4ECDC4;
+  --color-amarillo: #FFE66D;
+
+  /* Zonas del mapa */
+  --color-bosque: #7BC67E;
+  --color-montana: #A28BD4;
+  --color-taller: #FFB347;
+  --color-lago: #64B5F6;
+
+  /* Feedback */
+  --color-acierto: #7BC67E;
+  --color-error-suave: #FFB5B5;
+  --color-neutro: #B0BEC5;
+
+  /* Fondos */
+  --color-fondo: #FFF9F0;
+  --color-superficie: #FFFFFF;
+  --color-texto: #2D3436;
+  --color-texto-suave: #636e72;
+
+  /* Tipografía */
+  --font-principal: 'Nunito', system-ui, sans-serif;
+}
+
+/* Reset para app infantil */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+/* Seleccionar texto solo donde sea necesario */
+input, textarea {
+  user-select: text;
+}
+
+body {
+  font-family: var(--font-principal);
+  background-color: var(--color-fondo);
+  color: var(--color-texto);
+  overflow-x: hidden;
+  /* Prevenir zoom accidental en móviles */
+  touch-action: manipulation;
+}
+
+/* Touch targets mínimos para niños */
+button, a, [role="button"] {
+  min-height: 48px;
+  min-width: 48px;
+}
+
+/* ─────────────────────────────────────────────
+   Animaciones
+   ───────────────────────────────────────────── */
+
+@keyframes bounce-suave {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse-brillo {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+@keyframes estrella-vuela {
+  0% { transform: scale(1) translateY(0); opacity: 1; }
+  100% { transform: scale(0.3) translateY(-100px); opacity: 0; }
+}
+
+@keyframes confetti-cae {
+  0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+
+@keyframes scale-in {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-bounce-suave {
+  animation: bounce-suave 1s ease-in-out infinite;
+}
+
+.animate-pulse-brillo {
+  animation: pulse-brillo 2s ease-in-out infinite;
+}
+
+.animate-shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+.animate-estrella-vuela {
+  animation: estrella-vuela 0.8s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s ease-out;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────
+   Fuente Nunito (Google Fonts)
+   ───────────────────────────────────────────── */
