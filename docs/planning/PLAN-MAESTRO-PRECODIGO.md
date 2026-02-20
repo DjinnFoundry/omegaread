@@ -77,29 +77,31 @@ Entregable:
 3. Dossier de referencias con implicaciones al producto.
 4. Lista de decisiones abiertas y propuesta de default para cada una.
 
-## Decisiones abiertas (requieren confirmacion)
+## Decisiones cerradas (2026-02-20)
 
 1. Segmento inicial:
-   - Opcion A (recomendada): 6-9 anos
-   - Opcion B: 5-12 anos
+   - Decision: `4-9 anos` (desde early readers)
 2. Idioma inicial:
-   - Opcion A (recomendada): ES primero
-   - Opcion B: ES + EN simultaneo
-3. Distribucion:
-   - Opcion A (recomendada): B2C familias para ciclo rapido
-   - Opcion B: B2B escuelas
-   - Opcion C: Hibrido
-4. Licencia del core:
-   - Opcion A (recomendada): AGPL
-   - Opcion B: Apache-2.0
-5. Prioridad de voz/ASR:
-   - Opcion A (recomendada): post MVP
-   - Opcion B: dentro de MVP
+   - Decision: `ES primero`, luego expansion a otros idiomas
+3. Distribucion inicial:
+   - Decision: `B2C familias` (dogfooding directo en casa)
+4. Voz/ASR:
+   - Decision: `dentro de MVP` para replicar estado del arte
+
+## Decisiones pendientes (minimas)
+
+1. Licencia del core:
+   - Decision actual: `private until quality`
+   - Decision futura: abrir con licencia final cuando el producto alcance umbral de calidad definido
+   - Criterio sugerido para abrir:
+     - QA de contenido >= 95%
+     - piloto inicial con resultados estables en CARF y comprension
+     - baseline de seguridad infantil y consentimiento auditables
 
 ## Criterio de salida pre-codigo
 
 Entramos a implementacion solo cuando:
 1. 100% de items P0 tienen owner y acceptance criteria.
-2. 0 decisiones criticas sin resolver.
+2. 0 decisiones criticas de producto sin resolver, excepto licencia final (explicitamente diferida).
 3. Arquitectura multi-app y dashboard comparten contrato de datos v1.
 4. Riesgos P1 tienen mitigacion operativa definida.

@@ -15,6 +15,14 @@ Prioridad:
 Estado inicial:
 - `todo`
 
+## Baseline de decisiones cerradas
+
+1. Segmento inicial: `4-9 anos`
+2. Idioma inicial: `ES primero`
+3. Distribucion inicial: `B2C familias`
+4. Voice stack: `ASR/TTS dentro de MVP`
+5. Politica de apertura: `repo privado hasta umbral de calidad`
+
 ## Epicas
 
 1. E0 Product Decisions and Governance
@@ -37,9 +45,9 @@ Estado inicial:
 
 | ID | Pri | Epic | Item | Why this matters | Acceptance Criteria | Depends |
 |---|---|---|---|---|---|---|
-| B-001 | P0 | E0 | Definir ICP y segmento inicial | Evita producto ambiguo | Segmento, edad y canal definidos por escrito | none |
+| B-001 | P0 | E0 | Consolidar ICP y segmento inicial | Evita producto ambiguo | Segmento, edad y canal cerrados y firmados en plan | none |
 | B-002 | P0 | E0 | Definir North Star y metricas | Alinea decisiones de producto | CARF + metricas secundarias cerradas | B-001 |
-| B-003 | P0 | E0 | Definir licencia open source del core | Afecta contribuciones y adopcion | Licencia elegida y rationale documentado | B-001 |
+| B-003 | P0 | E0 | Definir politica private->open del core | Afecta contribuciones y adopcion | Criterios de apertura y gatillo de licencia final documentados | B-001 |
 | B-004 | P0 | E0 | Definir politica de contenido infantil | Seguridad y confianza | Lista de restricciones y contenido prohibido | B-001 |
 | B-005 | P0 | E0 | Definir politicas anti-gaming | Evita incentivos daninos | Regla XP + anti-rush + limites de streak | B-002 |
 | B-006 | P0 | E1 | Definir flujo de consentimiento parental | Requisito legal y etico | Flujo e historial de consent versionados | B-004 |
@@ -54,8 +62,12 @@ Estado inicial:
 | B-015 | P1 | E3 | Definir plantilla de preguntas por lectura | Estandariza evaluacion | 4 guiding + quiz final configurable | B-013 |
 | B-016 | P1 | E4 | Disenar UX de sesion por secciones | Mejora foco y comprension | Wireflow y estados de sesion definidos | B-015 |
 | B-017 | P1 | E4 | Definir modo lectura corta y estandar | Ajuste por edad y energia | Duraciones/longitudes por modo aprobadas | B-016 |
+| B-046 | P1 | E4 | Definir UX de lectura en voz alta guiada | Critico para early readers (4-6) | Flujo TTS + turno de lectura del nino definido | B-016, B-017 |
 | B-018 | P1 | E5 | Definir calculo de WPM y CARF | Evita optimizar solo velocidad | Formula + validacion por cohortes | B-002 |
+| B-047 | P1 | E5 | Definir pipeline de captura de audio y ASR | Medir fluidez real requiere audio | Eventos y campos de audio/ASR definidos | B-010, B-046 |
+| B-048 | P1 | E5 | Definir scoring de fluidez oral con ASR | WPM manual no escala en pequenos | Heuristica de velocidad, precision y autocorreccion definida | B-018, B-047 |
 | B-019 | P1 | E5 | Definir deteccion de rushing | Mejora integridad del dato | Umbral de tiempo y reglas de bandera | B-018 |
+| B-049 | P1 | E1 | Definir gobernanza de datos de voz infantil | Riesgo legal y etico alto | Consentimiento, retencion y borrado para audio cerrados | B-006, B-047 |
 | B-020 | P1 | E5 | Definir feedback inmediato por respuesta | Aumenta aprendizaje activo | Plantillas de feedback por tipo de error | B-015 |
 | B-021 | P1 | E6 | Disenar motor de ajuste de dificultad | Motor adaptativo del producto | Reglas de subida/bajada por sesion | B-009, B-018 |
 | B-022 | P1 | E6 | Disenar recomendador de siguiente lectura | Mantiene continuidad pedagogica | Ranking de opciones por skill gap/interes | B-021 |

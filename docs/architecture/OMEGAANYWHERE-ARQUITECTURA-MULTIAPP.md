@@ -11,6 +11,7 @@ Construir una arquitectura donde cada nueva app educativa (OmegaRead, OmegaMath,
 3. Telemetria comun.
 4. Dashboard padres/ninos reutilizable.
 5. Motor de recomendaciones cross-app.
+6. Capa de voz compartida (TTS + ASR) cuando aplique.
 
 ## Principio de diseno
 
@@ -18,6 +19,7 @@ Separar claramente:
 1. `Core compartido` (identidad, datos, analytics, dashboard, rewards).
 2. `Domain engines` por app (lectura, matematicas, ciencia).
 3. `Contrato de integracion` para que una app nueva se conecte sin rehacer la plataforma.
+4. `Voice platform` reusable para dominios que requieran interaccion oral.
 
 ## Diagrama de alto nivel
 
@@ -43,6 +45,7 @@ flowchart LR
         RE["Recommendation Engine"]
         RW["Rewards and XP Service"]
         CT["Content Trust and Safety"]
+        VO["Voice Platform (TTS + ASR)"]
         EV["Event Ingestion"]
         AN["Analytics + Feature Store"]
         DS["Dashboard Query Service"]
@@ -52,6 +55,7 @@ flowchart LR
         OLTP["Operational DB"]
         DW["Analytics Warehouse"]
         OB["Object Storage (content snapshots)"]
+        AO["Object Storage (audio samples)"]
     end
 
     K --> API
@@ -68,16 +72,19 @@ flowchart LR
     API --> RE
     API --> RW
     API --> DS
+    API --> VO
 
     OR --> CT
     OM --> CT
     OS --> CT
+    OR --> VO
 
     OR --> EV
     OM --> EV
     OS --> EV
     RW --> EV
     RE --> EV
+    VO --> EV
 
     EV --> AN
     AN --> DS
@@ -87,6 +94,7 @@ flowchart LR
     RW --> OLTP
     OR --> OB
     OM --> OB
+    VO --> AO
     AN --> DW
 ```
 
@@ -111,6 +119,9 @@ Cada app nueva debe publicar:
 
 6. `dashboard_cards`  
    Definicion de tarjetas que se renderizan en dashboard padres/ninos.
+
+7. `voice_capabilities` (cuando aplique)  
+   Define si el dominio usa TTS, ASR o ambos, y sus eventos minimos.
 
 ## Diagrama de contrato de integracion
 
@@ -144,6 +155,7 @@ flowchart TD
 ### Capa por dominio (plugin cards)
 
 1. OmegaRead: CARF, mastery lectura, tiempo de lectura, anti-rush.
+   Incluye fluidez oral y precision ASR cuando haya lectura en voz alta.
 2. OmegaMath: accuracy por skill, latencia por ejercicio, consistencia.
 3. OmegaScience: comprension conceptual y retencion.
 
@@ -168,6 +180,9 @@ Eventos obligatorios:
 5. `recommendation_served`
 6. `xp_awarded`
 7. `anti_pattern_flagged`
+8. `read_aloud_started`
+9. `oral_reading_sample_captured`
+10. `asr_scored`
 
 Campos minimos:
 1. `tenant_id`
@@ -185,6 +200,7 @@ Campos minimos:
 3. Feature store unificado para recomendaciones y dashboard.
 4. Versionado fuerte de schemas (`event_version`, `contract_version`).
 5. Trazabilidad de decisiones de contenido y recomendacion.
+6. Capa de voz desacoplada del dominio para no duplicar ASR/TTS por app.
 
 ## Riesgos y mitigaciones
 
@@ -200,6 +216,9 @@ Campos minimos:
 4. Riesgo: deuda de datos por eventos inconsistentes.
    Mitigacion: validacion de schema en ingestion y rechazo de payload invalido.
 
+5. Riesgo: errores ASR en acentos infantiles y ruido ambiental.
+   Mitigacion: calibracion por cohorte de edad, confidence threshold y fallback manual.
+
 ## Checklist antes de sumar OmegaMath
 
 1. AppDomainContract v1 congelado.
@@ -207,4 +226,3 @@ Campos minimos:
 3. Dashboard padres/ninos con plugin cards probado.
 4. Event schema comun desplegado y validado.
 5. Scoring adapter de lectura operativo como referencia.
-

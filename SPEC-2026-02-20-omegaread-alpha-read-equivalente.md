@@ -10,7 +10,7 @@ Construir una plataforma de lectura personalizada para ninos que:
 1. Adapte textos y preguntas al nivel real del nino.
 2. Mantenga alta motivacion (intereses, narrativa, progreso visible).
 3. Mejore dos resultados a la vez: comprension y fluidez (palabras por minuto con precision).
-4. Sea abierta y accesible (coste bajo, despliegue flexible, extensible por escuelas y comunidades).
+4. Sea abierta y accesible (coste bajo, despliegue flexible, extensible por escuelas y comunidades), con salida por fases.
 
 Tesis central: no basta con "leer mas". Hay que optimizar el ciclo completo:
 `texto correcto -> lectura activa -> comprension verificada -> feedback inmediato -> siguiente texto correcto`.
@@ -41,7 +41,7 @@ Muchos ninos leen textos que no estan "en su zona de aprendizaje": demasiado fac
 
 ## 4) Usuarios y JTBD
 
-### Usuario A: Nino (5-12)
+### Usuario A: Nino (4-9)
 JTBD: "Quiero leer historias que me gusten, entenderlas y sentir que progreso."
 
 ### Usuario B: Padre/Madre
@@ -101,6 +101,10 @@ Cada lectura se genera o selecciona con:
 4. Deteccion de "rushing": umbral minimo por pregunta + baja precision.
 5. Score compuesto de lectura:
    `ReadingScore = 0.5*Comprension + 0.3*CARF normalizado + 0.2*Consistencia semanal`.
+6. Fluidez oral para early readers:
+   a) captura de audio de lectura en voz alta  
+   b) ASR para estimar velocidad, errores y autocorrecciones  
+   c) confidence score y fallback cuando ASR sea incierto
 
 ### R5. Gamificacion util (no adictiva)
 1. XP por completar lecturas con calidad.
@@ -127,6 +131,7 @@ Despues de cada sesion:
 3. Borrado/export de datos.
 4. Auditoria de prompts y contenidos servidos.
 5. Alineacion con COPPA y FERPA desde diseno.
+6. Gobernanza de audio infantil (captura, retencion, borrado y acceso).
 
 ## 7) Requisitos no funcionales
 
@@ -214,17 +219,19 @@ Umbral recomendado de lanzamiento:
 2. Motor de lecturas (plantillas + LLM + QA basico).
 3. Sesion de lectura con quiz final.
 4. Tracking de tiempo, accuracy, mastery.
+5. Primer flujo de lectura en voz alta (TTS + ASR baseline).
 
 ### Fase 2 (Semanas 5-8): Adaptacion + motivacion
 1. Ajuste automatico de dificultad.
 2. XP, badges y streaks.
 3. Dashboard familia.
 4. Alertas de anti-pattern basicas.
+5. Scoring de fluidez oral integrado en recomendaciones.
 
 ### Fase 3 (Semanas 9-12): Calidad + escuela
 1. Skill graph por subhabilidades.
 2. Dashboard docente.
-3. QA hardening + auditoria de contenido.
+3. QA hardening + auditoria de contenido y voz.
 4. Piloto con 20-50 ninos.
 
 ## 13) Criterios de aceptacion de MVP
@@ -255,18 +262,20 @@ Umbral recomendado de lanzamiento:
 
 ## 15) Estrategia open source y acceso
 
-Recomendacion:
-1. Core pedagogico y data model abiertos.
-2. Plugins de contenido/adaptacion desacoplados.
-3. Dataset de ejemplo anonimo para benchmark comunitario.
-4. Licencia sugerida:
-   a) AGPL para asegurar retornos comunitarios en forks SaaS, o  
-   b) Apache-2.0 si priorizamos adopcion institucional rapida.
+Decision actual:
+1. Fase inicial en repositorio privado hasta alcanzar umbral de calidad y seguridad.
+2. Definir licencia final en gate de apertura (AGPL vs Apache-2.0).
+3. Abrir por fases:
+   a) primero contratos, esquema de eventos y metricas  
+   b) luego componentes core pedagogicos  
+   c) por ultimo herramientas de contribucion comunitaria
 
-Decision de producto-politica:
-si la prioridad es impacto social duradero y evitar cierre propietario, AGPL suele alinear mejor.
+Gate de apertura recomendado:
+1. QA de contenido >=95%.
+2. QA de voz/ASR estable en cohortes 4-6 y 7-9.
+3. Baseline de privacidad infantil auditado.
 
-## 16) Lo que añadimos respecto a tu lista inicial
+## 16) Lo que anadimos respecto a tu lista inicial
 
 Tu lista cubria bien el 60-70% del producto. El spec agrega piezas criticas para que funcione de verdad:
 
@@ -277,13 +286,13 @@ Tu lista cubria bien el 60-70% del producto. El spec agrega piezas criticas para
 5. QA robusto de contenido para evitar preguntas malas.
 6. Compliance infantil y gobernanza de datos.
 
-## 17) Preguntas de decision (para pasar a arquitectura e implementacion)
+## 17) Snapshot de decisiones (2026-02-20)
 
-1. Segmento inicial: solo 6-9 anos o 5-12 desde el inicio.
-2. Idioma inicial: ES primero, EN primero o bilingue simultaneo.
-3. Distribucion: B2C familias, B2B escuelas, o modelo hibrido.
-4. Licencia open source final.
-5. Si el MVP debe incluir lectura en voz alta y ASR, o dejarlo para v1.1.
+1. Segmento inicial: `4-9 anos`.
+2. Idioma inicial: `ES primero`.
+3. Distribucion inicial: `B2C familias`.
+4. MVP incluye lectura en voz alta y `ASR`.
+5. Licencia final: pendiente, con fase privada inicial.
 
 ## 18) Fuentes consultadas (publicas)
 
@@ -301,4 +310,3 @@ Tu lista cubria bien el 60-70% del producto. El spec agrega piezas criticas para
    https://support.alpha.school/article/31771-understanding-and-addressing-learning-anti-patterns
 7. Alpha Anywhere (sitio publico)  
    https://www.alphaanywhere.co/
-
