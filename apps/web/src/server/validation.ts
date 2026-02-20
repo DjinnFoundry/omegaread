@@ -209,3 +209,29 @@ export const finalizarSesionLecturaSchema = z.object({
     tiempoMs: z.number().int().nonnegative(),
   })).min(1).max(4),
 });
+
+// ─────────────────────────────────────────────
+// REESCRITURA EN SESION (Sprint 4)
+// ─────────────────────────────────────────────
+
+const direccionAjusteManual = z.enum(['mas_facil', 'mas_desafiante']);
+
+/** Schema: reescribirHistoria */
+export const reescribirHistoriaSchema = z.object({
+  sessionId: uuid,
+  studentId: uuid,
+  storyId: uuid,
+  direccion: direccionAjusteManual,
+  tiempoLecturaAntesDePulsar: z.number().int().nonnegative(),
+});
+
+/** Schema: registrarAjusteManual */
+export const registrarAjusteManualSchema = z.object({
+  studentId: uuid,
+  sessionId: uuid,
+  storyId: uuid,
+  tipo: direccionAjusteManual,
+  nivelAntes: z.number().min(1).max(10),
+  nivelDespues: z.number().min(1).max(10),
+  tiempoLecturaAntesDePulsar: z.number().int().nonnegative(),
+});

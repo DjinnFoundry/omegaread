@@ -96,6 +96,110 @@ IMPORTANTE:
 - El vocabularioNuevo son palabras que el nino podria no conocer`;
 }
 
+// ─────────────────────────────────────────────
+// REESCRITURA EN SESION (Sprint 4)
+// ─────────────────────────────────────────────
+
+export type DireccionReescritura = 'mas_facil' | 'mas_desafiante';
+
+export interface RewritePromptInput {
+  historiaOriginal: string;
+  tituloOriginal: string;
+  nivelActual: number;
+  direccion: DireccionReescritura;
+  edadAnos: number;
+  topicNombre: string;
+}
+
+/**
+ * Genera el prompt de reescritura para ajustar la dificultad de una historia
+ * manteniendo personajes y trama intactos.
+ */
+export function buildRewritePrompt(input: RewritePromptInput): string {
+  const nivelObjetivo = input.direccion === 'mas_facil'
+    ? Math.max(1, input.nivelActual - 1)
+    : Math.min(4, input.nivelActual + 1);
+
+  const configNuevo = getNivelConfig(nivelObjetivo);
+
+  const instruccionDireccion = input.direccion === 'mas_facil'
+    ? `SIMPLIFICAR la historia:
+- Oraciones mas cortas y simples (${configNuevo.oracionMin}-${configNuevo.oracionMax} palabras por oracion)
+- Vocabulario mas basico y cotidiano
+- Mas contexto y explicaciones para ayudar a entender
+- ${configNuevo.complejidadLexica}
+- ${configNuevo.densidadIdeas}`
+    : `AUMENTAR EL DESAFIO de la historia:
+- Oraciones mas largas y elaboradas (${configNuevo.oracionMin}-${configNuevo.oracionMax} palabras por oracion)
+- Vocabulario mas rico y variado
+- Menos soporte contextual, dejar que el lector infiera mas
+- ${configNuevo.complejidadLexica}
+- ${configNuevo.densidadIdeas}`;
+
+  return `Reescribe la siguiente historia para un nino de ${input.edadAnos} anos.
+
+HISTORIA ORIGINAL (titulo: "${input.tituloOriginal}"):
+${input.historiaOriginal}
+
+INSTRUCCIONES DE REESCRITURA:
+${instruccionDireccion}
+
+REGLAS CRITICAS:
+- MANTENER los mismos personajes, trama y desenlace
+- MANTENER el mismo topic (${input.topicNombre}) e intencion pedagogica
+- Solo ajustar: longitud de oraciones, complejidad lexica, soporte contextual
+- Longitud objetivo: ${configNuevo.palabrasMin}-${configNuevo.palabrasMax} palabras
+- El titulo puede ajustarse ligeramente pero debe referirse a la misma historia
+
+Tambien genera 4 nuevas preguntas de comprension adaptadas al NUEVO texto.
+Tipos obligatorios: literal, inferencia, vocabulario, resumen.
+
+FORMATO JSON OBLIGATORIO:
+{
+  "titulo": "string",
+  "contenido": "string (parrafos separados por \\n\\n)",
+  "vocabularioNuevo": ["palabra1", "palabra2"],
+  "preguntas": [
+    {
+      "tipo": "literal",
+      "pregunta": "string",
+      "opciones": ["opcion1", "opcion2", "opcion3", "opcion4"],
+      "respuestaCorrecta": 0,
+      "explicacion": "string"
+    },
+    {
+      "tipo": "inferencia",
+      "pregunta": "string",
+      "opciones": ["opcion1", "opcion2", "opcion3", "opcion4"],
+      "respuestaCorrecta": 0,
+      "explicacion": "string"
+    },
+    {
+      "tipo": "vocabulario",
+      "pregunta": "string",
+      "opciones": ["opcion1", "opcion2", "opcion3", "opcion4"],
+      "respuestaCorrecta": 0,
+      "explicacion": "string"
+    },
+    {
+      "tipo": "resumen",
+      "pregunta": "string",
+      "opciones": ["opcion1", "opcion2", "opcion3", "opcion4"],
+      "respuestaCorrecta": 0,
+      "explicacion": "string"
+    }
+  ]
+}`;
+}
+
+/**
+ * Calcula el nivel objetivo despues de un ajuste manual.
+ */
+export function calcularNivelReescritura(nivelActual: number, direccion: DireccionReescritura): number {
+  if (direccion === 'mas_facil') return Math.max(1, nivelActual - 1);
+  return Math.min(4, nivelActual + 1);
+}
+
 /**
  * Genera el prompt del usuario con las variables especificas.
  */

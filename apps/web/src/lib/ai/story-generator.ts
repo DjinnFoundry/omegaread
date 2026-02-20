@@ -3,7 +3,13 @@
  * Orquesta: prompt → LLM → parseo → QA → resultado.
  */
 import { getOpenAIClient, OpenAIKeyMissingError } from './openai';
-import { buildSystemPrompt, buildUserPrompt, type PromptInput } from './prompts';
+import {
+  buildSystemPrompt,
+  buildUserPrompt,
+  buildRewritePrompt,
+  type PromptInput,
+  type RewritePromptInput,
+} from './prompts';
 import {
   validarEstructura,
   evaluarHistoria,
@@ -135,6 +141,106 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
   return {
     ok: false,
     error: `No se pudo generar historia despues de ${MAX_REINTENTOS + 1} intentos. Ultimo error: ${lastError}`,
+    code: 'GENERATION_FAILED',
+  };
+}
+
+/**
+ * Reescribe una historia existente ajustando la dificultad.
+ * Mantiene personajes y trama, cambia complejidad lexica y longitud.
+ */
+export async function rewriteStory(input: RewritePromptInput): Promise<StoryGenerationResult> {
+  let client;
+  try {
+    client = getOpenAIClient();
+  } catch (e) {
+    if (e instanceof OpenAIKeyMissingError) {
+      return { ok: false, error: e.message, code: 'NO_API_KEY' };
+    }
+    throw e;
+  }
+
+  const systemPrompt = buildSystemPrompt();
+  const userPrompt = buildRewritePrompt(input);
+
+  let lastError = '';
+
+  for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
+    try {
+      const completion = await client.chat.completions.create({
+        model: MODELO,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+      });
+
+      const content = completion.choices[0]?.message?.content;
+      if (!content) {
+        lastError = 'El LLM no devolvio contenido';
+        continue;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        lastError = 'El LLM devolvio JSON invalido';
+        continue;
+      }
+
+      if (!validarEstructura(parsed)) {
+        lastError = 'Estructura de respuesta invalida';
+        continue;
+      }
+
+      const storyOutput = parsed as StoryLLMOutput;
+      const nivelObjetivo = input.direccion === 'mas_facil'
+        ? Math.max(1, input.nivelActual - 1)
+        : Math.min(4, input.nivelActual + 1);
+      const qa: QAResult = evaluarHistoria(storyOutput, nivelObjetivo);
+
+      const metadataCalc = calcularMetadataHistoria(
+        storyOutput.contenido,
+        input.edadAnos,
+        nivelObjetivo
+      );
+
+      const story: GeneratedStory = {
+        titulo: storyOutput.titulo,
+        contenido: storyOutput.contenido,
+        vocabularioNuevo: storyOutput.vocabularioNuevo,
+        metadata: {
+          ...metadataCalc,
+          vocabularioNuevo: storyOutput.vocabularioNuevo,
+        },
+        preguntas: storyOutput.preguntas.map(p => ({
+          ...p,
+          tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+        })),
+        modelo: MODELO,
+        aprobadaQA: qa.aprobada,
+        motivoRechazo: qa.motivo,
+      };
+
+      if (!qa.aprobada) {
+        lastError = qa.motivo ?? 'QA rechazada sin motivo';
+        continue;
+      }
+
+      return { ok: true, story };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error desconocido';
+      lastError = `Error de API: ${msg}`;
+    }
+  }
+
+  return {
+    ok: false,
+    error: `No se pudo reescribir historia despues de ${MAX_REINTENTOS + 1} intentos. Ultimo error: ${lastError}`,
     code: 'GENERATION_FAILED',
   };
 }

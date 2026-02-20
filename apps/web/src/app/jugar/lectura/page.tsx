@@ -8,6 +8,8 @@
  * 2. Si no tiene intereses -> SelectorIntereses (nino)
  * 3. Si no tiene baseline -> TestBaseline
  * 4. Si tiene todo -> SesionLectura (ciclo completo de lectura)
+ *
+ * Sprint 4: reescritura en sesion con ajuste manual de dificultad.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -17,7 +19,11 @@ import {
   type EstadoFlujoLectura,
   type DatosEstudianteLectura,
 } from '@/server/actions/lectura-flow-actions';
-import { generarHistoria, finalizarSesionLectura } from '@/server/actions/story-actions';
+import {
+  generarHistoria,
+  finalizarSesionLectura,
+  reescribirHistoria,
+} from '@/server/actions/story-actions';
 import FormularioPerfil from '@/components/perfil/FormularioPerfil';
 import SelectorIntereses from '@/components/perfil/SelectorIntereses';
 import TestBaseline from '@/components/baseline/TestBaseline';
@@ -77,6 +83,11 @@ export default function LecturaPage() {
   const [errorGeneracion, setErrorGeneracion] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
 
+  // Sprint 4: estado de reescritura
+  const [reescribiendo, setReescribiendo] = useState(false);
+  const [ajusteUsado, setAjusteUsado] = useState(false);
+  const [rewriteCount, setRewriteCount] = useState(0);
+
   const cargarEstado = useCallback(async () => {
     if (!estudiante) return;
     setCargando(true);
@@ -132,6 +143,7 @@ export default function LecturaPage() {
       historia: result.historia,
       preguntas: result.preguntas,
     });
+    setAjusteUsado(false);
     setPasoSesion('leyendo');
   }, [estudiante, generando]);
 
@@ -139,6 +151,44 @@ export default function LecturaPage() {
     setTiempoLectura(tiempoMs);
     setPasoSesion('preguntas');
   }, []);
+
+  // Sprint 4: handler de ajuste manual (reescritura)
+  const handleAjusteManual = useCallback(async (
+    direccion: 'mas_facil' | 'mas_desafiante',
+    tiempoLecturaMs: number,
+  ) => {
+    if (!estudiante || !sesionActiva || reescribiendo || ajusteUsado) return;
+
+    setReescribiendo(true);
+
+    const result = await reescribirHistoria({
+      sessionId: sesionActiva.sessionId,
+      studentId: estudiante.id,
+      storyId: sesionActiva.storyId,
+      direccion,
+      tiempoLecturaAntesDePulsar: tiempoLecturaMs,
+    });
+
+    setReescribiendo(false);
+
+    if (!result.ok) {
+      // Silently fail, the child can continue reading the original
+      return;
+    }
+
+    // Actualizar sesion activa con la historia reescrita
+    setSesionActiva(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        storyId: result.storyId,
+        historia: result.historia,
+        preguntas: result.preguntas,
+      };
+    });
+    setAjusteUsado(true);
+    setRewriteCount(c => c + 1);
+  }, [estudiante, sesionActiva, reescribiendo, ajusteUsado]);
 
   const handleRespuestasCompletas = useCallback(async (respuestas: RespuestaPregunta[]) => {
     if (!estudiante || !sesionActiva) return;
@@ -162,6 +212,9 @@ export default function LecturaPage() {
     setResultadoSesion(null);
     setTiempoLectura(0);
     setErrorGeneracion(null);
+    setAjusteUsado(false);
+    setReescribiendo(false);
+    setRewriteCount(0);
     setPasoSesion('elegir-topic');
     // Recargar estado por si el nivel cambio
     void cargarEstado();
@@ -263,6 +316,10 @@ export default function LecturaPage() {
           topicNombre={sesionActiva.historia.topicNombre}
           nivel={sesionActiva.historia.nivel}
           onTerminar={handleTerminarLectura}
+          onAjusteManual={handleAjusteManual}
+          reescribiendo={reescribiendo}
+          ajusteUsado={ajusteUsado}
+          rewriteCount={rewriteCount}
         />
       </main>
     );

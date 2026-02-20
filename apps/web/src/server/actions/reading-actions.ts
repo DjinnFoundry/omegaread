@@ -10,6 +10,7 @@ import {
   sessions,
   responses,
   difficultyAdjustments,
+  manualAdjustments,
   students,
 } from '@omegaread/db';
 import { eq, and, desc } from 'drizzle-orm';
@@ -145,11 +146,39 @@ export async function calcularAjusteDificultad(datos: {
     }
   }
 
-  const sessionScore = calcularSessionScore({
+  // Sprint 4: Buscar si hubo ajuste manual en esta sesion
+  const ajusteManual = await db.query.manualAdjustments.findFirst({
+    where: and(
+      eq(manualAdjustments.sessionId, datos.sessionId),
+      eq(manualAdjustments.studentId, datos.studentId),
+    ),
+  });
+
+  // Calcular modificador por ajuste manual
+  let modificadorManual = 0;
+  let ajusteManualTipo: 'mas_facil' | 'mas_desafiante' | null = null;
+
+  if (ajusteManual) {
+    ajusteManualTipo = ajusteManual.tipo as 'mas_facil' | 'mas_desafiante';
+    if (ajusteManualTipo === 'mas_facil') {
+      // Si pidio "mas facil", penalizar score un 10% (senal de que el nivel era alto)
+      modificadorManual = -0.10;
+    } else if (ajusteManualTipo === 'mas_desafiante' && datos.comprensionScore >= 0.75) {
+      // Si pidio "mas desafiante" y acerto >= 75%, bonificar un 10%
+      modificadorManual = 0.10;
+    }
+  }
+
+  const sessionScoreBase = calcularSessionScore({
     comprension: datos.comprensionScore,
     ritmoNormalizado,
     estabilidad,
   });
+
+  // Aplicar modificador manual al score
+  const sessionScore = Math.max(0, Math.min(1,
+    Math.round((sessionScoreBase + modificadorManual) * 100) / 100
+  ));
 
   const direccion: DireccionAjuste = determinarAjuste(datos.comprensionScore);
 
@@ -163,6 +192,10 @@ export async function calcularAjusteDificultad(datos: {
     bajar: `Comprension ${Math.round(datos.comprensionScore * 100)}% (<60%). Bajamos dificultad para consolidar.`,
   };
 
+  const razonFinal = ajusteManualTipo
+    ? `${RAZONES[direccion]} (Ajuste manual: ${ajusteManualTipo}, modificador: ${modificadorManual > 0 ? '+' : ''}${Math.round(modificadorManual * 100)}%)`
+    : RAZONES[direccion];
+
   // Registrar ajuste con trazabilidad
   await db.insert(difficultyAdjustments).values({
     studentId: datos.studentId,
@@ -170,12 +203,14 @@ export async function calcularAjusteDificultad(datos: {
     nivelAnterior,
     nivelNuevo,
     direccion,
-    razon: RAZONES[direccion],
+    razon: razonFinal,
     evidencia: {
       comprensionScore: datos.comprensionScore,
       ritmoNormalizado: Math.round(ritmoNormalizado * 100) / 100,
       estabilidad: Math.round(estabilidad * 100) / 100,
       sessionScore,
+      ajusteManual: ajusteManualTipo,
+      modificadorManual: modificadorManual !== 0 ? modificadorManual : undefined,
     },
   });
 

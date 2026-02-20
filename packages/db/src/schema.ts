@@ -93,6 +93,7 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
   achievements: many(achievements),
   skillProgress: many(skillProgress),
   baselineAssessments: many(baselineAssessments),
+  manualAdjustments: many(manualAdjustments),
 }));
 
 // ─────────────────────────────────────────────
@@ -195,6 +196,57 @@ export const difficultyAdjustmentsRelations = relations(difficultyAdjustments, (
   session: one(sessions, {
     fields: [difficultyAdjustments.sessionId],
     references: [sessions.id],
+  }),
+}));
+
+// ─────────────────────────────────────────────
+// AJUSTES MANUALES (Sprint 4: reescritura en sesion)
+// ─────────────────────────────────────────────
+
+export const manualAdjustments = pgTable(
+  'manual_adjustments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    studentId: uuid('student_id')
+      .notNull()
+      .references(() => students.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    storyId: uuid('story_id')
+      .notNull()
+      .references(() => generatedStories.id, { onDelete: 'cascade' }),
+    /** Tipo de ajuste: mas_facil o mas_desafiante */
+    tipo: varchar('tipo', { length: 20 }).notNull(),
+    /** Nivel antes del ajuste */
+    nivelAntes: real('nivel_antes').notNull(),
+    /** Nivel despues del ajuste */
+    nivelDespues: real('nivel_despues').notNull(),
+    /** Cuanto tiempo llevaba leyendo antes de pulsar (ms) */
+    tiempoLecturaAntesDePulsar: integer('tiempo_lectura_antes_ms').notNull(),
+    /** ID de la historia reescrita resultante */
+    rewrittenStoryId: uuid('rewritten_story_id')
+      .references(() => generatedStories.id, { onDelete: 'set null' }),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('manual_adj_student_idx').on(table.studentId),
+    index('manual_adj_session_idx').on(table.sessionId),
+  ]
+);
+
+export const manualAdjustmentsRelations = relations(manualAdjustments, ({ one }) => ({
+  student: one(students, {
+    fields: [manualAdjustments.studentId],
+    references: [students.id],
+  }),
+  session: one(sessions, {
+    fields: [manualAdjustments.sessionId],
+    references: [sessions.id],
+  }),
+  story: one(generatedStories, {
+    fields: [manualAdjustments.storyId],
+    references: [generatedStories.id],
   }),
 }));
 
@@ -308,6 +360,7 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   }),
   responses: many(responses),
   difficultyAdjustments: many(difficultyAdjustments),
+  manualAdjustments: many(manualAdjustments),
 }));
 
 // ─────────────────────────────────────────────
@@ -455,6 +508,10 @@ export type DifficultyEvidence = {
   sessionScore?: number;
   totalPreguntas?: number;
   totalAciertos?: number;
+  /** Sprint 4: si el nino uso ajuste manual durante la sesion */
+  ajusteManual?: 'mas_facil' | 'mas_desafiante' | null;
+  /** Sprint 4: penalizacion/bonificacion aplicada al score */
+  modificadorManual?: number;
 };
 
 export type StoryMetadata = {
