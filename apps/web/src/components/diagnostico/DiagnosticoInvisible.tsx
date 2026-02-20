@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { hablar } from '@/lib/audio/tts';
 import {
   acierto as sonidoAcierto,
@@ -145,7 +145,11 @@ export function DiagnosticoInvisible({
   const letrasReconocidasRef = useRef<string[]>([]);
   const cuentaHastaRef = useRef(0);
   const concienciaFonologicaRef = useRef(0);
-  const inicioRef = useRef(Date.now());
+  const inicioRef = useRef(0);
+
+  useEffect(() => {
+    inicioRef.current = Date.now();
+  }, []);
 
   // ── Intro ──
   useEffect(() => {
@@ -277,16 +281,29 @@ interface JuegoLetrasProps {
 
 function JuegoLetras({ onComplete }: JuegoLetrasProps) {
   const [indiceLetra, setIndiceLetra] = useState(0);
-  const [opciones, setOpciones] = useState<string[]>([]);
   const [bloqueado, setBloqueado] = useState(false);
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [estadoLetra, setEstadoLetra] = useState<'jugando' | 'correcto' | 'incorrecto'>('jugando');
   const reconocidasRef = useRef<string[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
+  const avanzarLetra = useCallback(() => {
+    setIndiceLetra((i) => i + 1);
+    setBloqueado(false);
+    setSeleccion(null);
+    setEstadoLetra('jugando');
+  }, []);
 
-  const letraActual = LETRAS_DIAGNOSTICO[indiceLetra];
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  const opciones = useMemo(() => {
+    if (indiceLetra >= LETRAS_DIAGNOSTICO.length) return [];
+    const letra = LETRAS_DIAGNOSTICO[indiceLetra];
+    const distractores = DISTRACTORES_LETRAS[letra] ?? ['X', 'Y', 'Z'];
+    return mezclar([letra, ...distractores]);
+  }, [indiceLetra]);
 
   // Generar opciones para la letra actual
   useEffect(() => {
@@ -296,11 +313,6 @@ function JuegoLetras({ onComplete }: JuegoLetrasProps) {
     }
 
     const letra = LETRAS_DIAGNOSTICO[indiceLetra];
-    const distractores = DISTRACTORES_LETRAS[letra] ?? ['X', 'Y', 'Z'];
-    setOpciones(mezclar([letra, ...distractores]));
-    setSeleccion(null);
-    setEstadoLetra('jugando');
-    setBloqueado(false);
 
     // TTS: "¿Sabes qué letra es esta?"
     const ttsTimer = setTimeout(() => {
@@ -311,9 +323,7 @@ function JuegoLetras({ onComplete }: JuegoLetrasProps) {
     timerRef.current = setTimeout(() => {
       if (!reconocidasRef.current.includes(letra)) {
         hablar(`¡Esta es la ${letra}!`, {
-          onEnd: () => {
-            setIndiceLetra((i) => i + 1);
-          },
+          onEnd: avanzarLetra,
         });
       }
     }, 5000);
@@ -322,7 +332,7 @@ function JuegoLetras({ onComplete }: JuegoLetrasProps) {
       clearTimeout(ttsTimer);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [indiceLetra]);
+  }, [indiceLetra, avanzarLetra]);
 
   const manejarSeleccion = useCallback(
     (letra: string) => {
@@ -339,15 +349,15 @@ function JuegoLetras({ onComplete }: JuegoLetrasProps) {
         reconocidasRef.current = [...reconocidasRef.current, letraObj];
         sonidoAcierto();
         hablar('¡Muy bien!');
-        setTimeout(() => setIndiceLetra((i) => i + 1), 1000);
+        setTimeout(avanzarLetra, 1000);
       } else {
         setEstadoLetra('incorrecto');
         sonidoError();
         hablar(`¡Esta es la ${letraObj}!`);
-        setTimeout(() => setIndiceLetra((i) => i + 1), 1500);
+        setTimeout(avanzarLetra, 1500);
       }
     },
-    [bloqueado, indiceLetra],
+    [bloqueado, indiceLetra, avanzarLetra],
   );
 
   if (indiceLetra >= LETRAS_DIAGNOSTICO.length) return null;
@@ -411,15 +421,20 @@ function JuegoConteo({ onComplete }: JuegoConteoProps) {
   const [estadoNum, setEstadoNum] = useState<'jugando' | 'correcto' | 'incorrecto'>('jugando');
   const fallosConsecutivosRef = useRef(0);
   const mejorCuentaRef = useRef(0);
+  const prepararRondaConteo = useCallback((nuevaCantidad?: number) => {
+    if (typeof nuevaCantidad === 'number') {
+      setCantidad(nuevaCantidad);
+    }
+    setObjetosTocados(0);
+    setBloqueado(false);
+    setSeleccion(null);
+    setEstadoNum('jugando');
+    setFaseConteo('tocar');
+  }, []);
 
   // Instrucción TTS
   useEffect(() => {
     if (faseConteo === 'tocar') {
-      setObjetosTocados(0);
-      setBloqueado(false);
-      setSeleccion(null);
-      setEstadoNum('jugando');
-
       const timer = setTimeout(() => {
         hablar(`¿Cuántos hay? ¡Toca para contar!`);
       }, 400);
@@ -474,8 +489,7 @@ function JuegoConteo({ onComplete }: JuegoConteoProps) {
           if (cantidad >= 10) {
             onComplete(10);
           } else {
-            setCantidad((c) => c + 1);
-            setFaseConteo('tocar');
+            prepararRondaConteo(cantidad + 1);
           }
         }, 1000);
       } else {
@@ -492,12 +506,12 @@ function JuegoConteo({ onComplete }: JuegoConteoProps) {
         } else {
           hablar('¡Casi! Vamos a intentar otra vez');
           setTimeout(() => {
-            setFaseConteo('tocar');
+            prepararRondaConteo();
           }, 1500);
         }
       }
     },
-    [bloqueado, cantidad, onComplete],
+    [bloqueado, cantidad, onComplete, prepararRondaConteo],
   );
 
   return (
@@ -606,15 +620,30 @@ interface JuegoRimasProps {
 
 function JuegoRimas({ onComplete }: JuegoRimasProps) {
   const [indicePar, setIndicePar] = useState(0);
-  const [opciones, setOpciones] = useState<Array<{ palabra: string; emoji: string }>>([]);
   const [bloqueado, setBloqueado] = useState(false);
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [estadoRima, setEstadoRima] = useState<'jugando' | 'correcto' | 'incorrecto'>('jugando');
   const aciertosRef = useRef(0);
   const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
+  const avanzarPar = useCallback(() => {
+    setIndicePar((i) => i + 1);
+    setBloqueado(false);
+    setSeleccion(null);
+    setEstadoRima('jugando');
+  }, []);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   const parActual = PARES_RIMAS[indicePar];
+  const opciones = useMemo(() => {
+    if (!parActual) return [];
+    return mezclar([
+      { palabra: parActual.rima, emoji: parActual.rimaEmoji },
+      ...parActual.distractores,
+    ]);
+  }, [parActual]);
 
   // Generar opciones mezcladas
   useEffect(() => {
@@ -624,14 +653,6 @@ function JuegoRimas({ onComplete }: JuegoRimasProps) {
     }
 
     const par = PARES_RIMAS[indicePar];
-    const todas = mezclar([
-      { palabra: par.rima, emoji: par.rimaEmoji },
-      ...par.distractores,
-    ]);
-    setOpciones(todas);
-    setSeleccion(null);
-    setEstadoRima('jugando');
-    setBloqueado(false);
 
     const timer = setTimeout(() => {
       hablar(`¿Cuál suena parecido a ${par.palabra}?`);
@@ -650,15 +671,15 @@ function JuegoRimas({ onComplete }: JuegoRimasProps) {
         aciertosRef.current++;
         sonidoAcierto();
         hablar(`¡Sí! ${parActual.palabra} y ${parActual.rima} suenan parecido`);
-        setTimeout(() => setIndicePar((i) => i + 1), 1500);
+        setTimeout(avanzarPar, 1500);
       } else {
         setEstadoRima('incorrecto');
         sonidoError();
         hablar(`${parActual.palabra} suena parecido a ${parActual.rima}`);
-        setTimeout(() => setIndicePar((i) => i + 1), 2000);
+        setTimeout(avanzarPar, 2000);
       }
     },
-    [bloqueado, parActual],
+    [bloqueado, parActual, avanzarPar],
   );
 
   if (indicePar >= PARES_RIMAS.length) return null;

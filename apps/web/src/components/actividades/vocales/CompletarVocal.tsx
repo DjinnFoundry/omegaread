@@ -41,11 +41,6 @@ export function CompletarVocal({
 
   // TTS al montar: pronuncia la palabra enfatizando la vocal
   useEffect(() => {
-    setSeleccion(null);
-    setEstado('jugando');
-    setBloqueado(false);
-    setMostrarCompleta(false);
-
     const timer = setTimeout(() => {
       hablar('¡Completa la palabra!', {
         onEnd: () => {

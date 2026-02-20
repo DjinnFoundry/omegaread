@@ -87,7 +87,11 @@ describe('Validación de inputs con Zod', () => {
     });
 
     it('acepta sin campos opcionales', () => {
-      const { tiempoRespuestaMs, intentoNumero, ...sinOpcionales } = datosValidos;
+      const {
+        tiempoRespuestaMs: _tiempoRespuestaMs,
+        intentoNumero: _intentoNumero,
+        ...sinOpcionales
+      } = datosValidos;
       const result = guardarRespuestaSchema.parse(sinOpcionales);
       expect(result.tiempoRespuestaMs).toBeUndefined();
     });

@@ -8,7 +8,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapaAventuras, type ZonaId } from '@/components/mapa/MapaAventuras';
 import { useStudentProgress } from '@/contexts/StudentProgressContext';
-import { Mascota } from '@/components/mascota/Mascota';
 import { MascotaDialogo } from '@/components/mascota/MascotaDialogo';
 
 export default function MapaPage() {

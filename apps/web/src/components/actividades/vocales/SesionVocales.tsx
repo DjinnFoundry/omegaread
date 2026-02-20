@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { hablar } from '@/lib/audio/tts';
-import { ttsDisponible } from '@/lib/audio/tts';
 import { BarraProgreso } from '@/components/ui/BarraProgreso';
 import { Estrellas } from '@/components/ui/Estrellas';
 import { Celebracion } from '@/components/ui/Celebracion';
@@ -107,11 +106,11 @@ export function SesionVocales({
   // ── Ejercicio actual ──
   const [ejercicioKey, setEjercicioKey] = useState(0);
 
-  // ── Refs estables ──
-  const masteryRef = useRef(new MasteryTracker());
-  const sesionTrackerRef = useRef(new SesionTracker());
-  const inicioRef = useRef(Date.now());
-  const tiempoRespuestaRef = useRef(Date.now());
+  // ── Instancias estables de dominio ──
+  const [mastery] = useState(() => new MasteryTracker());
+  const [sesionTracker] = useState(() => new SesionTracker());
+  const inicioRef = useRef(0);
+  const tiempoRespuestaRef = useRef(0);
   const erroresConsecutivosVocalRef = useRef(0);
 
   // ── Actividad actual (derivada) ──
@@ -119,17 +118,21 @@ export function SesionVocales({
 
   // ── Finalizar sesión (declarada antes del useEffect del timer) ──
   const finalizarSesion = useCallback(() => {
-    const resumen = masteryRef.current.obtenerResumen();
+    const resumen = mastery.obtenerResumen();
     const sticker = STICKERS[Math.floor(Math.random() * STICKERS.length)];
     setStickerGanado(sticker);
     setFase('celebracion-final');
     setMostrarCelebracion(true);
     hablar(`¡Increíble ${nombreNino}! ¡Lo hiciste genial! ¡Ganaste un sticker!`);
     onTerminar?.(resumen);
-  }, [nombreNino, onTerminar]);
+  }, [mastery, nombreNino, onTerminar]);
 
   // ── Timer de sesión ──
   useEffect(() => {
+    const inicio = Date.now();
+    inicioRef.current = inicio;
+    tiempoRespuestaRef.current = inicio;
+
     const interval = setInterval(() => {
       const transcurrido = Date.now() - inicioRef.current;
       setTiempoTranscurrido(transcurrido);
@@ -144,15 +147,16 @@ export function SesionVocales({
 
   // ── Generar ejercicio actual ──
   const ejercicio = useMemo(() => {
+    const _seed = ejercicioKey;
     switch (actividadActual) {
       case 'reconocimiento':
         return generarEjercicioReconocimiento(vocalActual, nivelDificultad);
       case 'sonido':
         return generarEjercicioSonido(vocalActual);
       case 'completar':
-        return generarEjercicioCompletar(vocalActual, sesionTrackerRef.current);
+        return generarEjercicioCompletar(vocalActual, sesionTracker);
     }
-  }, [vocalActual, actividadActual, nivelDificultad, ejercicioKey]);
+  }, [vocalActual, actividadActual, nivelDificultad, ejercicioKey, sesionTracker]);
 
   // ── Saludo inicial ──
   useEffect(() => {
@@ -177,7 +181,6 @@ export function SesionVocales({
 
   // ── Avanzar a siguiente ejercicio o vocal ──
   const avanzar = useCallback(() => {
-    const mastery = masteryRef.current;
     const vocal = vocalActual;
 
     // Reset errores consecutivos de esta vocal al avanzar
@@ -226,13 +229,13 @@ export function SesionVocales({
         setNivelDificultad((n) => Math.min(3, n + 1) as NivelDificultad);
       }
     }
-  }, [vocalActual, nivelDificultad, finalizarSesion, onEstrella, onVocalDominada]);
+  }, [mastery, vocalActual, nivelDificultad, finalizarSesion, onEstrella, onVocalDominada]);
 
   // ── Handlers de respuesta ──
   const manejarAcierto = useCallback(() => {
     const tiempoMs = Date.now() - tiempoRespuestaRef.current;
     erroresConsecutivosVocalRef.current = 0;
-    masteryRef.current.registrar({
+    mastery.registrar({
       vocal: vocalActual,
       actividad: actividadActual as TipoActividad,
       correcto: true,
@@ -249,12 +252,12 @@ export function SesionVocales({
 
     // Avanzar tras un delay para que se vea el feedback
     setTimeout(avanzar, 300);
-  }, [vocalActual, actividadActual, avanzar, onRespuesta]);
+  }, [mastery, vocalActual, actividadActual, avanzar, onRespuesta]);
 
   const manejarError = useCallback(() => {
     const tiempoMs = Date.now() - tiempoRespuestaRef.current;
     erroresConsecutivosVocalRef.current++;
-    masteryRef.current.registrar({
+    mastery.registrar({
       vocal: vocalActual,
       actividad: actividadActual as TipoActividad,
       correcto: false,
@@ -295,15 +298,15 @@ export function SesionVocales({
       // Resetear timer para siguiente intento
       tiempoRespuestaRef.current = Date.now();
     }
-  }, [vocalActual, actividadActual, onRespuesta, nivelDificultad]);
+  }, [mastery, vocalActual, actividadActual, onRespuesta, nivelDificultad]);
 
   // ── Progreso visual ──
   const progreso = useMemo(() => {
+    const _seed = ejercicioKey;
     const idxVocal = ORDEN_VOCALES.indexOf(vocalActual);
-    const masteryActual = masteryRef.current.obtenerMastery(vocalActual).mastery;
+    const masteryActual = mastery.obtenerMastery(vocalActual).mastery;
     return (idxVocal + masteryActual) / ORDEN_VOCALES.length;
-    // ejercicioKey forces recalc on each exercise
-  }, [vocalActual, ejercicioKey]);
+  }, [mastery, vocalActual, ejercicioKey]);
 
   // ── Timer visual ──
   const minutosRestantes = Math.max(
@@ -332,7 +335,7 @@ export function SesionVocales({
       {/* Indicador de vocal actual */}
       <div className="flex items-center gap-2">
         {ORDEN_VOCALES.map((v) => {
-          const dominada = masteryRef.current.estaDominada(v);
+          const dominada = mastery.estaDominada(v);
           const esActual = v === vocalActual && fase === 'actividad';
           return (
             <div

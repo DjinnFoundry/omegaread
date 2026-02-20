@@ -38,7 +38,6 @@ export function Estrellas({ cantidad, max = 5, className = '' }: EstrellasProps)
     >
       {Array.from({ length: max }, (_, i) => {
         const ganada = i < cantidad;
-        const esNueva = i === cantidad - 1 && cantidad > cantidadAnterior.current;
 
         return (
           <svg
@@ -46,7 +45,7 @@ export function Estrellas({ cantidad, max = 5, className = '' }: EstrellasProps)
             width="28"
             height="28"
             viewBox="0 0 24 24"
-            className={ganada ? (esNueva ? 'star-new' : 'star-active') : ''}
+            className={ganada ? 'star-active' : ''}
             style={{
               animationDelay: ganada ? `${i * 200}ms` : undefined,
               opacity: ganada ? 1 : 0.25,

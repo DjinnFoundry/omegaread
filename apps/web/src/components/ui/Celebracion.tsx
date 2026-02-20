@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { celebracion as sonidoCelebracion } from '@/lib/audio/sonidos';
 
 /**
@@ -39,28 +39,21 @@ export function Celebracion({
   onClose,
   duracion = 3000,
 }: CelebracionProps) {
-  const [mostrar, setMostrar] = useState(false);
-
   const confettis = useMemo(() => Array.from({ length: 40 }, (_, i) => generarConfetti(i)), []);
 
   useEffect(() => {
-    if (!visible) {
-      setMostrar(false);
-      return;
-    }
+    if (!visible) return;
 
-    setMostrar(true);
     sonidoCelebracion();
 
     const timer = setTimeout(() => {
-      setMostrar(false);
       onClose?.();
     }, duracion);
 
     return () => clearTimeout(timer);
   }, [visible, duracion, onClose]);
 
-  if (!mostrar) return null;
+  if (!visible) return null;
 
   return (
     <div

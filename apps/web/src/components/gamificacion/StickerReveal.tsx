@@ -30,10 +30,13 @@ export function StickerReveal({
   onClose,
 }: StickerRevealProps) {
   const [volteada, setVolteada] = useState(false);
+  const cerrarReveal = () => {
+    setVolteada(false);
+    onClose?.();
+  };
 
   useEffect(() => {
     if (!visible) {
-      setVolteada(false);
       return;
     }
 
@@ -105,7 +108,7 @@ export function StickerReveal({
             icono="🎉"
             texto="¡Genial!"
             tamano="grande"
-            onClick={onClose}
+            onClick={cerrarReveal}
           />
         </div>
       )}

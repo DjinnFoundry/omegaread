@@ -30,7 +30,7 @@ export function ReconocerVocal({
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [estado, setEstado] = useState<'jugando' | 'correcto' | 'incorrecto'>('jugando');
   const [bloqueado, setBloqueado] = useState(false);
-  const inicioRef = useRef(Date.now());
+  const inicioRef = useRef(0);
 
   // Generar opciones mezcladas (estable durante la vida del ejercicio)
   const opciones = useMemo(
@@ -41,9 +41,6 @@ export function ReconocerVocal({
   // TTS al montar: "¡Busca la A!"
   useEffect(() => {
     inicioRef.current = Date.now();
-    setSeleccion(null);
-    setEstado('jugando');
-    setBloqueado(false);
     const timer = setTimeout(() => {
       hablar(`¡Busca la ${vocal}!`);
     }, 300);

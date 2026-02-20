@@ -77,6 +77,18 @@ const DEFAULT_PROGRESS: StudentProgress = {
   loaded: false,
 };
 
+function leerEstudianteDesdeStorage(): EstudianteActivo | null {
+  if (typeof window === 'undefined') return null;
+  const saved = sessionStorage.getItem('estudianteActivo');
+  if (!saved) return null;
+
+  try {
+    return JSON.parse(saved) as EstudianteActivo;
+  } catch {
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────
 // CONTEXT
 // ─────────────────────────────────────────────
@@ -100,21 +112,10 @@ export function useStudentProgress(): StudentProgressContextType {
 // ─────────────────────────────────────────────
 
 export function StudentProgressProvider({ children }: { children: ReactNode }) {
-  const [estudiante, setEstudianteState] = useState<EstudianteActivo | null>(null);
+  const [estudiante, setEstudianteState] = useState<EstudianteActivo | null>(
+    () => leerEstudianteDesdeStorage(),
+  );
   const [progress, setProgress] = useState<StudentProgress>(DEFAULT_PROGRESS);
-
-  // ── Cargar estudiante de sessionStorage al montar ──
-  useEffect(() => {
-    const saved = sessionStorage.getItem('estudianteActivo');
-    if (saved) {
-      try {
-        const est = JSON.parse(saved) as EstudianteActivo;
-        setEstudianteState(est);
-      } catch {
-        // Ignore parsing errors
-      }
-    }
-  }, []);
 
   // ── Cargar progreso de DB cuando hay estudiante ──
   const recargarProgreso = useCallback(async () => {
@@ -139,7 +140,10 @@ export function StudentProgressProvider({ children }: { children: ReactNode }) {
   // Auto-cargar progreso cuando cambia el estudiante
   useEffect(() => {
     if (estudiante) {
-      recargarProgreso();
+      const timer = setTimeout(() => {
+        void recargarProgreso();
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [estudiante, recargarProgreso]);
 

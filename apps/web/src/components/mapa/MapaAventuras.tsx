@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { ZonaMapa } from './ZonaMapa';
 import { Mascota } from '@/components/mascota/Mascota';
 import { MascotaDialogo } from '@/components/mascota/MascotaDialogo';
@@ -49,6 +49,17 @@ const ZONAS: ZonaDefinicion[] = [
   { id: 'lago-palabras', icono: '🌊', nombre: 'Lago de Palabras', color: '#64B5F6', bloqueada: true },
 ];
 
+function construirSaludoInicial(nombreNino?: string, zonaRecomendada?: ZonaId) {
+  const zonaRec = ZONAS.find((z) => z.id === zonaRecomendada);
+  if (nombreNino) {
+    return `¡Hola ${nombreNino}! ${
+      zonaRec ? `¡Vamos al ${zonaRec.nombre}!` : '¡Elige dónde quieres jugar!'
+    }`;
+  }
+  if (zonaRec) return `¡Vamos al ${zonaRec.nombre}!`;
+  return '¡Elige dónde quieres jugar!';
+}
+
 /**
  * Mapa de aventuras — pantalla principal del niño.
  * 4 zonas tocables enormes con fondo ilustrativo suave.
@@ -61,26 +72,10 @@ export function MapaAventuras({
   onStickersClick,
   nombreNino,
 }: MapaAventurasProps) {
-  const [dialogoMascota, setDialogoMascota] = useState('');
-  const [estadoMascota, setEstadoMascota] = useState<EstadoMascota>('feliz');
-  const [saludoInicial, setSaludoInicial] = useState(false);
-
-  // Saludo de la mascota al llegar al mapa
-  useEffect(() => {
-    if (!saludoInicial) {
-      setSaludoInicial(true);
-      const zonaRec = ZONAS.find((z) => z.id === zonaRecomendada);
-      const saludo = nombreNino
-        ? `¡Hola ${nombreNino}! ${
-            zonaRec ? `¡Vamos al ${zonaRec.nombre}!` : '¡Elige dónde quieres jugar!'
-          }`
-        : zonaRec
-          ? `¡Vamos al ${zonaRec.nombre}!`
-          : '¡Elige dónde quieres jugar!';
-      setDialogoMascota(saludo);
-      setEstadoMascota('celebrando');
-    }
-  }, [saludoInicial, nombreNino, zonaRecomendada]);
+  const [dialogoMascota, setDialogoMascota] = useState(() =>
+    construirSaludoInicial(nombreNino, zonaRecomendada),
+  );
+  const [estadoMascota, setEstadoMascota] = useState<EstadoMascota>('celebrando');
 
   const manejarZonaClick = useCallback(
     (zona: ZonaDefinicion) => {

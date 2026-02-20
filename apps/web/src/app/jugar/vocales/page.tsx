@@ -45,7 +45,7 @@ export default function VocalesPage() {
   const [authFailed, setAuthFailed] = useState(false);
   const [estadoMascota, setEstadoMascota] = useState<EstadoMascota>('feliz');
   const [dialogoMascota, setDialogoMascota] = useState('');
-  const inicioRef = useRef(Date.now());
+  const inicioRef = useRef(0);
   const estrellasEnSesionRef = useRef(0);
   const erroresConsecutivosRef = useRef(0);
 
@@ -141,7 +141,7 @@ export default function VocalesPage() {
       if (!sessionId) return;
 
       // Guardar respuesta en DB inmediatamente (con retry simple)
-      const guardarConRetry = async (intentos = 2) => {
+      const guardarConRetry = async () => {
         await guardarRespuestaIndividual({
           sessionId,
           studentId: estudiante.id,
@@ -175,7 +175,7 @@ export default function VocalesPage() {
         // Retry una vez tras breve delay
         try {
           await new Promise((r) => setTimeout(r, 1000));
-          await guardarConRetry(1);
+          await guardarConRetry();
         } catch {
           // Log real error, no silenciar
           console.error('[VocalesPage] Error persistiendo respuesta tras retry:', err);

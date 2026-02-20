@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { hablar, detenerHabla, ttsDisponible } from '@/lib/audio/tts';
 
 /**
@@ -28,30 +28,22 @@ export interface MascotaDialogoProps {
  * rastrear si ya se finalizó, y cleanup correcto en useEffect.
  */
 export function MascotaDialogo({ texto, onFinish, visible = true }: MascotaDialogoProps) {
-  const [mostrar, setMostrar] = useState(false);
-  const [textoMostrado, setTextoMostrado] = useState('');
   const finalizadoRef = useRef(false);
   const onFinishRef = useRef(onFinish);
 
-  // Keep ref in sync
-  onFinishRef.current = onFinish;
+  useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
 
   useEffect(() => {
-    if (!texto || !visible) {
-      setMostrar(false);
-      return;
-    }
+    if (!texto || !visible) return;
 
-    // Reset state for new texto
     finalizadoRef.current = false;
-    setMostrar(true);
-    setTextoMostrado(texto);
 
     const finalizar = () => {
       if (finalizadoRef.current) return; // Guard against double invocation
       finalizadoRef.current = true;
       setTimeout(() => {
-        setMostrar(false);
         onFinishRef.current?.();
       }, 800);
     };
@@ -74,7 +66,7 @@ export function MascotaDialogo({ texto, onFinish, visible = true }: MascotaDialo
     };
   }, [texto, visible]);
 
-  if (!mostrar) return null;
+  if (!visible || !texto) return null;
 
   const sinTTS = !ttsDisponible();
 
@@ -94,7 +86,7 @@ export function MascotaDialogo({ texto, onFinish, visible = true }: MascotaDialo
           className={`font-medium leading-relaxed ${sinTTS ? 'text-xl' : 'text-lg'}`}
           style={{ color: '#5D4037' }}
         >
-          {textoMostrado}
+          {texto}
         </p>
 
         {/* Indicador de que está hablando (solo si TTS disponible) */}

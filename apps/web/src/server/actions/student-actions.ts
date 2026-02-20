@@ -6,8 +6,8 @@
  * Funciones de padre: crear estudiante, obtener lista, obtener resumen.
  * TODAS verifican autenticación y ownership.
  */
-import { db, students, sessions, responses, achievements, skillProgress } from '@omegaread/db';
-import { eq, desc, and, gte } from 'drizzle-orm';
+import { db, students, sessions, achievements, skillProgress } from '@omegaread/db';
+import { eq, desc, and } from 'drizzle-orm';
 import { requireAuth, requireStudentOwnership } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
 import type { DiagnosticoNivel } from '@omegaread/db/schema';

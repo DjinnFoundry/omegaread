@@ -8,7 +8,13 @@ import globals from 'globals';
 export default tseslint.config(
   // Global ignores
   {
-    ignores: ['**/node_modules/**', '**/.next/**', '**/dist/**', '**/.turbo/**'],
+    ignores: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/dist/**',
+      '**/.turbo/**',
+      '**/next-env.d.ts',
+    ],
   },
 
   // Base JS/TS rules

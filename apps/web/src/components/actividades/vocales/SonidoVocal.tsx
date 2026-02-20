@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { hablar } from '@/lib/audio/tts';
 import { acierto as sonidoAcierto, error as sonidoError } from '@/lib/audio/sonidos';
 import { BotonGrande } from '@/components/ui/BotonGrande';
@@ -47,9 +47,6 @@ export function SonidoVocal({
 
   // Reproducir sonido al montar
   useEffect(() => {
-    setSeleccion(null);
-    setEstado('jugando');
-    setBloqueado(false);
     const timer = setTimeout(() => {
       hablar('¿Qué vocal suena?', {
         onEnd: () => {
