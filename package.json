@@ -2,7 +2,7 @@
   "name": "omegaread",
   "version": "0.1.0",
   "private": true,
-  "description": "OmegaAnywhere \u2014 Plataforma educativa open source para ni\u00f1os de 4-8 a\u00f1os",
+  "description": "OmegaAnywhere — Plataforma educativa open source para niños de 4-8 años",
   "license": "AGPL-3.0",
   "scripts": {
     "dev": "pnpm --filter @omegaread/web dev",
@@ -11,7 +11,9 @@
     "db:migrate": "pnpm --filter @omegaread/db migrate",
     "db:push": "pnpm --filter @omegaread/db push",
     "db:studio": "pnpm --filter @omegaread/db studio",
-    "lint": "pnpm -r lint",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck"
   },
   "engines": {
@@ -24,5 +26,16 @@
       "sharp",
       "@next/swc-darwin-arm64"
     ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/eslint": "^9.6.1",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^17.3.0",
+    "prettier": "^3.8.1",
+    "typescript-eslint": "^8.56.0"
   }
 }
