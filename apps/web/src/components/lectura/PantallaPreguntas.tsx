@@ -27,6 +27,8 @@ export interface RespuestaPregunta {
 interface PantallaPreguntasProps {
   preguntas: Pregunta[];
   onComplete: (respuestas: RespuestaPregunta[]) => void;
+  historiaContenido?: string;
+  historiaTitulo?: string;
 }
 
 const TIPO_LABELS: Record<string, string> = {
@@ -46,11 +48,14 @@ const TIPO_EMOJI: Record<string, string> = {
 export default function PantallaPreguntas({
   preguntas,
   onComplete,
+  historiaContenido,
+  historiaTitulo,
 }: PantallaPreguntasProps) {
   const [preguntaActual, setPreguntaActual] = useState(0);
   const [respuestaSeleccionada, setRespuestaSeleccionada] = useState<number | null>(null);
   const [mostrandoFeedback, setMostrandoFeedback] = useState(false);
   const [respuestasAcumuladas, setRespuestasAcumuladas] = useState<RespuestaPregunta[]>([]);
+  const [mostrarHistoria, setMostrarHistoria] = useState(false);
   const inicioRef = useRef(0);
 
   const pregunta = preguntas[preguntaActual];
@@ -122,6 +127,37 @@ export default function PantallaPreguntas({
           ))}
         </div>
       </div>
+
+      {/* Boton volver a leer la historia */}
+      {historiaContenido && (
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setMostrarHistoria(prev => !prev)}
+            className="
+              flex items-center gap-2
+              text-sm font-medium text-turquesa
+              hover:text-turquesa/80 transition-colors
+              touch-manipulation
+            "
+          >
+            <span>{mostrarHistoria ? '📖' : '📖'}</span>
+            {mostrarHistoria ? 'Ocultar historia' : 'Volver a leer la historia'}
+          </button>
+          {mostrarHistoria && (
+            <div className="mt-3 rounded-2xl bg-superficie/80 border border-neutro/10 p-4 max-h-60 overflow-y-auto animate-fade-in">
+              {historiaTitulo && (
+                <p className="font-bold text-texto text-sm mb-2">{historiaTitulo}</p>
+              )}
+              {historiaContenido.split('\n\n').filter(p => p.trim()).map((parrafo, i) => (
+                <p key={i} className="text-sm text-texto-suave leading-relaxed mb-2 last:mb-0">
+                  {parrafo}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tipo de pregunta */}
       <div className="flex items-center gap-2 mb-3">

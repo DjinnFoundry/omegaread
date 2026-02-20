@@ -5,6 +5,7 @@
  * Muestra aciertos, mensaje motivacional, y cambio de nivel.
  */
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Celebracion } from '@/components/ui/Celebracion';
 import { BotonGrande } from '@/components/ui/BotonGrande';
 
@@ -93,6 +94,7 @@ export default function ResultadoSesion({
   onLeerOtra,
   onVolver,
 }: ResultadoSesionProps) {
+  const router = useRouter();
   const [mostrarCelebracion, setMostrarCelebracion] = useState(
     () => resultado.aciertos >= 3
   );
@@ -182,6 +184,18 @@ export default function ResultadoSesion({
           onClick={onLeerOtra}
           ariaLabel="Leer otra historia"
         />
+        <button
+          type="button"
+          onClick={() => router.push('/jugar/progreso')}
+          className="
+            inline-flex items-center justify-center gap-2
+            text-turquesa text-sm font-semibold py-3
+            hover:text-turquesa/80 transition-colors
+            touch-manipulation
+          "
+        >
+          <span>📊</span> Ver mi progreso
+        </button>
         <button
           type="button"
           onClick={onVolver}

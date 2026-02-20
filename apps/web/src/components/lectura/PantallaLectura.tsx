@@ -26,6 +26,19 @@ interface PantallaLecturaProps {
 const DELAY_BOTONES_MS = 10_000;
 const TOAST_DURACION_MS = 3_000;
 
+/**
+ * Calcula el tiempo minimo antes de mostrar el boton "He terminado de leer".
+ * Basado en ~30 palabras/minuto como velocidad minima realista para un nino.
+ * Minimo absoluto: 15 segundos (para textos muy cortos).
+ * Maximo: 60 segundos (para no frustrar en textos largos).
+ */
+function calcularTiempoMinimoLectura(contenido: string): number {
+  const palabras = contenido.split(/\s+/).filter(w => w.length > 0).length;
+  const segundosEstimados = (palabras / 30) * 60; // 30 palabras/minuto
+  const minSegundos = Math.max(15, Math.min(60, Math.round(segundosEstimados * 0.3)));
+  return minSegundos * 1000;
+}
+
 export default function PantallaLectura({
   titulo,
   contenido,
@@ -40,6 +53,7 @@ export default function PantallaLectura({
 }: PantallaLecturaProps) {
   const inicioRef = useRef(0);
   const [botonesVisibles, setBotonesVisibles] = useState(false);
+  const [botonTerminarVisible, setBotonTerminarVisible] = useState(false);
   const [mostrarToast, setMostrarToast] = useState(false);
   const [fading, setFading] = useState(false);
   const prevRewriteCountRef = useRef(rewriteCount);
@@ -48,6 +62,16 @@ export default function PantallaLectura({
   useEffect(() => {
     inicioRef.current = Date.now();
   }, []);
+
+  // Mostrar boton "He terminado" despues de un tiempo minimo proporcional al texto
+  useEffect(() => {
+    const delay = calcularTiempoMinimoLectura(contenido);
+    const timer = setTimeout(() => setBotonTerminarVisible(true), delay);
+    return () => {
+      clearTimeout(timer);
+      setBotonTerminarVisible(false);
+    };
+  }, [contenido]);
 
   // Mostrar botones de ajuste despues de 10 segundos
   useEffect(() => {
@@ -200,17 +224,25 @@ export default function PantallaLectura({
         </div>
       )}
 
-      {/* Boton terminar */}
+      {/* Boton terminar (aparece despues de un tiempo minimo de lectura) */}
       <div className="text-center pb-8">
-        <BotonGrande
-          variante="primario"
-          icono="✅"
-          texto="He terminado de leer"
-          tamano="grande"
-          deshabilitado={reescribiendo}
-          onClick={handleTerminar}
-          ariaLabel="He terminado de leer"
-        />
+        {botonTerminarVisible ? (
+          <div className="animate-fade-in">
+            <BotonGrande
+              variante="primario"
+              icono="✅"
+              texto="He terminado de leer"
+              tamano="grande"
+              deshabilitado={reescribiendo}
+              onClick={handleTerminar}
+              ariaLabel="He terminado de leer"
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-texto-suave animate-pulse-brillo">
+            Tomate tu tiempo para leer...
+          </p>
+        )}
       </div>
     </div>
   );

@@ -69,6 +69,7 @@ export interface PromptInput {
   topicDescripcion: string;
   intereses: string[];
   personajesFavoritos?: string;
+  historiasAnteriores?: string[];
 }
 
 /**
@@ -214,12 +215,16 @@ export function buildUserPrompt(input: PromptInput): string {
     ? `\nPersonajes favoritos: ${input.personajesFavoritos}.`
     : '';
 
+  const noRepetir = input.historiasAnteriores && input.historiasAnteriores.length > 0
+    ? `\n\nIMPORTANTE - NO repitas estas historias que el nino ya leyo:\n${input.historiasAnteriores.map(t => `- "${t}"`).join('\n')}\nCrea una historia completamente diferente en trama, personajes y ambientacion.`
+    : '';
+
   return `Genera una historia y 4 preguntas de comprension para un nino.
 
 PERFIL DEL NINO:
 - Edad: ${input.edadAnos} anos
 - Nivel de lectura: ${input.nivel} de 4
-- Topic: ${input.topicNombre} (${input.topicDescripcion})${interesesExtra}${personajes}
+- Topic: ${input.topicNombre} (${input.topicDescripcion})${interesesExtra}${personajes}${noRepetir}
 
 REQUISITOS DE LA HISTORIA:
 - Longitud: ${config.palabrasMin}-${config.palabrasMax} palabras

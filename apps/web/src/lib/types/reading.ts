@@ -106,14 +106,15 @@ export function calcularSessionScore(input: SessionScoreInput): number {
 }
 
 /**
- * Determina la direccion de ajuste segun el score de comprension.
+ * Determina la direccion de ajuste segun el session_score compuesto.
+ * Integra comprension (65%), ritmo (25%) y estabilidad (10%).
  * - >= 0.80: subir
  * - 0.60-0.79: mantener
  * - < 0.60: bajar
  */
-export function determinarAjuste(comprensionScore: number): DireccionAjuste {
-  if (comprensionScore >= 0.80) return 'subir';
-  if (comprensionScore >= 0.60) return 'mantener';
+export function determinarAjuste(sessionScore: number): DireccionAjuste {
+  if (sessionScore >= 0.80) return 'subir';
+  if (sessionScore >= 0.60) return 'mantener';
   return 'bajar';
 }
 

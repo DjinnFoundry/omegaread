@@ -332,6 +332,8 @@ export default function LecturaPage() {
         <PantallaPreguntas
           preguntas={sesionActiva.preguntas}
           onComplete={handleRespuestasCompletas}
+          historiaContenido={sesionActiva.historia.contenido}
+          historiaTitulo={sesionActiva.historia.titulo}
         />
       </main>
     );
@@ -356,8 +358,10 @@ export default function LecturaPage() {
     <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
       {errorGeneracion && (
         <div className="w-full max-w-md mb-4 p-4 rounded-2xl bg-error-suave border border-coral/20 text-sm text-texto">
-          <p className="font-semibold mb-1">No se pudo crear la historia</p>
-          <p className="text-texto-suave">{errorGeneracion}</p>
+          <p className="font-semibold mb-1">Ups! Algo salio mal</p>
+          <p className="text-texto-suave">
+            No pudimos crear tu historia. Intentalo de nuevo o prueba con otro tema.
+          </p>
         </div>
       )}
 

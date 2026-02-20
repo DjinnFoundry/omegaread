@@ -82,6 +82,8 @@ describe('PantallaLectura', () => {
 
   it('deshabilita boton terminar durante reescritura', () => {
     render(<PantallaLectura {...defaultProps} reescribiendo={true} />);
+    // Avanzar timer para que aparezca el boton (proteccion lectura instantanea)
+    act(() => { vi.advanceTimersByTime(16_000); });
     const btn = screen.getByLabelText('He terminado de leer');
     expect(btn.hasAttribute('disabled')).toBe(true);
   });
@@ -89,10 +91,18 @@ describe('PantallaLectura', () => {
   it('boton terminar funciona normalmente', () => {
     const onTerminar = vi.fn();
     render(<PantallaLectura {...defaultProps} onTerminar={onTerminar} />);
+    // Avanzar timer para que aparezca el boton (proteccion lectura instantanea)
+    act(() => { vi.advanceTimersByTime(16_000); });
     const btn = screen.getByLabelText('He terminado de leer');
     btn.click();
     expect(onTerminar).toHaveBeenCalledTimes(1);
     expect(onTerminar).toHaveBeenCalledWith(expect.any(Number));
+  });
+
+  it('no muestra boton terminar inmediatamente (proteccion lectura instantanea)', () => {
+    render(<PantallaLectura {...defaultProps} />);
+    expect(screen.queryByLabelText('He terminado de leer')).toBeNull();
+    expect(screen.getByText('Tomate tu tiempo para leer...')).toBeDefined();
   });
 
   it('botones de ajuste tienen aria-labels correctos', () => {

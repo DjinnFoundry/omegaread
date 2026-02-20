@@ -12,7 +12,7 @@ import {
   responses,
   manualAdjustments,
 } from '@omegaread/db';
-import { eq, and, gte, sql } from 'drizzle-orm';
+import { eq, and, gte, desc, sql } from 'drizzle-orm';
 import { requireStudentOwnership } from '../auth';
 import {
   generarHistoriaSchema,
@@ -101,7 +101,19 @@ export async function generarHistoria(datos: {
     return { ok: false as const, error: 'Topic no encontrado', code: 'GENERATION_FAILED' as const };
   }
 
-  // 4. Generar historia
+  // 4. Consultar historial de historias previas para evitar repeticion
+  const historiasPrevias = await db.query.generatedStories.findMany({
+    where: and(
+      eq(generatedStories.studentId, validado.studentId),
+      eq(generatedStories.topicSlug, topicSlug),
+    ),
+    orderBy: [desc(generatedStories.creadoEn)],
+    limit: 5,
+    columns: { titulo: true },
+  });
+  const titulosPrevios = historiasPrevias.map(h => h.titulo);
+
+  // 5. Generar historia
   const promptInput: PromptInput = {
     edadAnos,
     nivel,
@@ -111,6 +123,7 @@ export async function generarHistoria(datos: {
       .map(slug => TOPICS_SEED.find(t => t.slug === slug)?.nombre)
       .filter((n): n is string => !!n),
     personajesFavoritos: estudiante.personajesFavoritos ?? undefined,
+    historiasAnteriores: titulosPrevios.length > 0 ? titulosPrevios : undefined,
   };
 
   const result = await generateStory(promptInput);

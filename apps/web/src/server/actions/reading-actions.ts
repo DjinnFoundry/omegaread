@@ -116,7 +116,8 @@ export async function calcularAjusteDificultad(datos: {
 }) {
   const { estudiante } = await requireStudentOwnership(datos.studentId);
 
-  const nivelAnterior = estudiante.nivelLectura ?? 1;
+  // Clamp nivel anterior a [1, 4] (corrige datos legacy donde nivel > 4)
+  const nivelAnterior = Math.max(1, Math.min(4, estudiante.nivelLectura ?? 1));
 
   // Calcular ritmo normalizado (1.0 = optimo, decrece si muy rapido o muy lento)
   const ratio = datos.tiempoLecturaMs / datos.tiempoEsperadoMs;
@@ -180,16 +181,56 @@ export async function calcularAjusteDificultad(datos: {
     Math.round((sessionScoreBase + modificadorManual) * 100) / 100
   ));
 
-  const direccion: DireccionAjuste = determinarAjuste(datos.comprensionScore);
+  // Determinar direccion candidata usando session_score compuesto (no comprension cruda)
+  const direccionCandidata: DireccionAjuste = determinarAjuste(sessionScore);
 
+  // Logica de sesiones consecutivas para evitar cambios bruscos de nivel.
+  // Subir: requiere 3 sesiones consecutivas con score >= 0.80
+  // Bajar: requiere 2 sesiones consecutivas con score < 0.60
+  let direccion: DireccionAjuste = direccionCandidata;
+
+  if (direccionCandidata === 'subir') {
+    const scoresRecientes = sesionesRecientes
+      .filter(s => s.metadata && typeof (s.metadata as Record<string, unknown>).comprensionScore === 'number')
+      .slice(0, 2) // las 2 sesiones anteriores (la actual sera la 3ra)
+      .map(s => {
+        const meta = s.metadata as Record<string, unknown>;
+        const comp = meta.comprensionScore as number;
+        // Estimar sessionScore simplificado de sesiones previas usando comprension como proxy
+        return comp;
+      });
+    // Necesitamos 2 sesiones previas con alta comprension + la actual = 3 consecutivas
+    const sesionesAltasPrevias = scoresRecientes.filter(sc => sc >= 0.80).length;
+    if (sesionesAltasPrevias < 2) {
+      direccion = 'mantener'; // No hay suficientes sesiones consecutivas buenas
+    }
+  }
+
+  if (direccionCandidata === 'bajar') {
+    const scoresRecientes = sesionesRecientes
+      .filter(s => s.metadata && typeof (s.metadata as Record<string, unknown>).comprensionScore === 'number')
+      .slice(0, 1) // la sesion anterior (la actual sera la 2da)
+      .map(s => {
+        const meta = s.metadata as Record<string, unknown>;
+        return meta.comprensionScore as number;
+      });
+    // Necesitamos 1 sesion previa con baja comprension + la actual = 2 consecutivas
+    const sesionBajaPrevias = scoresRecientes.filter(sc => sc < 0.60).length;
+    if (sesionBajaPrevias < 1) {
+      direccion = 'mantener'; // Solo 1 mala sesion, no bajar aun
+    }
+  }
+
+  // Clamp nivel a [1, 4] (solo hay configs de nivel 1-4)
   let nivelNuevo = nivelAnterior;
-  if (direccion === 'subir') nivelNuevo = Math.min(nivelAnterior + 0.5, 10);
+  if (direccion === 'subir') nivelNuevo = Math.min(nivelAnterior + 0.5, 4);
   if (direccion === 'bajar') nivelNuevo = Math.max(nivelAnterior - 0.5, 1);
 
+  const scorePct = Math.round(sessionScore * 100);
   const RAZONES: Record<DireccionAjuste, string> = {
-    subir: `Comprension ${Math.round(datos.comprensionScore * 100)}% (>=80%), ritmo adecuado. Subimos dificultad.`,
-    mantener: `Comprension ${Math.round(datos.comprensionScore * 100)}% (60-79%). Mantenemos nivel actual.`,
-    bajar: `Comprension ${Math.round(datos.comprensionScore * 100)}% (<60%). Bajamos dificultad para consolidar.`,
+    subir: `Score ${scorePct}% (>=80%) en 3 sesiones consecutivas. Subimos dificultad.`,
+    mantener: `Score ${scorePct}% (60-79%). Mantenemos nivel actual.`,
+    bajar: `Score ${scorePct}% (<60%) en 2 sesiones consecutivas. Bajamos dificultad para consolidar.`,
   };
 
   const razonFinal = ajusteManualTipo

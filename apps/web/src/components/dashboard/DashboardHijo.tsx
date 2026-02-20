@@ -4,6 +4,7 @@
  * Tarjeta de resumen de un hijo en el dashboard del padre.
  * Muestra metricas de lectura: tiempo, racha, estrellas, sesiones.
  */
+import Link from 'next/link';
 import { calcularEdad } from '@/lib/utils/fecha';
 
 interface DashboardHijoProps {
@@ -33,6 +34,18 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
         <p className="mt-2 text-sm text-texto-suave">
           Aun no hay datos de progreso. Es hora de empezar a leer!
         </p>
+        <Link
+          href="/jugar/lectura"
+          className="
+            mt-3 flex items-center justify-center gap-2
+            w-full rounded-2xl bg-turquesa px-4 py-3
+            text-sm font-bold text-white
+            active:scale-95 transition-transform
+            touch-manipulation
+          "
+        >
+          <span>📖</span> Empezar a leer con {nombre}
+        </Link>
       </div>
     );
   }
@@ -72,6 +85,22 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Boton ir a leer */}
+      <div className="mt-4">
+        <Link
+          href="/jugar/lectura"
+          className="
+            flex items-center justify-center gap-2
+            w-full rounded-2xl bg-turquesa px-4 py-3
+            text-sm font-bold text-white
+            active:scale-95 transition-transform
+            touch-manipulation
+          "
+        >
+          <span>📖</span> Ir a leer con {nombre}
+        </Link>
       </div>
 
       {/* Metricas */}
