@@ -71,6 +71,8 @@ export const actualizarProgresoSchema = z.object({
   skillId: z.string().min(1).max(100),
   categoria: z.string().min(1).max(50),
   correcto: z.boolean(),
+  calidad: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+  tiempoRespuestaMs: z.number().int().nonnegative().optional(),
 });
 
 /** Schema: cargarProgresoEstudiante (solo studentId) */

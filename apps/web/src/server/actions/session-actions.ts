@@ -28,6 +28,12 @@ import {
   cargarProgresoSchema,
 } from '../validation';
 import { ORDEN_SILABAS } from '@/lib/actividades/generadorSilabas';
+import {
+  fsrsInit,
+  fsrsRatingFromOutcome,
+  fsrsReview,
+  readFsrsState,
+} from '@/lib/actividades/fsrs';
 
 // ─────────────────────────────────────────────
 // INICIAR SESIÓN
@@ -250,6 +256,8 @@ export async function actualizarProgresoInmediato(datos: {
   skillId: string;
   categoria: string;
   correcto: boolean;
+  calidad?: 1 | 2 | 3 | 4;
+  tiempoRespuestaMs?: number;
 }) {
   // Validar inputs
   const validado = actualizarProgresoSchema.parse(datos);
@@ -269,12 +277,17 @@ export async function actualizarProgresoInmediato(datos: {
   });
 
   if (existente) {
+    const ahora = new Date();
     const totalIntentos = existente.totalIntentos + 1;
     const totalAciertos = existente.totalAciertos + (validado.correcto ? 1 : 0);
 
     // Ventana deslizante: mantener historial de las últimas N respuestas
     const meta = (existente.metadata ?? {}) as Record<string, unknown>;
-    const historial = (meta.historialReciente as boolean[] | undefined) ?? [];
+    const historial = Array.isArray(meta.historialReciente)
+      ? (meta.historialReciente as unknown[]).filter(
+          (v): v is boolean => typeof v === 'boolean',
+        )
+      : [];
     historial.push(validado.correcto);
     // Mantener solo las últimas VENTANA_MASTERY respuestas
     const historialReciente = historial.slice(-VENTANA_MASTERY);
@@ -285,7 +298,35 @@ export async function actualizarProgresoInmediato(datos: {
       const aciertosRecientes = historialReciente.filter(Boolean).length;
       nivelMastery = aciertosRecientes / historialReciente.length;
     }
-    const dominada = nivelMastery >= UMBRAL_MASTERY && totalIntentos >= MIN_INTENTOS;
+    let dominada = nivelMastery >= UMBRAL_MASTERY && totalIntentos >= MIN_INTENTOS;
+    let proximaRevision = existente.proximaRevision;
+    let fsrsDebug: Record<string, unknown> | undefined;
+
+    // Ola 2: FSRS real para sílabas (scheduler de repaso)
+    if (validado.categoria === 'silabas') {
+      const rating =
+        validado.calidad ??
+        fsrsRatingFromOutcome(validado.correcto, validado.tiempoRespuestaMs);
+      const fsrsPrevio = readFsrsState(meta);
+      const revision = fsrsPrevio
+        ? fsrsReview(fsrsPrevio, ahora, rating)
+        : fsrsInit(ahora, rating);
+
+      proximaRevision = new Date(revision.dueAt);
+      fsrsDebug = {
+        rating: revision.rating,
+        intervalDays: revision.intervalDays,
+        retrievability: revision.retrievability,
+      };
+
+      // Dominar sílabas exige exactitud y estabilidad mínima de repaso.
+      dominada =
+        totalIntentos >= 4 &&
+        nivelMastery >= 0.85 &&
+        revision.state.stability >= 2.5;
+
+      meta.fsrs = revision.state;
+    }
 
     await db
       .update(skillProgress)
@@ -294,15 +335,43 @@ export async function actualizarProgresoInmediato(datos: {
         totalAciertos,
         nivelMastery,
         dominada,
-        ultimaPractica: new Date(),
-        actualizadoEn: new Date(),
-        metadata: { ...meta, historialReciente },
+        ultimaPractica: ahora,
+        proximaRevision,
+        actualizadoEn: ahora,
+        metadata: { ...meta, historialReciente, ...(fsrsDebug ? { fsrsDebug } : {}) },
       })
       .where(eq(skillProgress.id, existente.id));
 
-    return { ok: true, nivelMastery, dominada, totalIntentos, totalAciertos };
+    return {
+      ok: true,
+      nivelMastery,
+      dominada,
+      totalIntentos,
+      totalAciertos,
+      proximaRevision: proximaRevision?.toISOString() ?? null,
+    };
   } else {
     const historialReciente = [validado.correcto];
+    const ahora = new Date();
+    let metadata: Record<string, unknown> = { historialReciente };
+    let proximaRevision: Date | null = null;
+
+    if (validado.categoria === 'silabas') {
+      const rating =
+        validado.calidad ??
+        fsrsRatingFromOutcome(validado.correcto, validado.tiempoRespuestaMs);
+      const inicio = fsrsInit(ahora, rating);
+      metadata = {
+        ...metadata,
+        fsrs: inicio.state,
+        fsrsDebug: {
+          rating: inicio.rating,
+          intervalDays: inicio.intervalDays,
+          retrievability: inicio.retrievability,
+        },
+      };
+      proximaRevision = new Date(inicio.dueAt);
+    }
 
     await db.insert(skillProgress).values({
       studentId: validado.studentId,
@@ -312,11 +381,19 @@ export async function actualizarProgresoInmediato(datos: {
       totalAciertos: validado.correcto ? 1 : 0,
       nivelMastery: 0,
       dominada: false,
-      ultimaPractica: new Date(),
-      metadata: { historialReciente },
+      ultimaPractica: ahora,
+      proximaRevision,
+      metadata,
     });
 
-    return { ok: true, nivelMastery: 0, dominada: false, totalIntentos: 1, totalAciertos: validado.correcto ? 1 : 0 };
+    return {
+      ok: true,
+      nivelMastery: 0,
+      dominada: false,
+      totalIntentos: 1,
+      totalAciertos: validado.correcto ? 1 : 0,
+      proximaRevision: proximaRevision?.toISOString() ?? null,
+    };
   }
 }
 

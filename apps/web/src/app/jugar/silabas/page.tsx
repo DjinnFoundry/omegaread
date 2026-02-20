@@ -119,6 +119,7 @@ export default function SilabasPage() {
           skillId: `silaba-${respuesta.silaba.toLowerCase()}`,
           categoria: 'silabas',
           correcto: respuesta.correcto,
+          tiempoRespuestaMs: respuesta.tiempoMs,
         });
 
         if (progresoResultado.dominada) {
@@ -249,4 +250,3 @@ export default function SilabasPage() {
     </main>
   );
 }
-
