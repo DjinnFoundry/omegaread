@@ -1,48 +1,51 @@
 /**
  * Autenticación simple para padres
- * Usa JWT en cookies HTTP-only
+ * Usa JWT en cookies HTTP-only (firmado con jose HS256)
  */
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
 import { db, parents } from '@omegaread/db';
 import { eq } from 'drizzle-orm';
+import { SignJWT, jwtVerify } from 'jose';
 
 const AUTH_COOKIE = 'omega-auth';
-const AUTH_SECRET = process.env.AUTH_SECRET ?? 'dev-secret';
 
-// ─── Helpers de JWT simplificado ───
-
-/** Codifica payload a base64 con firma simple (HMAC-like) */
-function crearToken(payload: { parentId: string; email: string }): string {
-  const data = JSON.stringify({ ...payload, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-  const encoded = Buffer.from(data).toString('base64url');
-  const firma = Buffer.from(
-    Array.from(new TextEncoder().encode(encoded + AUTH_SECRET))
-      .reduce((acc, b) => ((acc << 5) - acc + b) | 0, 0)
-      .toString(16)
-  ).toString('base64url');
-  return `${encoded}.${firma}`;
+function getSecret(): Uint8Array {
+  const raw = process.env.AUTH_SECRET;
+  if (!raw && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'AUTH_SECRET must be set in production (at least 32 characters)'
+    );
+  }
+  return new TextEncoder().encode(raw ?? 'dev-secret');
 }
 
-/** Verifica y decodifica un token */
-function verificarToken(token: string): { parentId: string; email: string } | null {
+// ─── Helpers de JWT ───
+
+/** Crea un token JWT firmado con HS256 */
+async function crearToken(payload: { parentId: string; email: string }): Promise<string> {
+  const secret = getSecret();
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('7d')
+    .sign(secret);
+}
+
+/** Verifica y decodifica un token JWT */
+async function verificarToken(
+  token: string
+): Promise<{ parentId: string; email: string } | null> {
   try {
-    const [encoded, firma] = token.split('.');
-    if (!encoded || !firma) return null;
-
-    const expectedFirma = Buffer.from(
-      Array.from(new TextEncoder().encode(encoded + AUTH_SECRET))
-        .reduce((acc, b) => ((acc << 5) - acc + b) | 0, 0)
-        .toString(16)
-    ).toString('base64url');
-
-    if (firma !== expectedFirma) return null;
-
-    const data = JSON.parse(Buffer.from(encoded, 'base64url').toString());
-    if (data.exp < Date.now()) return null;
-
-    return { parentId: data.parentId, email: data.email };
+    const { payload } = await jwtVerify(token, getSecret());
+    if (
+      typeof payload.parentId === 'string' &&
+      typeof payload.email === 'string'
+    ) {
+      return { parentId: payload.parentId, email: payload.email };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -82,7 +85,7 @@ export async function loginPadre(email: string, password: string) {
   if (!passwordValida) return null;
 
   // Crear token y setear cookie
-  const token = crearToken({ parentId: padre.id, email: padre.email });
+  const token = await crearToken({ parentId: padre.id, email: padre.email });
   const cookieStore = await cookies();
   cookieStore.set(AUTH_COOKIE, token, {
     httpOnly: true,
@@ -101,7 +104,7 @@ export async function obtenerPadreActual() {
   const token = cookieStore.get(AUTH_COOKIE)?.value;
   if (!token) return null;
 
-  const datos = verificarToken(token);
+  const datos = await verificarToken(token);
   if (!datos) return null;
 
   const padre = await db.query.parents.findFirst({
