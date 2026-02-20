@@ -7,25 +7,75 @@
  * 1. Si no tiene perfil completo -> FormularioPerfil (padre)
  * 2. Si no tiene intereses -> SelectorIntereses (nino)
  * 3. Si no tiene baseline -> TestBaseline
- * 4. Si tiene todo -> "Listo para leer" con nivel mostrado
+ * 4. Si tiene todo -> SesionLectura (ciclo completo de lectura)
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useStudentProgress } from '@/contexts/StudentProgressContext';
 import {
   obtenerEstadoLectura,
   type EstadoFlujoLectura,
   type DatosEstudianteLectura,
 } from '@/server/actions/lectura-flow-actions';
+import { generarHistoria, finalizarSesionLectura } from '@/server/actions/story-actions';
 import FormularioPerfil from '@/components/perfil/FormularioPerfil';
 import SelectorIntereses from '@/components/perfil/SelectorIntereses';
 import TestBaseline from '@/components/baseline/TestBaseline';
+import InicioSesion from '@/components/lectura/InicioSesion';
+import PantallaLectura from '@/components/lectura/PantallaLectura';
+import PantallaPreguntas, { type RespuestaPregunta } from '@/components/lectura/PantallaPreguntas';
+import ResultadoSesion from '@/components/lectura/ResultadoSesion';
+
+type PasoSesion = 'elegir-topic' | 'generando' | 'leyendo' | 'preguntas' | 'resultado';
+
+interface DatosSesionActiva {
+  sessionId: string;
+  storyId: string;
+  historia: {
+    titulo: string;
+    contenido: string;
+    nivel: number;
+    topicSlug: string;
+    topicEmoji: string;
+    topicNombre: string;
+    tiempoEsperadoMs: number;
+  };
+  preguntas: Array<{
+    id: string;
+    tipo: 'literal' | 'inferencia' | 'vocabulario' | 'resumen';
+    pregunta: string;
+    opciones: string[];
+    respuestaCorrecta: number;
+    explicacion: string;
+  }>;
+}
+
+interface ResultadoSesionData {
+  aciertos: number;
+  totalPreguntas: number;
+  comprensionScore: number;
+  estrellas: number;
+  direccion: 'subir' | 'bajar' | 'mantener';
+  nivelAnterior: number;
+  nivelNuevo: number;
+  razon: string;
+}
 
 export default function LecturaPage() {
-  const { estudiante } = useStudentProgress();
+  const router = useRouter();
+  const { estudiante, recargarProgreso } = useStudentProgress();
   const [estado, setEstado] = useState<EstadoFlujoLectura | null>(null);
   const [datosEstudiante, setDatosEstudiante] = useState<DatosEstudianteLectura | null>(null);
   const [cargando, setCargando] = useState(true);
   const cargaInicial = useRef(false);
+
+  // Estado de sesion de lectura activa
+  const [pasoSesion, setPasoSesion] = useState<PasoSesion>('elegir-topic');
+  const [sesionActiva, setSesionActiva] = useState<DatosSesionActiva | null>(null);
+  const [tiempoLectura, setTiempoLectura] = useState(0);
+  const [resultadoSesion, setResultadoSesion] = useState<ResultadoSesionData | null>(null);
+  const [errorGeneracion, setErrorGeneracion] = useState<string | null>(null);
+  const [generando, setGenerando] = useState(false);
 
   const cargarEstado = useCallback(async () => {
     if (!estudiante) return;
@@ -54,6 +104,72 @@ export default function LecturaPage() {
 
     return () => { cancelled = true; };
   }, [estudiante]);
+
+  // ─── Handlers de sesion ───
+
+  const handleStartReading = useCallback(async (topicSlug: string) => {
+    if (!estudiante || generando) return;
+    setGenerando(true);
+    setErrorGeneracion(null);
+    setPasoSesion('generando');
+
+    const result = await generarHistoria({
+      studentId: estudiante.id,
+      topicSlug,
+    });
+
+    setGenerando(false);
+
+    if (!result.ok) {
+      setErrorGeneracion(result.error);
+      setPasoSesion('elegir-topic');
+      return;
+    }
+
+    setSesionActiva({
+      sessionId: result.sessionId,
+      storyId: result.storyId,
+      historia: result.historia,
+      preguntas: result.preguntas,
+    });
+    setPasoSesion('leyendo');
+  }, [estudiante, generando]);
+
+  const handleTerminarLectura = useCallback((tiempoMs: number) => {
+    setTiempoLectura(tiempoMs);
+    setPasoSesion('preguntas');
+  }, []);
+
+  const handleRespuestasCompletas = useCallback(async (respuestas: RespuestaPregunta[]) => {
+    if (!estudiante || !sesionActiva) return;
+
+    const result = await finalizarSesionLectura({
+      sessionId: sesionActiva.sessionId,
+      studentId: estudiante.id,
+      tiempoLecturaMs: tiempoLectura,
+      respuestas,
+    });
+
+    if (result.ok) {
+      setResultadoSesion(result.resultado);
+      setPasoSesion('resultado');
+      void recargarProgreso();
+    }
+  }, [estudiante, sesionActiva, tiempoLectura, recargarProgreso]);
+
+  const handleLeerOtra = useCallback(() => {
+    setSesionActiva(null);
+    setResultadoSesion(null);
+    setTiempoLectura(0);
+    setErrorGeneracion(null);
+    setPasoSesion('elegir-topic');
+    // Recargar estado por si el nivel cambio
+    void cargarEstado();
+  }, [cargarEstado]);
+
+  const handleVolver = useCallback(() => {
+    router.push('/jugar');
+  }, [router]);
 
   // ─── Loading ───
   if (!estudiante || cargando) {
@@ -116,47 +232,86 @@ export default function LecturaPage() {
     );
   }
 
-  // ─── Paso 4: Listo para leer ───
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-fondo p-6">
-      <div className="animate-scale-in text-center">
-        <span className="text-6xl">🎉</span>
-        <h1 className="mt-4 text-2xl font-extrabold text-texto">
-          Listo para leer, {datosEstudiante.nombre}!
-        </h1>
-        <p className="mt-2 text-base text-texto-suave max-w-xs mx-auto">
-          Tu nivel de lectura esta preparado. Pronto tendras historias personalizadas.
-        </p>
+  // ─── Paso 4: Listo → Sesion de lectura ───
+  const nivelActual = datosEstudiante.nivelLectura ?? estado.nivelLectura;
 
-        <div className="mt-6 rounded-2xl bg-superficie border-2 border-neutro/10 p-5 shadow-sm max-w-xs mx-auto space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-texto-suave">Nivel de lectura</span>
-            <span className="text-xl font-bold text-turquesa">
-              {estado.nivelLectura}
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-texto-suave">Confianza</span>
-            <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${
-              estado.confianza === 'alto' ? 'bg-bosque/10 text-bosque' :
-              estado.confianza === 'medio' ? 'bg-amarillo/20 text-taller' :
-              'bg-neutro/10 text-texto-suave'
-            }`}>
-              {estado.confianza === 'alto' ? 'Alta' : estado.confianza === 'medio' ? 'Media' : 'Baja'}
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-texto-suave">Intereses</span>
-            <span className="text-sm text-texto">
-              {datosEstudiante.intereses.length} temas
-            </span>
-          </div>
+  // Generando historia
+  if (pasoSesion === 'generando') {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
+        <div className="text-center animate-pulse-brillo">
+          <span className="text-5xl animate-bounce-suave">✨</span>
+          <p className="mt-4 text-lg font-semibold text-texto">
+            Creando tu historia...
+          </p>
+          <p className="mt-1 text-sm text-texto-suave">
+            Esto tomara unos segundos
+          </p>
         </div>
+      </main>
+    );
+  }
 
-        <p className="mt-6 text-xs text-texto-suave">
-          Sprint 2: generacion de historias personalizadas
-        </p>
-      </div>
+  // Leyendo
+  if (pasoSesion === 'leyendo' && sesionActiva) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-start bg-fondo p-6 pt-8">
+        <PantallaLectura
+          titulo={sesionActiva.historia.titulo}
+          contenido={sesionActiva.historia.contenido}
+          topicEmoji={sesionActiva.historia.topicEmoji}
+          topicNombre={sesionActiva.historia.topicNombre}
+          nivel={sesionActiva.historia.nivel}
+          onTerminar={handleTerminarLectura}
+        />
+      </main>
+    );
+  }
+
+  // Preguntas
+  if (pasoSesion === 'preguntas' && sesionActiva) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
+        <PantallaPreguntas
+          preguntas={sesionActiva.preguntas}
+          onComplete={handleRespuestasCompletas}
+        />
+      </main>
+    );
+  }
+
+  // Resultado
+  if (pasoSesion === 'resultado' && resultadoSesion) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
+        <ResultadoSesion
+          resultado={resultadoSesion}
+          studentNombre={datosEstudiante.nombre}
+          onLeerOtra={handleLeerOtra}
+          onVolver={handleVolver}
+        />
+      </main>
+    );
+  }
+
+  // Elegir topic (pantalla de inicio de sesion)
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
+      {errorGeneracion && (
+        <div className="w-full max-w-md mb-4 p-4 rounded-2xl bg-error-suave border border-coral/20 text-sm text-texto">
+          <p className="font-semibold mb-1">No se pudo crear la historia</p>
+          <p className="text-texto-suave">{errorGeneracion}</p>
+        </div>
+      )}
+
+      <InicioSesion
+        studentNombre={datosEstudiante.nombre}
+        nivelLectura={nivelActual}
+        intereses={datosEstudiante.intereses}
+        edadAnos={datosEstudiante.edadAnos}
+        onStart={handleStartReading}
+        generando={generando}
+      />
     </main>
   );
 }

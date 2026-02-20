@@ -185,3 +185,27 @@ export const registrarRespuestaComprensionSchema = z.object({
   correcta: z.boolean(),
   tiempoMs: z.number().int().nonnegative(),
 });
+
+// ─────────────────────────────────────────────
+// STORY GENERATION ACTIONS (Sprint 2)
+// ─────────────────────────────────────────────
+
+/** Schema: generarHistoria */
+export const generarHistoriaSchema = z.object({
+  studentId: uuid,
+  topicSlug: z.string().min(1).max(50).optional(),
+});
+
+/** Schema: finalizarSesionLectura */
+export const finalizarSesionLecturaSchema = z.object({
+  sessionId: uuid,
+  studentId: uuid,
+  tiempoLecturaMs: z.number().int().nonnegative(),
+  respuestas: z.array(z.object({
+    preguntaId: z.string().min(1).max(100),
+    tipo: tipoPreguntaValido,
+    respuestaSeleccionada: z.number().int().min(0).max(3),
+    correcta: z.boolean(),
+    tiempoMs: z.number().int().nonnegative(),
+  })).min(1).max(4),
+});

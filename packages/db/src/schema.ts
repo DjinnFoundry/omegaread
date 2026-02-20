@@ -89,6 +89,7 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
     references: [parents.id],
   }),
   sessions: many(sessions),
+  generatedStories: many(generatedStories),
   achievements: many(achievements),
   skillProgress: many(skillProgress),
   baselineAssessments: many(baselineAssessments),
@@ -198,6 +199,73 @@ export const difficultyAdjustmentsRelations = relations(difficultyAdjustments, (
 }));
 
 // ─────────────────────────────────────────────
+// HISTORIAS GENERADAS (LLM)
+// ─────────────────────────────────────────────
+
+export const generatedStories = pgTable(
+  'generated_stories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    studentId: uuid('student_id')
+      .notNull()
+      .references(() => students.id, { onDelete: 'cascade' }),
+    topicSlug: varchar('topic_slug', { length: 50 }).notNull(),
+    titulo: varchar('titulo', { length: 200 }).notNull(),
+    contenido: text('contenido').notNull(),
+    nivel: real('nivel').notNull(),
+    metadata: jsonb('metadata').$type<StoryMetadata>().notNull(),
+    modeloGeneracion: varchar('modelo_generacion', { length: 50 }).notNull(),
+    promptVersion: varchar('prompt_version', { length: 20 }).notNull().default('v1'),
+    aprobadaQA: boolean('aprobada_qa').notNull().default(false),
+    motivoRechazo: text('motivo_rechazo'),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('stories_student_idx').on(table.studentId),
+    index('stories_topic_idx').on(table.topicSlug),
+  ]
+);
+
+export const generatedStoriesRelations = relations(generatedStories, ({ one, many }) => ({
+  student: one(students, {
+    fields: [generatedStories.studentId],
+    references: [students.id],
+  }),
+  questions: many(storyQuestions),
+}));
+
+// ─────────────────────────────────────────────
+// PREGUNTAS DE HISTORIA (generadas con la historia)
+// ─────────────────────────────────────────────
+
+export const storyQuestions = pgTable(
+  'story_questions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    storyId: uuid('story_id')
+      .notNull()
+      .references(() => generatedStories.id, { onDelete: 'cascade' }),
+    tipo: varchar('tipo', { length: 20 }).notNull(),
+    pregunta: text('pregunta').notNull(),
+    opciones: jsonb('opciones').$type<string[]>().notNull(),
+    respuestaCorrecta: integer('respuesta_correcta').notNull(),
+    explicacion: text('explicacion').notNull(),
+    orden: integer('orden').notNull().default(0),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('questions_story_idx').on(table.storyId),
+  ]
+);
+
+export const storyQuestionsRelations = relations(storyQuestions, ({ one }) => ({
+  story: one(generatedStories, {
+    fields: [storyQuestions.storyId],
+    references: [generatedStories.id],
+  }),
+}));
+
+// ─────────────────────────────────────────────
 // SESIONES (cada vez que el nino lee)
 // ─────────────────────────────────────────────
 
@@ -216,6 +284,9 @@ export const sessions = pgTable(
     completada: boolean('completada').notNull().default(false),
     estrellasGanadas: integer('estrellas_ganadas').notNull().default(0),
     stickerGanado: varchar('sticker_ganado', { length: 10 }),
+    /** ID de historia generada (Sprint 2) */
+    storyId: uuid('story_id')
+      .references(() => generatedStories.id, { onDelete: 'set null' }),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
     iniciadaEn: timestamp('iniciada_en', { withTimezone: true }).notNull().defaultNow(),
     finalizadaEn: timestamp('finalizada_en', { withTimezone: true }),
@@ -230,6 +301,10 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   student: one(students, {
     fields: [sessions.studentId],
     references: [students.id],
+  }),
+  story: one(generatedStories, {
+    fields: [sessions.storyId],
+    references: [generatedStories.id],
   }),
   responses: many(responses),
   difficultyAdjustments: many(difficultyAdjustments),
@@ -380,4 +455,12 @@ export type DifficultyEvidence = {
   sessionScore?: number;
   totalPreguntas?: number;
   totalAciertos?: number;
+};
+
+export type StoryMetadata = {
+  longitudPalabras: number;
+  longitudOracionMedia: number;
+  vocabularioNuevo: string[];
+  edadObjetivo: number;
+  tiempoEsperadoMs: number;
 };
