@@ -27,7 +27,7 @@ describe('openai module', () => {
   it('OpenAIKeyMissingError es un Error', () => {
     const err = new OpenAIKeyMissingError();
     expect(err instanceof Error).toBe(true);
-    expect(err.name).toBe('OpenAIKeyMissingError');
+    expect(err.name).toBe('LLMKeyMissingError');
     expect(err.message).toContain('OPENAI_API_KEY');
   });
 });

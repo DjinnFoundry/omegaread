@@ -18,7 +18,10 @@ import {
   type QAResult,
 } from './qa-rubric';
 
-const MODELO = 'gpt-4o-mini';
+import { getLLMModel } from './openai';
+
+// Modelo dinámico: usa LLM_MODEL env var, o default según proveedor
+const getModelo = () => getLLMModel();
 const MAX_REINTENTOS = 2;
 
 export interface GeneratedStory {
@@ -70,7 +73,7 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
   for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
     try {
       const completion = await client.chat.completions.create({
-        model: MODELO,
+        model: getModelo(),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -120,7 +123,7 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
           ...p,
           tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
         })),
-        modelo: MODELO,
+        modelo: getModelo(),
         aprobadaQA: qa.aprobada,
         motivoRechazo: qa.motivo,
       };
@@ -168,7 +171,7 @@ export async function rewriteStory(input: RewritePromptInput): Promise<StoryGene
   for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
     try {
       const completion = await client.chat.completions.create({
-        model: MODELO,
+        model: getModelo(),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -221,7 +224,7 @@ export async function rewriteStory(input: RewritePromptInput): Promise<StoryGene
           ...p,
           tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
         })),
-        modelo: MODELO,
+        modelo: getModelo(),
         aprobadaQA: qa.aprobada,
         motivoRechazo: qa.motivo,
       };
