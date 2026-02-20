@@ -11,7 +11,7 @@ import type { EstadoMascota } from '@/components/mascota/Mascota';
 /**
  * Identificadores de zonas del mapa.
  */
-export type ZonaId = 'bosque-letras' | 'montana-numeros' | 'taller-trazos' | 'lago-palabras';
+export type ZonaId = 'bosque-letras' | 'cueva-silabas' | 'taller-trazos' | 'lago-palabras';
 
 /**
  * Definición de una zona del mapa.
@@ -44,7 +44,7 @@ export interface MapaAventurasProps {
 
 const ZONAS: ZonaDefinicion[] = [
   { id: 'bosque-letras', icono: '🌳', nombre: 'Bosque de las Letras', color: '#7BC67E', bloqueada: false },
-  { id: 'montana-numeros', icono: '🏔️', nombre: 'Montaña de los Números', color: '#A28BD4', bloqueada: true },
+  { id: 'cueva-silabas', icono: '🪨', nombre: 'Cueva de Sílabas', color: '#A28BD4', bloqueada: true },
   { id: 'taller-trazos', icono: '🎨', nombre: 'Taller de Trazos', color: '#FFB347', bloqueada: true },
   { id: 'lago-palabras', icono: '🌊', nombre: 'Lago de Palabras', color: '#64B5F6', bloqueada: true },
 ];

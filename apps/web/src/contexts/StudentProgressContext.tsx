@@ -43,6 +43,8 @@ export interface StudentProgress {
   stickers: StickerData[];
   vocalesDominadas: string[];
   vocalActual: string;
+  silabasDominadas: string[];
+  silabaActual: string;
   totalSesiones: number;
   loaded: boolean;
 }
@@ -62,6 +64,8 @@ export interface StudentProgressContextType {
   addSticker: (emoji: string, nombre: string) => void;
   /** Marcar una vocal como dominada */
   marcarVocalDominada: (vocal: string) => void;
+  /** Marcar una silaba como dominada */
+  marcarSilabaDominada: (silaba: string) => void;
 }
 
 // ─────────────────────────────────────────────
@@ -73,6 +77,8 @@ const DEFAULT_PROGRESS: StudentProgress = {
   stickers: [],
   vocalesDominadas: [],
   vocalActual: 'A',
+  silabasDominadas: [],
+  silabaActual: 'MA',
   totalSesiones: 0,
   loaded: false,
 };
@@ -128,6 +134,8 @@ export function StudentProgressProvider({ children }: { children: ReactNode }) {
         stickers: data.stickers,
         vocalesDominadas: data.vocalesDominadas,
         vocalActual: data.vocalActual,
+        silabasDominadas: data.silabasDominadas ?? [],
+        silabaActual: data.silabaActual ?? 'MA',
         totalSesiones: data.totalSesiones,
         loaded: true,
       });
@@ -198,6 +206,32 @@ export function StudentProgressProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // ── Marcar silaba como dominada (optimistic update) ──
+  const marcarSilabaDominada = useCallback((silaba: string) => {
+    setProgress((prev) => {
+      const nuevasDominadas = prev.silabasDominadas.includes(silaba)
+        ? prev.silabasDominadas
+        : [...prev.silabasDominadas, silaba];
+
+      // Mantiene un orden estable y recupera la primera no dominada
+      const ORDEN = [
+        'MA', 'ME', 'MI', 'MO', 'MU',
+        'PA', 'PE', 'PI', 'PO', 'PU',
+        'LA', 'LE', 'LI', 'LO', 'LU',
+        'SA', 'SE', 'SI', 'SO', 'SU',
+        'TA', 'TE', 'TI', 'TO', 'TU',
+        'NA', 'NE', 'NI', 'NO', 'NU',
+      ];
+      const nuevaActual = ORDEN.find((s) => !nuevasDominadas.includes(s)) ?? 'MA';
+
+      return {
+        ...prev,
+        silabasDominadas: nuevasDominadas,
+        silabaActual: nuevaActual,
+      };
+    });
+  }, []);
+
   const value: StudentProgressContextType = {
     estudiante,
     progress,
@@ -206,6 +240,7 @@ export function StudentProgressProvider({ children }: { children: ReactNode }) {
     addEstrellas,
     addSticker,
     marcarVocalDominada,
+    marcarSilabaDominada,
   };
 
   return (

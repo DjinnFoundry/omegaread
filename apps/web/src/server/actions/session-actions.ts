@@ -27,6 +27,7 @@ import {
   actualizarProgresoSchema,
   cargarProgresoSchema,
 } from '../validation';
+import { ORDEN_SILABAS } from '@/lib/actividades/generadorSilabas';
 
 // ─────────────────────────────────────────────
 // INICIAR SESIÓN
@@ -366,6 +367,14 @@ export async function cargarProgresoEstudiante(studentId: string) {
   const ORDEN_VOCALES = ['A', 'E', 'I', 'O', 'U'];
   const vocalActual = ORDEN_VOCALES.find((v) => !vocalesDominadas.includes(v)) ?? 'A';
 
+  // Silabas dominadas (Ola 2)
+  const silabasDominadas = habilidades
+    .filter((h) => h.categoria === 'silabas' && h.dominada)
+    .map((h) => h.skillId.replace('silaba-', '').toUpperCase());
+
+  // Silaba actual (primera no dominada)
+  const silabaActual = ORDEN_SILABAS.find((s) => !silabasDominadas.includes(s)) ?? ORDEN_SILABAS[0];
+
   // Issue #10: Auto-close orphaned sessions (inactive > 1 hour)
   const UNA_HORA_MS = 60 * 60 * 1000;
   const ahora = Date.now();
@@ -411,6 +420,8 @@ export async function cargarProgresoEstudiante(studentId: string) {
     })),
     vocalesDominadas,
     vocalActual,
+    silabasDominadas,
+    silabaActual,
     habilidades,
     sesionEnCurso: sesionEnCurso
       ? { id: sesionEnCurso.id, tipoActividad: sesionEnCurso.tipoActividad }

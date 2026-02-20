@@ -131,6 +131,11 @@ export async function obtenerResumenProgreso(studentId: string) {
     .filter((h) => h.categoria === 'vocales' && h.dominada)
     .map((h) => h.skillId.replace('vocal-', '').toUpperCase());
 
+  // Silabas dominadas (Ola 2)
+  const silabasDominadas = habilidades
+    .filter((h) => h.categoria === 'silabas' && h.dominada)
+    .map((h) => h.skillId.replace('silaba-', '').toUpperCase());
+
   // Próxima meta: primera vocal no dominada
   const ORDEN_VOCALES = ['A', 'E', 'I', 'O', 'U'];
   const proximaMeta = ORDEN_VOCALES.find((v) => !vocalesDominadas.includes(v));
@@ -175,6 +180,7 @@ export async function obtenerResumenProgreso(studentId: string) {
     totalEstrellas: todasSesiones.reduce((acc, s) => acc + s.estrellasGanadas, 0),
     stickers: logros.filter((l) => l.tipo === 'sticker'),
     vocalesDominadas,
+    silabasDominadas,
     racha,
     sesionesRecientes: todasSesiones.slice(0, 10),
     proximaMeta: proximaMeta ? `aprender la letra ${proximaMeta}` : null,

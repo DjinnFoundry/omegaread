@@ -13,6 +13,7 @@ interface DashboardHijoProps {
     tiempoHoyMin: number;
     totalEstrellas: number;
     vocalesDominadas: string[];
+    silabasDominadas: string[];
     racha: number;
     stickers: Array<{ icono: string | null; nombre: string }>;
     proximaMeta: string | null;
@@ -130,6 +131,27 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
             {resumen.totalEstrellas}
           </p>
         </div>
+      </div>
+
+      {/* Silabas dominadas */}
+      <div className="mt-3 rounded-2xl bg-montana/10 p-3">
+        <p className="text-xs font-semibold text-montana">🔠 Sílabas dominadas</p>
+        <p className="mt-1 text-xl font-bold text-montana">
+          {resumen.silabasDominadas.length}
+          <span className="ml-1 text-sm font-normal text-texto-suave">/ 30</span>
+        </p>
+        {resumen.silabasDominadas.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {resumen.silabasDominadas.slice(0, 12).map((silaba) => (
+              <span
+                key={silaba}
+                className="rounded-full bg-superficie px-2 py-1 text-xs font-bold text-texto shadow-sm"
+              >
+                {silaba}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Stickers recientes */}

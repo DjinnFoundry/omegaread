@@ -14,6 +14,8 @@ export default function MapaPage() {
   const { estudiante, progress, recargarProgreso } = useStudentProgress();
   const router = useRouter();
   const [saludoMostrado, setSaludoMostrado] = useState(false);
+  const silabasDesbloqueadas =
+    progress.vocalesDominadas.length >= 5 || progress.silabasDominadas.length > 0;
 
   // Recargar progreso desde DB al llegar al mapa
   useEffect(() => {
@@ -40,6 +42,10 @@ export default function MapaPage() {
     if (zone === 'bosque-letras') {
       setTimeout(() => {
         router.push('/jugar/vocales');
+      }, 1500);
+    } else if (zone === 'cueva-silabas') {
+      setTimeout(() => {
+        router.push('/jugar/silabas');
       }, 1500);
     }
   }
@@ -72,8 +78,10 @@ export default function MapaPage() {
         </div>
       )}
       <MapaAventuras
-        zonasActivas={['bosque-letras']}
-        zonaRecomendada="bosque-letras"
+        zonasActivas={
+          silabasDesbloqueadas ? ['bosque-letras', 'cueva-silabas'] : ['bosque-letras']
+        }
+        zonaRecomendada={silabasDesbloqueadas ? 'cueva-silabas' : 'bosque-letras'}
         estrellas={progress.totalEstrellas}
         onZoneSelect={handleZoneSelect}
         onStickersClick={handleStickersClick}
