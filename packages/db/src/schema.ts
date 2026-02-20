@@ -1,6 +1,6 @@
 /**
- * Schema de base de datos para OmegaAnywhere
- * Modelo de datos base — Ola 1
+ * Schema de base de datos para OmegaRead
+ * Modelo de datos para lectura adaptativa.
  *
  * Tablas: padres, estudiantes, sesiones, respuestas, logros, progreso de habilidades
  */
@@ -19,7 +19,7 @@ import {
 import { relations } from 'drizzle-orm';
 
 // ─────────────────────────────────────────────
-// PADRES (autenticación y gestión)
+// PADRES (autenticacion y gestion)
 // ─────────────────────────────────────────────
 
 export const parents = pgTable('parents', {
@@ -28,7 +28,6 @@ export const parents = pgTable('parents', {
   passwordHash: text('password_hash').notNull(),
   nombre: varchar('nombre', { length: 100 }).notNull(),
   idioma: varchar('idioma', { length: 10 }).notNull().default('es-ES'),
-  /** Configuración: notificaciones, horarios, etc. */
   config: jsonb('config').$type<ParentConfig>().default({}),
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
   actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).notNull().defaultNow(),
@@ -39,7 +38,7 @@ export const parentsRelations = relations(parents, ({ many }) => ({
 }));
 
 // ─────────────────────────────────────────────
-// ESTUDIANTES (los niños)
+// ESTUDIANTES (los ninos)
 // ─────────────────────────────────────────────
 
 export const students = pgTable('students', {
@@ -48,24 +47,12 @@ export const students = pgTable('students', {
     .notNull()
     .references(() => parents.id, { onDelete: 'cascade' }),
   nombre: varchar('nombre', { length: 100 }).notNull(),
-  /** Fecha de nacimiento para calcular edad */
   fechaNacimiento: timestamp('fecha_nacimiento', { mode: 'date' }).notNull(),
   idioma: varchar('idioma', { length: 10 }).notNull().default('es-ES'),
-  /** Dialecto: es-ES, es-MX, es-AR, es-CO, es-neutro */
   dialecto: varchar('dialecto', { length: 10 }).notNull().default('es-ES'),
-  /** Nombre de la mascota elegida */
-  mascotaNombre: varchar('mascota_nombre', { length: 50 }),
-  /** Tipo de mascota: gato, perro, buho, dragon */
-  mascotaTipo: varchar('mascota_tipo', { length: 20 }).default('gato'),
-  /** Color de la mascota */
-  mascotaColor: varchar('mascota_color', { length: 7 }).default('#FF6B6B'),
-  /** Intereses del niño (array de strings) */
+  /** Intereses del nino (para personalizar historias) */
   intereses: jsonb('intereses').$type<string[]>().default([]),
-  /** Nivel detectado por diagnóstico invisible */
-  nivelDiagnostico: jsonb('nivel_diagnostico').$type<DiagnosticoNivel | null>().default(null),
-  /** Diagnóstico completado? */
-  diagnosticoCompletado: boolean('diagnostico_completado').notNull().default(false),
-  /** Configuración de accesibilidad */
+  /** Configuracion de accesibilidad */
   accesibilidad: jsonb('accesibilidad').$type<AccesibilidadConfig>().default({}),
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
   actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).notNull().defaultNow(),
@@ -82,7 +69,7 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
 }));
 
 // ─────────────────────────────────────────────
-// SESIONES (cada vez que el niño juega)
+// SESIONES (cada vez que el nino lee)
 // ─────────────────────────────────────────────
 
 export const sessions = pgTable(
@@ -92,19 +79,14 @@ export const sessions = pgTable(
     studentId: uuid('student_id')
       .notNull()
       .references(() => students.id, { onDelete: 'cascade' }),
-    /** Tipo: vocales, diagnostico, silabas, numeros, etc. */
+    /** Tipo: lectura, comprension, etc. */
     tipoActividad: varchar('tipo_actividad', { length: 50 }).notNull(),
-    /** Módulo: pre-lectura, lectura, pre-mates, etc. */
+    /** Modulo: lectura-adaptativa, etc. */
     modulo: varchar('modulo', { length: 50 }).notNull(),
-    /** Duración en segundos */
     duracionSegundos: integer('duracion_segundos'),
-    /** ¿Se completó la sesión? */
     completada: boolean('completada').notNull().default(false),
-    /** Estrellas ganadas en esta sesión */
     estrellasGanadas: integer('estrellas_ganadas').notNull().default(0),
-    /** Sticker ganado (emoji) */
     stickerGanado: varchar('sticker_ganado', { length: 10 }),
-    /** Metadata adicional (resultados, config, etc.) */
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
     iniciadaEn: timestamp('iniciada_en', { withTimezone: true }).notNull().defaultNow(),
     finalizadaEn: timestamp('finalizada_en', { withTimezone: true }),
@@ -124,7 +106,7 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
 }));
 
 // ─────────────────────────────────────────────
-// RESPUESTAS (cada interacción dentro de sesión)
+// RESPUESTAS (cada interaccion dentro de sesion)
 // ─────────────────────────────────────────────
 
 export const responses = pgTable(
@@ -134,23 +116,15 @@ export const responses = pgTable(
     sessionId: uuid('session_id')
       .notNull()
       .references(() => sessions.id, { onDelete: 'cascade' }),
-    /** Identificador del ejercicio/pregunta */
     ejercicioId: varchar('ejercicio_id', { length: 100 }).notNull(),
-    /** Tipo de ejercicio: reconocer_vocal, sonido_vocal, completar_vocal, etc. */
+    /** Tipo de ejercicio: comprension, vocabulario, inferencia, etc. */
     tipoEjercicio: varchar('tipo_ejercicio', { length: 50 }).notNull(),
-    /** Lo que se preguntó (ej: "busca la A") */
     pregunta: text('pregunta').notNull(),
-    /** Lo que respondió el niño */
     respuesta: text('respuesta').notNull(),
-    /** Respuesta esperada */
     respuestaCorrecta: text('respuesta_correcta').notNull(),
-    /** ¿Fue correcta? */
     correcta: boolean('correcta').notNull(),
-    /** Tiempo de respuesta en milisegundos */
     tiempoRespuestaMs: integer('tiempo_respuesta_ms'),
-    /** Intento número (1 = primer intento) */
     intentoNumero: integer('intento_numero').notNull().default(1),
-    /** Metadata adicional */
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
     creadaEn: timestamp('creada_en', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -177,19 +151,12 @@ export const achievements = pgTable(
     studentId: uuid('student_id')
       .notNull()
       .references(() => students.id, { onDelete: 'cascade' }),
-    /** Tipo: sticker, estrella_especial, zona_desbloqueada */
     tipo: varchar('tipo', { length: 50 }).notNull(),
-    /** Identificador del logro (ej: sticker-delfin, zona-numeros) */
     logroId: varchar('logro_id', { length: 100 }).notNull(),
-    /** Nombre visible */
     nombre: varchar('nombre', { length: 100 }).notNull(),
-    /** Emoji o icono */
     icono: varchar('icono', { length: 10 }),
-    /** Descripción corta */
     descripcion: text('descripcion'),
-    /** Colección a la que pertenece (ej: animales-mar, dinosaurios) */
     coleccion: varchar('coleccion', { length: 50 }),
-    /** Metadata adicional */
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
     ganadoEn: timestamp('ganado_en', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -216,23 +183,16 @@ export const skillProgress = pgTable(
     studentId: uuid('student_id')
       .notNull()
       .references(() => students.id, { onDelete: 'cascade' }),
-    /** Identificador de la habilidad (ej: vocal-a, vocal-e, silaba-ma) */
+    /** Identificador de la habilidad (ej: topic-animales, comprension-inferencia) */
     skillId: varchar('skill_id', { length: 100 }).notNull(),
-    /** Categoría: vocales, consonantes, silabas, numeros, etc. */
+    /** Categoria: comprension, vocabulario, fluidez, etc. */
     categoria: varchar('categoria', { length: 50 }).notNull(),
-    /** Nivel de mastery (0.0 - 1.0) */
     nivelMastery: real('nivel_mastery').notNull().default(0),
-    /** Total de intentos */
     totalIntentos: integer('total_intentos').notNull().default(0),
-    /** Total de aciertos */
     totalAciertos: integer('total_aciertos').notNull().default(0),
-    /** ¿Está dominada? (mastery ≥ 0.9) */
     dominada: boolean('dominada').notNull().default(false),
-    /** Última práctica */
     ultimaPractica: timestamp('ultima_practica', { withTimezone: true }),
-    /** Próxima revisión programada (spaced repetition) */
     proximaRevision: timestamp('proxima_revision', { withTimezone: true }),
-    /** Metadata: historial de mastery, tiempos, etc. */
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
     creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
     actualizadoEn: timestamp('actualizado_en', { withTimezone: true }).notNull().defaultNow(),
@@ -255,34 +215,15 @@ export const skillProgressRelations = relations(skillProgress, ({ one }) => ({
 // ─────────────────────────────────────────────
 
 export type ParentConfig = {
-  /** Notificaciones habilitadas */
   notificaciones?: boolean;
-  /** Hora inicio permitida (HH:mm) */
   horaInicio?: string;
-  /** Hora fin permitida (HH:mm) */
   horaFin?: string;
-  /** Minutos máximos por día por hijo */
   minutosMaxDia?: number;
 };
 
-export type DiagnosticoNivel = {
-  /** Letras reconocidas */
-  letrasReconocidas: string[];
-  /** Cuenta hasta este número de forma estable */
-  cuentaHasta: number;
-  /** Nivel de conciencia fonológica (0-4) */
-  concienciaFonologica: number;
-  /** Fecha del diagnóstico */
-  fecha: string;
-};
-
 export type AccesibilidadConfig = {
-  /** Fuente OpenDyslexic */
   fuenteDislexia?: boolean;
-  /** Modo TDAH (sesiones más cortas, menos estímulos) */
   modoTDAH?: boolean;
-  /** Alto contraste */
   altoContraste?: boolean;
-  /** Duración máxima de sesión en minutos (override) */
   duracionSesionMin?: number;
 };
