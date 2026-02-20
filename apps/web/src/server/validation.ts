@@ -82,21 +82,8 @@ export const cargarProgresoSchema = uuid;
 // STUDENT ACTIONS
 // ─────────────────────────────────────────────
 
-/** Schema: crearEstudiante (FormData se valida manualmente, pero los campos se validan aquí) */
+/** Schema: crearEstudiante */
 export const crearEstudianteSchema = z.object({
   nombre: nombreCorto,
-  fechaNacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)'),
-  mascotaTipo: z.enum(['gato', 'perro', 'buho', 'dragon']).default('gato'),
-  mascotaNombre: z.string().max(50).default('Luna'),
-});
-
-/** Schema: guardarDiagnostico */
-export const guardarDiagnosticoSchema = z.object({
-  studentId: uuid,
-  resultado: z.object({
-    letrasReconocidas: z.array(z.string().max(5)),
-    cuentaHasta: z.number().int().nonnegative().max(100),
-    concienciaFonologica: z.number().int().min(0).max(10),
-    fecha: z.string(),
-  }),
+  fechaNacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha invalida (YYYY-MM-DD)'),
 });

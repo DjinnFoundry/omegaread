@@ -22,9 +22,6 @@ export async function GET() {
     columns: {
       id: true,
       nombre: true,
-      mascotaTipo: true,
-      mascotaNombre: true,
-      diagnosticoCompletado: true,
     },
   });
 

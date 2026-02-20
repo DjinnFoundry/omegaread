@@ -1,35 +1,29 @@
 'use server';
 
 /**
- * Server Actions para gestión de estudiantes (niños).
- *
- * Funciones de padre: crear estudiante, obtener lista, obtener resumen.
- * TODAS verifican autenticación y ownership.
+ * Server Actions para gestion de estudiantes (ninos).
+ * TODAS verifican autenticacion y ownership.
  */
 import { db, students, sessions, achievements, skillProgress } from '@omegaread/db';
 import { eq, desc, and } from 'drizzle-orm';
-import { requireAuth, requireStudentOwnership } from '../auth';
+import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
-import type { DiagnosticoNivel } from '@omegaread/db/schema';
 
-/** Crear perfil de niño */
+/** Crear perfil de nino */
 export async function crearEstudiante(formData: FormData) {
   const padre = await requireAuth();
 
   const nombre = formData.get('nombre') as string;
   const fechaNacStr = formData.get('fechaNacimiento') as string;
-  const mascotaTipo = (formData.get('mascotaTipo') as string) || 'gato';
-  const mascotaNombre = (formData.get('mascotaNombre') as string) || 'Luna';
 
   if (!nombre || !fechaNacStr) {
     return { ok: false, error: 'Nombre y fecha de nacimiento son obligatorios' };
   }
 
-  // Validar edad (3-10 años)
   const fechaNac = new Date(fechaNacStr);
   const edad = calcularEdad(fechaNac);
   if (edad < 3 || edad > 10) {
-    return { ok: false, error: 'La edad debe estar entre 3 y 10 años' };
+    return { ok: false, error: 'La edad debe estar entre 3 y 10 anos' };
   }
 
   const [estudiante] = await db
@@ -38,8 +32,6 @@ export async function crearEstudiante(formData: FormData) {
       parentId: padre.id,
       nombre: nombre.trim(),
       fechaNacimiento: fechaNac,
-      mascotaTipo,
-      mascotaNombre: mascotaNombre.trim(),
     })
     .returning();
 
@@ -60,59 +52,36 @@ export async function obtenerEstudiantes() {
 export async function obtenerEstudiante(studentId: string) {
   const padre = await requireAuth();
 
-  const estudiante = await db.query.students.findFirst({
+  return db.query.students.findFirst({
     where: and(eq(students.id, studentId), eq(students.parentId, padre.id)),
   });
-
-  return estudiante;
-}
-
-/** Guardar resultado de diagnóstico invisible */
-export async function guardarDiagnostico(studentId: string, resultado: DiagnosticoNivel) {
-  // Verificar ownership
-  await requireStudentOwnership(studentId);
-
-  await db
-    .update(students)
-    .set({
-      nivelDiagnostico: resultado,
-      diagnosticoCompletado: true,
-      actualizadoEn: new Date(),
-    })
-    .where(eq(students.id, studentId));
-
-  return { ok: true };
 }
 
 /** Obtener resumen de progreso para dashboard de padre */
 export async function obtenerResumenProgreso(studentId: string) {
   const padre = await requireAuth();
 
-  // Verificar que el estudiante pertenece al padre
   const estudiante = await db.query.students.findFirst({
     where: and(eq(students.id, studentId), eq(students.parentId, padre.id)),
   });
   if (!estudiante) return null;
 
-  // Obtener progreso de habilidades
   const habilidades = await db.query.skillProgress.findMany({
     where: eq(skillProgress.studentId, studentId),
     orderBy: [skillProgress.categoria, skillProgress.skillId],
   });
 
-  // Todas las sesiones (sin limit para total de estrellas correcto)
   const todasSesiones = await db.query.sessions.findMany({
     where: eq(sessions.studentId, studentId),
     orderBy: [desc(sessions.iniciadaEn)],
   });
 
-  // Logros / stickers
   const logros = await db.query.achievements.findMany({
     where: eq(achievements.studentId, studentId),
     orderBy: [desc(achievements.ganadoEn)],
   });
 
-  // Estadísticas de hoy
+  // Estadisticas de hoy
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
   const sesionesHoy = todasSesiones.filter(
@@ -123,54 +92,38 @@ export async function obtenerResumenProgreso(studentId: string) {
     0
   ) / 60;
 
-  // Calcular racha
   const racha = calcularRacha(todasSesiones);
 
-  // Vocales dominadas
-  const vocalesDominadas = habilidades
-    .filter((h) => h.categoria === 'vocales' && h.dominada)
-    .map((h) => h.skillId.replace('vocal-', '').toUpperCase());
-
-  // Silabas dominadas (Ola 2)
-  const silabasDominadas = habilidades
-    .filter((h) => h.categoria === 'silabas' && h.dominada)
-    .map((h) => h.skillId.replace('silaba-', '').toUpperCase());
-
-  // Próxima meta: primera vocal no dominada
-  const ORDEN_VOCALES = ['A', 'E', 'I', 'O', 'U'];
-  const proximaMeta = ORDEN_VOCALES.find((v) => !vocalesDominadas.includes(v));
-
-  // Días de uso esta semana (L-D)
+  // Dias de uso esta semana (L-D)
   const inicioSemana = new Date();
-  const diaSemana = inicioSemana.getDay(); // 0=dom, 1=lun...
+  const diaSemana = inicioSemana.getDay();
   const diasDesdelunes = diaSemana === 0 ? 6 : diaSemana - 1;
   inicioSemana.setDate(inicioSemana.getDate() - diasDesdelunes);
   inicioSemana.setHours(0, 0, 0, 0);
 
-  const diasUsoSemana: boolean[] = Array(7).fill(false); // [L, M, X, J, V, S, D]
+  const diasUsoSemana: boolean[] = Array(7).fill(false);
   for (const s of todasSesiones) {
     const fechaSesion = new Date(s.iniciadaEn);
     if (fechaSesion >= inicioSemana) {
-      const dia = fechaSesion.getDay(); // 0=dom, 1=lun...
-      const idx = dia === 0 ? 6 : dia - 1; // Convertir a L=0, M=1... D=6
+      const dia = fechaSesion.getDay();
+      const idx = dia === 0 ? 6 : dia - 1;
       diasUsoSemana[idx] = true;
     }
   }
 
-  // Sugerencia personalizada basada en progreso (pool variado)
-  const vocalParaSugerencia = proximaMeta ?? vocalesDominadas[vocalesDominadas.length - 1] ?? 'A';
-  const SUGERENCIAS_POOL: Array<(vocal: string) => string> = [
-    (v) => `Busquen objetos en casa que empiecen con la ${v}. ¡A ver cuantos encuentran!`,
-    (v) => `Dibujen juntos la letra ${v} bien grande con crayones de colores.`,
-    (v) => `Inventen una cancion donde todas las palabras empiecen con ${v}.`,
-    (v) => `Con plastilina, moldeen la forma de la ${v}. ¡Pueden decorarla!`,
-    (v) => `Lean un cuento y pidan al nino que diga "¡${v}!" cada vez que escuche esa vocal.`,
-    (v) => `Jueguen "Veo veo" buscando cosas que tengan la vocal ${v} en su nombre.`,
-    (v) => `Tracen la ${v} con el dedo en la espalda del otro. ¡A ver si adivinan!`,
-    (v) => `Aplaudan cada vez que escuchen la vocal ${v} en una conversacion. ¡Es muy divertido!`,
+  // Sugerencia personalizada de lectura
+  const SUGERENCIAS_LECTURA = [
+    'Lean juntos un cuento corto antes de dormir. Pregunten: "Que crees que pasara despues?"',
+    'Busquen carteles y letreros en la calle. El nino puede leer las palabras que reconozca.',
+    'Inventen juntos un final alternativo para el ultimo cuento que leyeron.',
+    'Pidan al nino que les cuente con sus palabras lo que leyo hoy. Escuchen sin corregir.',
+    'Visiten la biblioteca o libreria y dejen que elija un libro que le llame la atencion.',
+    'Lean una receta juntos y cocinen algo sencillo siguiendo los pasos.',
+    'Jueguen a buscar palabras que rimen en un cuento o cancion.',
+    'Escriban juntos una carta o mensaje para un familiar o amigo.',
   ];
-  const idxSugerencia = Math.floor(Date.now() / 86400000) % SUGERENCIAS_POOL.length;
-  const sugerenciaOffline = SUGERENCIAS_POOL[idxSugerencia](vocalParaSugerencia);
+  const idxSugerencia = Math.floor(Date.now() / 86400000) % SUGERENCIAS_LECTURA.length;
+  const sugerenciaOffline = SUGERENCIAS_LECTURA[idxSugerencia];
 
   return {
     estudiante,
@@ -179,17 +132,15 @@ export async function obtenerResumenProgreso(studentId: string) {
     tiempoHoyMin: Math.round(tiempoHoyMin),
     totalEstrellas: todasSesiones.reduce((acc, s) => acc + s.estrellasGanadas, 0),
     stickers: logros.filter((l) => l.tipo === 'sticker'),
-    vocalesDominadas,
-    silabasDominadas,
     racha,
     sesionesRecientes: todasSesiones.slice(0, 10),
-    proximaMeta: proximaMeta ? `aprender la letra ${proximaMeta}` : null,
     diasUsoSemana,
     sugerenciaOffline,
+    totalSesiones: todasSesiones.length,
   };
 }
 
-/** Calcula días consecutivos con al menos 1 sesión */
+/** Calcula dias consecutivos con al menos 1 sesion */
 function calcularRacha(sesiones: Array<{ iniciadaEn: Date }>): number {
   if (sesiones.length === 0) return 0;
 

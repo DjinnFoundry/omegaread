@@ -81,7 +81,7 @@ export default async function DashboardPage() {
             </p>
             <p className="mt-1 text-sm text-texto-suave">
               {resumenes[0]?.resumen?.sugerenciaOffline ??
-                'Practiquen las vocales en casa: busquen objetos que empiecen con A (avión, agua, árbol). ¡El aprendizaje también ocurre fuera de la pantalla!'}
+                'Lean juntos un cuento corto antes de dormir. Pregunten: "Que crees que pasara despues?"'}
             </p>
           </div>
         )}
