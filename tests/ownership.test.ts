@@ -1,10 +1,9 @@
 /**
- * Tests para verificación de ownership en server actions.
+ * Tests para verificacion de ownership en server actions.
  *
  * Verifica que:
- * 1. Todas las server actions requieren autenticación
- * 2. El padre solo puede acceder a datos de sus propios hijos
- * 3. Los inputs se validan con Zod
+ * 1. Todas las server actions requieren autenticacion
+ * 2. Los inputs se validan con Zod
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -15,44 +14,43 @@ import {
   actualizarProgresoSchema,
   cargarProgresoSchema,
   crearEstudianteSchema,
-  guardarDiagnosticoSchema,
 } from '@/server/validation';
 
 // ─────────────────────────────────────────────
-// TEST DE VALIDACIÓN ZOD
+// TEST DE VALIDACION ZOD
 // ─────────────────────────────────────────────
 
-describe('Validación de inputs con Zod', () => {
+describe('Validacion de inputs con Zod', () => {
   const UUID_VALIDO = '550e8400-e29b-41d4-a716-446655440000';
   const UUID_INVALIDO = 'no-es-un-uuid';
 
   // ── iniciarSesion ──
   describe('iniciarSesionSchema', () => {
-    it('acepta datos válidos', () => {
+    it('acepta datos validos', () => {
       const datos = {
         studentId: UUID_VALIDO,
-        tipoActividad: 'vocales',
-        modulo: 'pre-lectura',
+        tipoActividad: 'lectura',
+        modulo: 'lectura-adaptativa',
       };
       expect(iniciarSesionSchema.parse(datos)).toEqual(datos);
     });
 
-    it('rechaza studentId inválido', () => {
+    it('rechaza studentId invalido', () => {
       expect(() =>
         iniciarSesionSchema.parse({
           studentId: UUID_INVALIDO,
-          tipoActividad: 'vocales',
-          modulo: 'pre-lectura',
+          tipoActividad: 'lectura',
+          modulo: 'lectura-adaptativa',
         }),
       ).toThrow();
     });
 
-    it('rechaza tipoActividad vacío', () => {
+    it('rechaza tipoActividad vacio', () => {
       expect(() =>
         iniciarSesionSchema.parse({
           studentId: UUID_VALIDO,
           tipoActividad: '',
-          modulo: 'pre-lectura',
+          modulo: 'lectura-adaptativa',
         }),
       ).toThrow();
     });
@@ -70,17 +68,17 @@ describe('Validación de inputs con Zod', () => {
     const datosValidos = {
       sessionId: UUID_VALIDO,
       studentId: UUID_VALIDO,
-      ejercicioId: 'vocal-A-reconocimiento-1234',
-      tipoEjercicio: 'reconocimiento',
-      pregunta: 'Busca la A',
-      respuesta: 'A',
-      respuestaCorrecta: 'A',
+      ejercicioId: 'comprension-1234',
+      tipoEjercicio: 'comprension',
+      pregunta: 'Que paso en la historia?',
+      respuesta: 'El gato encontro un tesoro',
+      respuestaCorrecta: 'El gato encontro un tesoro',
       correcta: true,
       tiempoRespuestaMs: 1200,
       intentoNumero: 1,
     };
 
-    it('acepta datos válidos completos', () => {
+    it('acepta datos validos completos', () => {
       const result = guardarRespuestaSchema.parse(datosValidos);
       expect(result.correcta).toBe(true);
       expect(result.tiempoRespuestaMs).toBe(1200);
@@ -96,7 +94,7 @@ describe('Validación de inputs con Zod', () => {
       expect(result.tiempoRespuestaMs).toBeUndefined();
     });
 
-    it('rechaza sessionId inválido', () => {
+    it('rechaza sessionId invalido', () => {
       expect(() =>
         guardarRespuestaSchema.parse({
           ...datosValidos,
@@ -105,7 +103,7 @@ describe('Validación de inputs con Zod', () => {
       ).toThrow();
     });
 
-    it('rechaza respuesta vacía', () => {
+    it('rechaza respuesta vacia', () => {
       expect(() =>
         guardarRespuestaSchema.parse({ ...datosValidos, respuesta: '' }),
       ).toThrow();
@@ -123,7 +121,7 @@ describe('Validación de inputs con Zod', () => {
 
   // ── actualizarSesion ──
   describe('actualizarSesionSchema', () => {
-    it('acepta datos mínimos', () => {
+    it('acepta datos minimos', () => {
       const datos = { sessionId: UUID_VALIDO, studentId: UUID_VALIDO };
       expect(actualizarSesionSchema.parse(datos)).toEqual(datos);
     });
@@ -150,7 +148,7 @@ describe('Validación de inputs con Zod', () => {
 
   // ── finalizarSesion ──
   describe('finalizarSesionSchema', () => {
-    it('acepta datos válidos', () => {
+    it('acepta datos validos', () => {
       const datos = {
         sessionId: UUID_VALIDO,
         duracionSegundos: 300,
@@ -162,7 +160,7 @@ describe('Validación de inputs con Zod', () => {
       expect(finalizarSesionSchema.parse(datos).completada).toBe(true);
     });
 
-    it('rechaza duración negativa', () => {
+    it('rechaza duracion negativa', () => {
       expect(() =>
         finalizarSesionSchema.parse({
           sessionId: UUID_VALIDO,
@@ -188,22 +186,22 @@ describe('Validación de inputs con Zod', () => {
 
   // ── actualizarProgreso ──
   describe('actualizarProgresoSchema', () => {
-    it('acepta datos válidos', () => {
+    it('acepta datos validos', () => {
       const datos = {
         studentId: UUID_VALIDO,
-        skillId: 'vocal-a',
-        categoria: 'vocales',
+        skillId: 'comprension-inferencia',
+        categoria: 'comprension',
         correcto: true,
       };
       expect(actualizarProgresoSchema.parse(datos)).toEqual(datos);
     });
 
-    it('rechaza skillId vacío', () => {
+    it('rechaza skillId vacio', () => {
       expect(() =>
         actualizarProgresoSchema.parse({
           studentId: UUID_VALIDO,
           skillId: '',
-          categoria: 'vocales',
+          categoria: 'comprension',
           correcto: true,
         }),
       ).toThrow();
@@ -213,8 +211,8 @@ describe('Validación de inputs con Zod', () => {
       expect(() =>
         actualizarProgresoSchema.parse({
           studentId: UUID_VALIDO,
-          skillId: 'vocal-a',
-          categoria: 'vocales',
+          skillId: 'comprension-inferencia',
+          categoria: 'comprension',
           correcto: 'si',
         }),
       ).toThrow();
@@ -223,7 +221,7 @@ describe('Validación de inputs con Zod', () => {
 
   // ── cargarProgreso ──
   describe('cargarProgresoSchema', () => {
-    it('acepta UUID válido', () => {
+    it('acepta UUID valido', () => {
       expect(cargarProgresoSchema.parse(UUID_VALIDO)).toBe(UUID_VALIDO);
     });
 
@@ -231,24 +229,22 @@ describe('Validación de inputs con Zod', () => {
       expect(() => cargarProgresoSchema.parse('no-uuid')).toThrow();
     });
 
-    it('rechaza vacío', () => {
+    it('rechaza vacio', () => {
       expect(() => cargarProgresoSchema.parse('')).toThrow();
     });
   });
 
   // ── crearEstudiante ──
   describe('crearEstudianteSchema', () => {
-    it('acepta datos válidos', () => {
+    it('acepta datos validos', () => {
       const datos = {
-        nombre: 'Sofía',
+        nombre: 'Sofia',
         fechaNacimiento: '2020-03-15',
-        mascotaTipo: 'gato' as const,
-        mascotaNombre: 'Luna',
       };
-      expect(crearEstudianteSchema.parse(datos).nombre).toBe('Sofía');
+      expect(crearEstudianteSchema.parse(datos).nombre).toBe('Sofia');
     });
 
-    it('rechaza nombre vacío', () => {
+    it('rechaza nombre vacio', () => {
       expect(() =>
         crearEstudianteSchema.parse({
           nombre: '',
@@ -260,57 +256,8 @@ describe('Validación de inputs con Zod', () => {
     it('rechaza fecha malformada', () => {
       expect(() =>
         crearEstudianteSchema.parse({
-          nombre: 'Sofía',
+          nombre: 'Sofia',
           fechaNacimiento: '15/03/2020',
-        }),
-      ).toThrow();
-    });
-
-    it('rechaza mascota inválida', () => {
-      expect(() =>
-        crearEstudianteSchema.parse({
-          nombre: 'Sofía',
-          fechaNacimiento: '2020-03-15',
-          mascotaTipo: 'unicornio',
-        }),
-      ).toThrow();
-    });
-
-    it('aplica defaults para mascota', () => {
-      const result = crearEstudianteSchema.parse({
-        nombre: 'Sofía',
-        fechaNacimiento: '2020-03-15',
-      });
-      expect(result.mascotaTipo).toBe('gato');
-      expect(result.mascotaNombre).toBe('Luna');
-    });
-  });
-
-  // ── guardarDiagnostico ──
-  describe('guardarDiagnosticoSchema', () => {
-    it('acepta datos válidos', () => {
-      const datos = {
-        studentId: UUID_VALIDO,
-        resultado: {
-          letrasReconocidas: ['A', 'E', 'M'],
-          cuentaHasta: 5,
-          concienciaFonologica: 2,
-          fecha: '2026-02-20T10:00:00Z',
-        },
-      };
-      expect(guardarDiagnosticoSchema.parse(datos).resultado.cuentaHasta).toBe(5);
-    });
-
-    it('rechaza conciencia fonológica negativa', () => {
-      expect(() =>
-        guardarDiagnosticoSchema.parse({
-          studentId: UUID_VALIDO,
-          resultado: {
-            letrasReconocidas: [],
-            cuentaHasta: 0,
-            concienciaFonologica: -1,
-            fecha: '2026-02-20',
-          },
         }),
       ).toThrow();
     });
@@ -321,10 +268,8 @@ describe('Validación de inputs con Zod', () => {
 // TEST DE ESTRUCTURA DE AUTH
 // ─────────────────────────────────────────────
 
-describe('Estructura de autenticación', () => {
-  it('requireStudentOwnership está exportado desde auth.ts', async () => {
-    // Importar dinámicamente para verificar que el export existe
-    // (no podemos ejecutar la función sin DB, pero verificamos el contrato)
+describe('Estructura de autenticacion', () => {
+  it('requireStudentOwnership esta exportado desde auth.ts', async () => {
     const authModule = await import('@/server/auth');
     expect(typeof authModule.requireStudentOwnership).toBe('function');
     expect(typeof authModule.requireAuth).toBe('function');
@@ -340,17 +285,14 @@ describe('Estructura de autenticación', () => {
     expect(typeof sessionModule.cargarProgresoEstudiante).toBe('function');
   });
 
-  it('student-actions no exporta funciones duplicadas', async () => {
+  it('student-actions exporta funciones del nuevo modelo', async () => {
     const studentModule = await import('@/server/actions/student-actions');
-    // Estas funciones deben existir
     expect(typeof studentModule.crearEstudiante).toBe('function');
     expect(typeof studentModule.obtenerEstudiantes).toBe('function');
     expect(typeof studentModule.obtenerEstudiante).toBe('function');
-    expect(typeof studentModule.guardarDiagnostico).toBe('function');
     expect(typeof studentModule.obtenerResumenProgreso).toBe('function');
 
-    // Estas funciones NO deben existir aquí (están consolidadas en session-actions)
-    expect((studentModule as Record<string, unknown>).guardarSesion).toBeUndefined();
-    expect((studentModule as Record<string, unknown>).actualizarProgreso).toBeUndefined();
+    // guardarDiagnostico ya no existe
+    expect((studentModule as Record<string, unknown>).guardarDiagnostico).toBeUndefined();
   });
 });

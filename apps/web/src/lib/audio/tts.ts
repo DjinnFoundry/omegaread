@@ -1,5 +1,5 @@
 /**
- * Utilidad de Text-to-Speech para la mascota y UI del niño.
+ * Utilidad de Text-to-Speech para UI del nino.
  * Usa Web Speech API con voz en español, rate reducido y pitch amigable.
  *
  * Incluye detección de disponibilidad para que los componentes
