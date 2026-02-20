@@ -15,13 +15,10 @@ Prioridad:
 Estado inicial:
 - `todo`
 
-## Baseline de decisiones cerradas
+## Referencia de decisiones
 
-1. Segmento inicial: `4-9 anos`
-2. Idioma inicial: `ES primero`
-3. Distribucion inicial: `B2C familias`
-4. Voice stack: `ASR/TTS dentro de MVP`
-5. Politica de apertura: `repo privado hasta umbral de calidad`
+Fuente canonica:
+- `docs/planning/DECISIONES-CERRADAS.md`
 
 ## Epicas
 
@@ -95,21 +92,21 @@ Estado inicial:
 | B-044 | P3 | E7 | Definir economia de recompensas no monetaria | Evitar incentivos toxicos | Rewards intrinsecos con limites claros | B-023 |
 | B-045 | P3 | E14 | Definir playbook de incidentes pedagogicos | Respuesta rapida a errores | SOP para retirar contenido o regla fallida | B-029, B-040 |
 
-## Priorizacion por fases
+## Priorizacion por olas (flujo continuo)
 
-### Fase A (pre-codigo obligatorio)
+### Ola A (pre-codigo obligatorio)
 
 `B-001` a `B-012`
 
-### Fase B (MVP build planning)
+### Ola B (base de producto en produccion controlada)
 
 `B-013` a `B-031`
 
-### Fase C (post-MVP inmediato)
+### Ola C (expansion funcional inmediata)
 
 `B-032` a `B-040`
 
-### Fase D (escala y comunidad)
+### Ola D (escala y comunidad)
 
 `B-041` a `B-045`
 
@@ -120,16 +117,7 @@ Estado inicial:
 3. Lanzar gamificacion antes de anti-gaming robusto.
 4. Lanzar dashboard sin recomendaciones accionables.
 
-## Definicion de Ready (para iniciar implementacion de un item)
+## Reglas de ejecucion
 
-1. Problem statement claro.
-2. Acceptance criteria medibles.
-3. Dependencias identificadas.
-4. Riesgo principal identificado con mitigacion.
-
-## Definicion de Done (para cerrar item)
-
-1. Cumple acceptance criteria.
-2. Tiene pruebas definidas para su capa.
-3. Tiene observabilidad minima (metric/event/log).
-4. Tiene nota de impacto en UX y aprendizaje.
+`DoR/DoD` canonicamente definidos en:
+- `docs/planning/PROPUESTA-ARRANQUE-CONTINUO-2026-02-20.md`

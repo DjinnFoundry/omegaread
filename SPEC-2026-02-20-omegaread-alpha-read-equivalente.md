@@ -344,13 +344,14 @@ Tu lista cubria bien el 60-70% del producto. El spec agrega piezas criticas para
 5. QA robusto de contenido para evitar preguntas malas.
 6. Compliance infantil y gobernanza de datos.
 
-## 17) Snapshot de decisiones (2026-02-20)
+## 17) Snapshot de decisiones
 
-1. Segmento inicial: `4-9 anos`.
-2. Idioma inicial: `ES primero`.
-3. Distribucion inicial: `B2C familias`.
-4. MVP incluye lectura en voz alta y `ASR`.
-5. Licencia final: pendiente, con fase privada inicial.
+Fuente canonica:
+- `docs/planning/DECISIONES-CERRADAS.md`
+
+Nota:
+1. Este spec esta alineado con las decisiones activas de ese registro.
+2. Cualquier cambio de decision debe reflejarse primero en el registro canonico.
 
 ## 18) Fuentes consultadas (publicas)
 

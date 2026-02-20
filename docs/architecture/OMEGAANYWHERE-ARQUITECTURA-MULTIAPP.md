@@ -3,6 +3,11 @@
 Fecha: 2026-02-20  
 Estado: Draft v1
 
+## Gobernanza documental
+
+1. Este documento es la fuente canonica para `Event Schema v1` y `AppDomainContract v1`.
+2. Documentos de planning deben referenciar este archivo y no duplicar definiciones tecnicas.
+
 ## Objetivo
 
 Construir una arquitectura donde cada nueva app educativa (OmegaRead, OmegaMath, OmegaScience, etc.) reutilice:

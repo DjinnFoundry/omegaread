@@ -65,28 +65,22 @@ Entregable:
 
 ### Semana 3 (Plan de ejecucion)
 
-1. Partir backlog en epics/sprints con dependencias reales.
+1. Partir backlog en olas y work packets con dependencias reales.
 2. Definir estrategia de pruebas por capa (unit, integration, e2e, pedagogic QA).
 3. Preparar riesgos de lanzamiento piloto y plan de mitigacion.
-4. Definir criterio de "go/no-go" para Sprint 1 de implementacion.
+4. Definir criterio de "go/no-go" para Ola 1 de implementacion continua.
 
 ## Artefactos que quedan listos al final de pre-codigo
 
 1. Backlog inicial completo y priorizado.
 2. Arquitectura multi-app con diagramas.
 3. Dossier de referencias con implicaciones al producto.
-4. Lista de decisiones abiertas y propuesta de default para cada una.
+4. Registro canonico de decisiones cerradas y pendientes.
 
-## Decisiones cerradas (2026-02-20)
+## Decisiones cerradas
 
-1. Segmento inicial:
-   - Decision: `4-9 anos` (desde early readers)
-2. Idioma inicial:
-   - Decision: `ES primero`, luego expansion a otros idiomas
-3. Distribucion inicial:
-   - Decision: `B2C familias` (dogfooding directo en casa)
-4. Voz/ASR:
-   - Decision: `dentro de MVP` para replicar estado del arte
+Fuente canonica:
+- `docs/planning/DECISIONES-CERRADAS.md`
 
 ## Decisiones pendientes (minimas)
 

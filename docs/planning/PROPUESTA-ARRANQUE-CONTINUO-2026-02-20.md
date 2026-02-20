@@ -5,11 +5,8 @@ Estado: propuesta para aprobacion
 
 ## Contexto cerrado
 
-1. Segmento inicial: `4-9 anos`.
-2. Idioma inicial: `ES primero`.
-3. Go-to-market inicial: `B2C familias`.
-4. Voz/ASR: `dentro de MVP`.
-5. Repositorio: `privado` hasta que el producto se demuestre de alta calidad en uso real.
+Fuente canonica de decisiones:
+- `docs/planning/DECISIONES-CERRADAS.md`
 
 ## 1) Propuesta de stack (con opciones)
 
@@ -56,69 +53,13 @@ Contras:
 
 ## 2) Propuesta Event Schema v1 y AppDomainContract v1
 
-### 2.1 Event Envelope canonico
+Definicion canonica (sin duplicar):
+- `docs/architecture/OMEGAANYWHERE-ARQUITECTURA-MULTIAPP.md`
 
-Todos los eventos deben tener:
-
-```json
-{
-  "event_id": "uuid",
-  "event_name": "session_completed",
-  "event_version": 1,
-  "occurred_at": "2026-02-20T12:00:00Z",
-  "tenant_id": "home",
-  "student_id": "stu_123",
-  "domain_id": "read",
-  "session_id": "ses_123",
-  "actor_type": "child|parent|system",
-  "payload": {}
-}
-```
-
-Reglas:
-1. Cambios breaking -> subir `event_version`.
-2. Campos nuevos compatibles -> mantener version y documentar.
-3. Eventos invalidos -> rechazo en ingestion.
-
-### 2.2 Eventos base obligatorios
-
-1. `session_started`
-2. `session_completed`
-3. `question_answered`
-4. `mastery_evaluated`
-5. `recommendation_served`
-6. `xp_awarded`
-7. `anti_pattern_flagged`
-8. `read_aloud_started`
-9. `oral_reading_sample_captured`
-10. `asr_scored`
-
-### 2.3 AppDomainContract v1
-
-Cada nueva app (read, math, science) entrega un `domain-manifest.json`:
-
-```json
-{
-  "contract_version": 1,
-  "domain_id": "read",
-  "capabilities": {
-    "tts": true,
-    "asr": true
-  },
-  "skill_map": [
-    { "domain_skill": "inferencia", "global_skill": "reading_inference" }
-  ],
-  "events_emitted": ["session_started", "session_completed", "asr_scored"],
-  "scoring_adapter": {
-    "input": ["accuracy", "fluency", "consistency", "difficulty_gain"],
-    "output_scale": "0-100"
-  },
-  "dashboard_cards": ["progress_trend", "alerts", "skill_heatmap"]
-}
-```
-
-Regla de calidad:
-1. Ninguna app entra a produccion sin pasar pruebas de contrato.
+Reglas operativas de ejecucion:
+1. Congelar `Event Schema v1` y `AppDomainContract v1` antes de build paralelo.
+2. Ninguna app entra a produccion sin pasar pruebas de contrato.
+3. Cualquier cambio breaking de contrato/evento requiere control de version explicito.
 
 ## 3) ASR V1 (ya acordado)
 
@@ -258,4 +199,3 @@ Ola 5 (Semanas 9-12):
 2. Congelar `Event Schema v1` y `AppDomainContract v1`.
 3. Aplicar politica de audio: analizar y borrar.
 4. Operar con flujo continuo por olas, no sprint unico.
-
