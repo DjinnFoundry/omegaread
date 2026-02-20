@@ -13,12 +13,12 @@ const AUTH_COOKIE = 'omega-auth';
 
 function getSecret(): Uint8Array {
   const raw = process.env.AUTH_SECRET;
-  if (!raw && process.env.NODE_ENV === 'production') {
+  if (!raw) {
     throw new Error(
-      'AUTH_SECRET must be set in production (at least 32 characters)'
+      'AUTH_SECRET must be set (at least 32 characters). Generate one with: openssl rand -base64 32'
     );
   }
-  return new TextEncoder().encode(raw ?? 'dev-secret');
+  return new TextEncoder().encode(raw);
 }
 
 // ─── Helpers de JWT ───

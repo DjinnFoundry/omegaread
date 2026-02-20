@@ -12,7 +12,7 @@ import {
   generatedStories,
   topics,
 } from '@omegaread/db';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { requireStudentOwnership } from '../auth';
 import {
   calcularProgresoNivel,
@@ -348,27 +348,27 @@ type TopicRow = Awaited<ReturnType<typeof db.query.topics.findMany>>[number];
 
 async function obtenerRespuestasDeSesiones(sessionIds: string[]) {
   const allResponses: ResponseRow[] = [];
-  // Batch in chunks to avoid huge IN clauses
   const CHUNK = 50;
   for (let i = 0; i < sessionIds.length; i += CHUNK) {
     const chunk = sessionIds.slice(i, i + CHUNK);
-    for (const sid of chunk) {
-      const resps = await db.query.responses.findMany({
-        where: eq(responses.sessionId, sid),
-      });
-      allResponses.push(...resps);
-    }
+    const resps = await db.query.responses.findMany({
+      where: inArray(responses.sessionId, chunk),
+    });
+    allResponses.push(...resps);
   }
   return allResponses;
 }
 
 async function obtenerHistorias(storyIds: string[]) {
+  const uniqueIds = [...new Set(storyIds)];
   const all: StoryRow[] = [];
-  for (const id of storyIds) {
-    const story = await db.query.generatedStories.findFirst({
-      where: eq(generatedStories.id, id),
+  const CHUNK = 50;
+  for (let i = 0; i < uniqueIds.length; i += CHUNK) {
+    const chunk = uniqueIds.slice(i, i + CHUNK);
+    const stories = await db.query.generatedStories.findMany({
+      where: inArray(generatedStories.id, chunk),
     });
-    if (story) all.push(story);
+    all.push(...stories);
   }
   return all;
 }
