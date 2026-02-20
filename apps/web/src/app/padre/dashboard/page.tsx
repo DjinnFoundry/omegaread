@@ -4,7 +4,6 @@ import { obtenerDashboardPadre } from '@/server/actions/dashboard-actions';
 import Link from 'next/link';
 import { DashboardHijo } from '@/components/dashboard/DashboardHijo';
 import { DashboardPadreDetalle } from '@/components/dashboard/DashboardPadreDetalle';
-import { LogoutButton } from '@/components/dashboard/LogoutButton';
 import { SelectorHijoDashboard } from '@/components/dashboard/SelectorHijoDashboard';
 
 /**
@@ -38,16 +37,13 @@ export default async function DashboardPage({
     <main className="min-h-screen bg-fondo p-4 md:p-6">
       <div className="mx-auto max-w-2xl">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-texto">
-              Hola, {padre.nombre}
-            </h1>
-            <p className="text-sm text-texto-suave">
-              Panel de seguimiento familiar
-            </p>
-          </div>
-          <LogoutButton />
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-texto">
+            Hola, {padre.nombre}
+          </h1>
+          <p className="text-sm text-texto-suave">
+            Panel de seguimiento familiar
+          </p>
         </div>
 
         {/* Lista de hijos (resumen) */}

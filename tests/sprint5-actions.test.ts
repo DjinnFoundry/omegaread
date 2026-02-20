@@ -6,11 +6,13 @@ import { describe, it, expect } from 'vitest';
 import {
   obtenerDashboardNino,
   obtenerDashboardPadre,
+} from '@/server/actions/dashboard-actions';
+import {
   calcularProgresoNivel,
   generarMensajeMotivacional,
   calcularDesgloseTipos,
   generarRecomendaciones,
-} from '@/server/actions/dashboard-actions';
+} from '@/server/actions/dashboard-utils';
 
 describe('Sprint 5: dashboard-actions exports', () => {
   it('obtenerDashboardNino esta exportada como funcion', () => {

@@ -9,7 +9,7 @@ import {
   generarMensajeMotivacional,
   calcularDesgloseTipos,
   generarRecomendaciones,
-} from '@/server/actions/dashboard-actions';
+} from '@/server/actions/dashboard-utils';
 
 // ─────────────────────────────────────────────
 // calcularProgresoNivel

@@ -4,11 +4,23 @@
  * Dashboard detallado del padre para un hijo especifico.
  * Sprint 5: graficos de evolucion, desglose, recomendaciones, timeline.
  */
-import { useState } from 'react';
-import { LineaEvolucion } from '@/components/charts/LineaEvolucion';
-import { LineaNivel } from '@/components/charts/LineaNivel';
-import { RadarTipos, formatearDatosTipos } from '@/components/charts/RadarTipos';
+import { useState, lazy, Suspense } from 'react';
+import { formatearDatosTipos } from '@/components/charts/RadarTipos';
 import type { DashboardPadreData } from '@/server/actions/dashboard-actions';
+
+const LineaEvolucion = lazy(() =>
+  import('@/components/charts/LineaEvolucion').then(m => ({ default: m.LineaEvolucion }))
+);
+const LineaNivel = lazy(() =>
+  import('@/components/charts/LineaNivel').then(m => ({ default: m.LineaNivel }))
+);
+const RadarTipos = lazy(() =>
+  import('@/components/charts/RadarTipos').then(m => ({ default: m.RadarTipos }))
+);
+
+function ChartFallback() {
+  return <div className="h-32 rounded-xl bg-neutro/10 animate-pulse" />;
+}
 
 interface Props {
   data: DashboardPadreData;
@@ -32,16 +44,18 @@ export function DashboardPadreDetalle({ data }: Props) {
 
       {/* a) Evolucion semanal de comprension */}
       <SeccionCard titulo="Evolucion semanal de comprension" emoji="📈">
-        <LineaEvolucion
-          datos={data.evolucionSemanal
-            .filter(s => s.totalSesiones > 0)
-            .map(s => ({
-              label: s.semana,
-              valor: s.scoreMedio,
-            }))}
-          color="#4ECDC4"
-          mostrarValores
-        />
+        <Suspense fallback={<ChartFallback />}>
+          <LineaEvolucion
+            datos={data.evolucionSemanal
+              .filter(s => s.totalSesiones > 0)
+              .map(s => ({
+                label: s.semana,
+                valor: s.scoreMedio,
+              }))}
+            color="#4ECDC4"
+            mostrarValores
+          />
+        </Suspense>
         <p className="mt-1 text-[10px] text-texto-suave text-center">
           Score medio de comprension por semana
         </p>
@@ -49,14 +63,16 @@ export function DashboardPadreDetalle({ data }: Props) {
 
       {/* b) Evolucion de dificultad */}
       <SeccionCard titulo="Evolucion de dificultad" emoji="📐">
-        <LineaNivel
-          datos={data.evolucionDificultad.map(e => ({
-            fecha: e.fecha,
-            nivel: e.nivelNuevo,
-            direccion: e.direccion,
-            razon: e.razon,
-          }))}
-        />
+        <Suspense fallback={<ChartFallback />}>
+          <LineaNivel
+            datos={data.evolucionDificultad.map(e => ({
+              fecha: e.fecha,
+              nivel: e.nivelNuevo,
+              direccion: e.direccion,
+              razon: e.razon,
+            }))}
+          />
+        </Suspense>
         <div className="mt-2 flex justify-center gap-4 text-[10px] text-texto-suave">
           <span className="flex items-center gap-1">
             <span className="inline-block h-2 w-2 rounded-full bg-acierto" /> Subio
@@ -72,7 +88,9 @@ export function DashboardPadreDetalle({ data }: Props) {
 
       {/* c) Desglose por tipo de pregunta */}
       <SeccionCard titulo="Fortalezas por tipo de pregunta" emoji="🎯">
-        <RadarTipos datos={formatearDatosTipos(data.desgloseTipos)} />
+        <Suspense fallback={<ChartFallback />}>
+          <RadarTipos datos={formatearDatosTipos(data.desgloseTipos)} />
+        </Suspense>
       </SeccionCard>
 
       {/* d) Comparativa por topics */}

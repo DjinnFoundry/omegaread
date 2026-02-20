@@ -1,7 +1,7 @@
 {
-  "name": "OmegaAnywhere — Aprende jugando",
-  "short_name": "OmegaAnywhere",
-  "description": "Plataforma educativa para niños de 4-8 años. Lectura, números y más, en español.",
+  "name": "OmegaRead — Lectura adaptativa",
+  "short_name": "OmegaRead",
+  "description": "Historias personalizadas que se adaptan al nivel de tu hijo. Comprension lectora medible, progreso visible.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FFF9F0",

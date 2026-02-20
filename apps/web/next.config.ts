@@ -1,12 +1,11 @@
 import type { NextConfig } from 'next';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   // Transpile monorepo packages
   transpilePackages: ['@omegaread/db'],
-  // Experimental features
-  experimental: {
-    // Server actions enabled by default in Next 15
-  },
+  // Set correct workspace root for monorepo
+  outputFileTracingRoot: path.join(import.meta.dirname, '../../'),
 };
 
 export default nextConfig;
