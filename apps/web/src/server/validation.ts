@@ -87,3 +87,101 @@ export const crearEstudianteSchema = z.object({
   nombre: nombreCorto,
   fechaNacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha invalida (YYYY-MM-DD)'),
 });
+
+// ─────────────────────────────────────────────
+// PROFILE ACTIONS (Sprint 1)
+// ─────────────────────────────────────────────
+
+const cursoValido = z.enum([
+  'infantil-3',
+  'infantil-4',
+  'infantil-5',
+  '1o-primaria',
+  '2o-primaria',
+  '3o-primaria',
+  '4o-primaria',
+]);
+
+const rutinaLecturaValida = z.enum(['diaria', 'varias-por-semana', 'ocasional', 'rara-vez']);
+
+const acompanamientoValido = z.enum(['siempre', 'a-veces', 'nunca']);
+
+/** Schema: actualizarPerfilEstudiante */
+export const actualizarPerfilSchema = z.object({
+  studentId: uuid,
+  curso: cursoValido,
+  centroEscolar: z.string().max(200).optional(),
+  rutinaLectura: rutinaLecturaValida,
+  acompanamiento: acompanamientoValido,
+  senalesDificultad: z.object({
+    atencion: z.boolean().optional(),
+    vocabulario: z.boolean().optional(),
+    frustracion: z.boolean().optional(),
+    otroDetalle: z.string().max(300).optional(),
+  }),
+  personajesFavoritos: z.string().max(300).optional(),
+  temasEvitar: z.array(z.string().max(50)).max(10).optional(),
+});
+
+/** Schema: guardarIntereses (del nino) */
+export const guardarInteresesSchema = z.object({
+  studentId: uuid,
+  intereses: z.array(z.string().max(50)).min(1, 'Selecciona al menos 1 interes').max(10),
+});
+
+// ─────────────────────────────────────────────
+// BASELINE ACTIONS (Sprint 1)
+// ─────────────────────────────────────────────
+
+const tipoPreguntaValido = z.enum(['literal', 'inferencia', 'vocabulario', 'resumen']);
+
+/** Schema: guardarRespuestaBaseline */
+export const guardarRespuestaBaselineSchema = z.object({
+  studentId: uuid,
+  nivelTexto: z.number().int().min(1).max(4),
+  textoId: z.string().min(1).max(50),
+  totalPreguntas: z.number().int().min(1).max(10),
+  aciertos: z.number().int().min(0).max(10),
+  aciertosPorTipo: z.record(z.string(), z.number().int().min(0)),
+  tiempoLecturaMs: z.number().int().nonnegative().optional(),
+  respuestas: z.array(
+    z.object({
+      preguntaId: z.string().min(1),
+      tipo: tipoPreguntaValido,
+      respuesta: z.string(),
+      correcta: z.boolean(),
+      tiempoMs: z.number().int().nonnegative().optional(),
+    })
+  ),
+});
+
+/** Schema: finalizarBaseline */
+export const finalizarBaselineSchema = z.object({
+  studentId: uuid,
+  nivelLectura: z.number().min(1).max(5),
+  comprensionScore: z.number().min(0).max(1),
+  confianza: z.enum(['alto', 'medio', 'bajo']),
+});
+
+// ─────────────────────────────────────────────
+// READING SESSION ACTIONS (contrato Sprint 2)
+// ─────────────────────────────────────────────
+
+/** Schema: crearSesionLectura */
+export const crearSesionLecturaSchema = z.object({
+  studentId: uuid,
+  textoId: z.string().min(1).max(100).optional(),
+  nivelTexto: z.number().min(1).max(10).optional(),
+  topicId: z.string().uuid().optional(),
+});
+
+/** Schema: registrarRespuestaComprension */
+export const registrarRespuestaComprensionSchema = z.object({
+  sessionId: uuid,
+  studentId: uuid,
+  preguntaId: z.string().min(1).max(100),
+  tipo: tipoPreguntaValido,
+  respuestaSeleccionada: z.number().int().min(0),
+  correcta: z.boolean(),
+  tiempoMs: z.number().int().nonnegative(),
+});

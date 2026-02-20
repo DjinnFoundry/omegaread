@@ -2,7 +2,8 @@
  * Schema de base de datos para OmegaRead
  * Modelo de datos para lectura adaptativa.
  *
- * Tablas: padres, estudiantes, sesiones, respuestas, logros, progreso de habilidades
+ * Tablas: padres, estudiantes, topics, sesiones, respuestas,
+ *         logros, progreso de habilidades, baseline, ajustes de dificultad
  */
 import {
   pgTable,
@@ -50,8 +51,32 @@ export const students = pgTable('students', {
   fechaNacimiento: timestamp('fecha_nacimiento', { mode: 'date' }).notNull(),
   idioma: varchar('idioma', { length: 10 }).notNull().default('es-ES'),
   dialecto: varchar('dialecto', { length: 10 }).notNull().default('es-ES'),
-  /** Intereses del nino (para personalizar historias) */
+  /** Curso escolar: "1o Primaria", "2o Primaria", etc. */
+  curso: varchar('curso', { length: 30 }),
+  /** Centro escolar (opcional) */
+  centroEscolar: varchar('centro_escolar', { length: 200 }),
+  /** Rutina de lectura: diaria, varias-por-semana, ocasional, rara-vez */
+  rutinaLectura: varchar('rutina_lectura', { length: 30 }),
+  /** Acompanamiento en casa: siempre, a-veces, nunca */
+  acompanamiento: varchar('acompanamiento', { length: 20 }),
+  /** Senales de dificultad reportadas por el padre */
+  senalesDificultad: jsonb('senales_dificultad').$type<SenalesDificultad>().default({}),
+  /** Intereses del nino (IDs de topics) */
   intereses: jsonb('intereses').$type<string[]>().default([]),
+  /** Topics que el nino quiere evitar */
+  temasEvitar: jsonb('temas_evitar').$type<string[]>().default([]),
+  /** Personajes favoritos (texto libre del padre) */
+  personajesFavoritos: text('personajes_favoritos'),
+  /** Nivel de lectura actual (numerico, 1-10) */
+  nivelLectura: real('nivel_lectura'),
+  /** Score de comprension del baseline (0-1) */
+  comprensionScore: real('comprension_score'),
+  /** Confianza del baseline: alto, medio, bajo */
+  baselineConfianza: varchar('baseline_confianza', { length: 10 }),
+  /** Si completo el test de baseline */
+  baselineCompletado: boolean('baseline_completado').notNull().default(false),
+  /** Si el padre completo el perfil con contexto e intereses */
+  perfilCompleto: boolean('perfil_completo').notNull().default(false),
   /** Configuracion de accesibilidad */
   accesibilidad: jsonb('accesibilidad').$type<AccesibilidadConfig>().default({}),
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
@@ -66,6 +91,110 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
   sessions: many(sessions),
   achievements: many(achievements),
   skillProgress: many(skillProgress),
+  baselineAssessments: many(baselineAssessments),
+}));
+
+// ─────────────────────────────────────────────
+// TOPICS (taxonomia de intereses)
+// ─────────────────────────────────────────────
+
+export const topics = pgTable(
+  'topics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: varchar('slug', { length: 50 }).notNull().unique(),
+    nombre: varchar('nombre', { length: 100 }).notNull(),
+    emoji: varchar('emoji', { length: 10 }).notNull(),
+    descripcion: text('descripcion').notNull(),
+    edadMinima: integer('edad_minima').notNull().default(5),
+    edadMaxima: integer('edad_maxima').notNull().default(9),
+    activo: boolean('activo').notNull().default(true),
+    orden: integer('orden').notNull().default(0),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('topics_slug_idx').on(table.slug),
+    index('topics_activo_idx').on(table.activo),
+  ]
+);
+
+// ─────────────────────────────────────────────
+// BASELINE ASSESSMENTS (test de nivel inicial)
+// ─────────────────────────────────────────────
+
+export const baselineAssessments = pgTable(
+  'baseline_assessments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    studentId: uuid('student_id')
+      .notNull()
+      .references(() => students.id, { onDelete: 'cascade' }),
+    /** Nivel del texto presentado (1=facil, 4=dificil) */
+    nivelTexto: integer('nivel_texto').notNull(),
+    /** Identificador del texto usado */
+    textoId: varchar('texto_id', { length: 50 }).notNull(),
+    totalPreguntas: integer('total_preguntas').notNull(),
+    aciertos: integer('aciertos').notNull(),
+    /** Aciertos por tipo de pregunta */
+    aciertosPorTipo: jsonb('aciertos_por_tipo').$type<Record<string, number>>().default({}),
+    /** Tiempo que tardo en leer el texto (ms) */
+    tiempoLecturaMs: integer('tiempo_lectura_ms'),
+    /** Respuestas detalladas */
+    respuestas: jsonb('respuestas').$type<BaselineRespuesta[]>().default([]),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('baseline_student_idx').on(table.studentId),
+  ]
+);
+
+export const baselineAssessmentsRelations = relations(baselineAssessments, ({ one }) => ({
+  student: one(students, {
+    fields: [baselineAssessments.studentId],
+    references: [students.id],
+  }),
+}));
+
+// ─────────────────────────────────────────────
+// AJUSTES DE DIFICULTAD (trazabilidad)
+// ─────────────────────────────────────────────
+
+export const difficultyAdjustments = pgTable(
+  'difficulty_adjustments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    studentId: uuid('student_id')
+      .notNull()
+      .references(() => students.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .references(() => sessions.id, { onDelete: 'set null' }),
+    /** Nivel anterior */
+    nivelAnterior: real('nivel_anterior').notNull(),
+    /** Nivel nuevo */
+    nivelNuevo: real('nivel_nuevo').notNull(),
+    /** Direccion: subir, bajar, mantener */
+    direccion: varchar('direccion', { length: 10 }).notNull(),
+    /** Razon legible del ajuste */
+    razon: text('razon').notNull(),
+    /** Datos que sustentaron la decision */
+    evidencia: jsonb('evidencia').$type<DifficultyEvidence>().default({}),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('difficulty_student_idx').on(table.studentId),
+    index('difficulty_session_idx').on(table.sessionId),
+  ]
+);
+
+export const difficultyAdjustmentsRelations = relations(difficultyAdjustments, ({ one }) => ({
+  student: one(students, {
+    fields: [difficultyAdjustments.studentId],
+    references: [students.id],
+  }),
+  session: one(sessions, {
+    fields: [difficultyAdjustments.sessionId],
+    references: [sessions.id],
+  }),
 }));
 
 // ─────────────────────────────────────────────
@@ -79,9 +208,9 @@ export const sessions = pgTable(
     studentId: uuid('student_id')
       .notNull()
       .references(() => students.id, { onDelete: 'cascade' }),
-    /** Tipo: lectura, comprension, etc. */
+    /** Tipo: lectura, comprension, baseline, etc. */
     tipoActividad: varchar('tipo_actividad', { length: 50 }).notNull(),
-    /** Modulo: lectura-adaptativa, etc. */
+    /** Modulo: lectura-adaptativa, baseline, etc. */
     modulo: varchar('modulo', { length: 50 }).notNull(),
     duracionSegundos: integer('duracion_segundos'),
     completada: boolean('completada').notNull().default(false),
@@ -103,6 +232,7 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
     references: [students.id],
   }),
   responses: many(responses),
+  difficultyAdjustments: many(difficultyAdjustments),
 }));
 
 // ─────────────────────────────────────────────
@@ -117,7 +247,7 @@ export const responses = pgTable(
       .notNull()
       .references(() => sessions.id, { onDelete: 'cascade' }),
     ejercicioId: varchar('ejercicio_id', { length: 100 }).notNull(),
-    /** Tipo de ejercicio: comprension, vocabulario, inferencia, etc. */
+    /** Tipo de ejercicio: literal, inferencia, vocabulario, resumen */
     tipoEjercicio: varchar('tipo_ejercicio', { length: 50 }).notNull(),
     pregunta: text('pregunta').notNull(),
     respuesta: text('respuesta').notNull(),
@@ -226,4 +356,28 @@ export type AccesibilidadConfig = {
   modoTDAH?: boolean;
   altoContraste?: boolean;
   duracionSesionMin?: number;
+};
+
+export type SenalesDificultad = {
+  atencion?: boolean;
+  vocabulario?: boolean;
+  frustracion?: boolean;
+  otroDetalle?: string;
+};
+
+export type BaselineRespuesta = {
+  preguntaId: string;
+  tipo: 'literal' | 'inferencia' | 'vocabulario' | 'resumen';
+  respuesta: string;
+  correcta: boolean;
+  tiempoMs?: number;
+};
+
+export type DifficultyEvidence = {
+  comprensionScore?: number;
+  ritmoNormalizado?: number;
+  estabilidad?: number;
+  sessionScore?: number;
+  totalPreguntas?: number;
+  totalAciertos?: number;
 };
