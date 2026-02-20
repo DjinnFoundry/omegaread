@@ -8,12 +8,13 @@
  * - Integrar con el contexto de progreso del estudiante
  * - Guardar respuestas progresivamente en la DB
  * - Navegar al finalizar
+ * - Gestionar la mascota como interfaz reactiva
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { SesionVocales } from '@/components/actividades/vocales/SesionVocales';
 import { useStudentProgress } from '@/contexts/StudentProgressContext';
-import { Mascota } from '@/components/mascota/Mascota';
+import { Mascota, type EstadoMascota } from '@/components/mascota/Mascota';
 import { MascotaDialogo } from '@/components/mascota/MascotaDialogo';
 import type { ResumenSesion } from '@/lib/actividades/masteryTracker';
 import type { Vocal } from '@/lib/actividades/generadorVocales';
@@ -38,9 +39,11 @@ export default function VocalesPage() {
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [introDialogo, setIntroDialogo] = useState('');
+  const [estadoMascota, setEstadoMascota] = useState<EstadoMascota>('feliz');
+  const [dialogoMascota, setDialogoMascota] = useState('');
   const inicioRef = useRef(Date.now());
   const estrellasEnSesionRef = useRef(0);
+  const erroresConsecutivosRef = useRef(0);
 
   // Redirigir si no hay estudiante
   useEffect(() => {
@@ -80,16 +83,6 @@ export default function VocalesPage() {
     return () => { cancelled = true; };
   }, [estudiante]);
 
-  // Mostrar intro de la mascota
-  useEffect(() => {
-    if (ready && estudiante) {
-      const vocalInicial = progress.vocalActual || 'A';
-      setIntroDialogo(
-        `¡Hola ${estudiante.nombre}! ¡Vamos a jugar con las vocales!`
-      );
-    }
-  }, [ready, estudiante, progress.vocalActual]);
-
   // ── Callback para guardar cada respuesta progresivamente ──
   const onRespuesta = useCallback(
     async (datos: {
@@ -98,12 +91,50 @@ export default function VocalesPage() {
       correcto: boolean;
       tiempoMs: number;
     }) => {
-      if (!sessionId || !estudiante) return;
+      if (!estudiante) return;
+
+      // Actualizar estado de la mascota según resultado
+      if (datos.correcto) {
+        erroresConsecutivosRef.current = 0;
+        setEstadoMascota('celebrando');
+        // Frases variadas para aciertos
+        const frases = [
+          '¡Genial!', '¡Muy bien!', '¡Eso es!', '¡Bravo!',
+          '¡Increíble!', '¡Súper!',
+        ];
+        setDialogoMascota(frases[Math.floor(Math.random() * frases.length)]);
+        // Volver a estado normal después
+        setTimeout(() => {
+          setEstadoMascota('feliz');
+          setDialogoMascota('');
+        }, 1500);
+      } else {
+        erroresConsecutivosRef.current++;
+        setEstadoMascota('pensando');
+
+        if (erroresConsecutivosRef.current >= 2) {
+          // Animar al niño tras fallos consecutivos
+          const animos = [
+            '¡Tú puedes!', '¡Sigue intentando!',
+            '¡Casi lo tienes!', '¡No te rindas!',
+          ];
+          setDialogoMascota(animos[Math.floor(Math.random() * animos.length)]);
+        } else {
+          setDialogoMascota('¡Casi!');
+        }
+        setTimeout(() => {
+          setEstadoMascota('feliz');
+          setDialogoMascota('');
+        }, 2000);
+      }
+
+      if (!sessionId) return;
 
       // Guardar respuesta en DB inmediatamente
       try {
         await guardarRespuestaIndividual({
           sessionId,
+          studentId: estudiante.id,
           ejercicioId: `vocal-${datos.vocal}-${datos.actividad}-${Date.now()}`,
           tipoEjercicio: datos.actividad,
           pregunta: `${datos.actividad} vocal ${datos.vocal}`,
@@ -133,18 +164,20 @@ export default function VocalesPage() {
     addEstrellas(1);
 
     // Actualizar sesión en DB
-    if (sessionId) {
+    if (sessionId && estudiante) {
       actualizarSesionEnCurso({
         sessionId,
+        studentId: estudiante.id,
         estrellasGanadas: estrellasEnSesionRef.current,
       }).catch(() => {});
     }
-  }, [sessionId, addEstrellas]);
+  }, [sessionId, estudiante, addEstrellas]);
 
   // ── Callback cuando se domina una vocal ──
   const onVocalDominada = useCallback(
     (vocal: string) => {
       marcarVocalDominada(vocal);
+      setEstadoMascota('celebrando');
     },
     [marcarVocalDominada],
   );
@@ -192,7 +225,7 @@ export default function VocalesPage() {
       <main className="flex min-h-screen items-center justify-center bg-fondo">
         <div className="flex flex-col items-center gap-4">
           <Mascota estado="feliz" size="lg" />
-          <div className="text-2xl animate-pulse" style={{ color: '#8D6E63' }}>
+          <div className="text-2xl animate-pulse text-texto-suave">
             Preparando...
           </div>
         </div>
@@ -212,9 +245,16 @@ export default function VocalesPage() {
         </button>
       </div>
 
-      {/* Mascota visible durante toda la sesión */}
-      <div className="flex items-center justify-center px-4 pt-2 pb-1">
-        <Mascota estado="feliz" size="sm" />
+      {/* Mascota reactiva durante la sesión */}
+      <div className="flex flex-col items-center px-4 pt-2 pb-1">
+        {dialogoMascota && (
+          <MascotaDialogo
+            texto={dialogoMascota}
+            onFinish={() => setDialogoMascota('')}
+            visible={!!dialogoMascota}
+          />
+        )}
+        <Mascota estado={estadoMascota} size="sm" />
       </div>
 
       {/* Sesión de vocales — componente único, fuente de verdad */}

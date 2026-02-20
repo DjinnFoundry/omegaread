@@ -93,31 +93,6 @@ export function Mascota({
       role="img"
       aria-label={`${nombre} está ${estado}`}
     >
-      {/* Keyframes inline para animaciones custom */}
-      <style>{`
-        @keyframes sway {
-          0%, 100% { transform: rotate(-2deg); }
-          50% { transform: rotate(2deg); }
-        }
-        @keyframes blink {
-          0%, 90%, 100% { transform: scaleY(1); }
-          95% { transform: scaleY(0.1); }
-        }
-        @keyframes float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-8px); }
-        }
-        @keyframes zzz {
-          0% { opacity: 0; transform: translate(0, 0) scale(0.5); }
-          50% { opacity: 1; transform: translate(10px, -15px) scale(1); }
-          100% { opacity: 0; transform: translate(20px, -30px) scale(0.5); }
-        }
-        .animate-sway { animation: sway 3s ease-in-out infinite; }
-        .animate-blink { animation: blink 4s ease-in-out infinite; }
-        .animate-float { animation: float 2s ease-in-out infinite; }
-        .animate-zzz { animation: zzz 2s ease-in-out infinite; }
-      `}</style>
-
       <svg
         width={resolvedTamano}
         height={resolvedTamano}

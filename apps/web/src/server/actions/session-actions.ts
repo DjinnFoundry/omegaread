@@ -6,6 +6,9 @@
  * Permite crear sesiones al inicio, guardar respuestas individuales
  * conforme ocurren, y finalizar sesiones — evitando pérdida de datos
  * si el niño cierra la app a mitad de sesión.
+ *
+ * TODAS las funciones verifican autenticación (JWT) y ownership
+ * (el padre autenticado debe ser dueño del estudiante).
  */
 import {
   db,
@@ -15,6 +18,15 @@ import {
   skillProgress,
 } from '@omegaread/db';
 import { eq, and, desc } from 'drizzle-orm';
+import { requireStudentOwnership } from '../auth';
+import {
+  iniciarSesionSchema,
+  guardarRespuestaSchema,
+  actualizarSesionSchema,
+  finalizarSesionSchema,
+  actualizarProgresoSchema,
+  cargarProgresoSchema,
+} from '../validation';
 
 // ─────────────────────────────────────────────
 // INICIAR SESIÓN
@@ -24,18 +36,26 @@ import { eq, and, desc } from 'drizzle-orm';
  * Crea una nueva sesión de juego en la DB.
  * Se llama AL INICIO de la sesión, no al final.
  * Devuelve el sessionId para guardar respuestas progresivamente.
+ *
+ * Requiere autenticación + ownership del estudiante.
  */
 export async function iniciarSesion(datos: {
   studentId: string;
   tipoActividad: string;
   modulo: string;
 }) {
+  // Validar inputs
+  const validado = iniciarSesionSchema.parse(datos);
+
+  // Verificar que el padre autenticado es dueño del estudiante
+  await requireStudentOwnership(validado.studentId);
+
   const [sesion] = await db
     .insert(sessions)
     .values({
-      studentId: datos.studentId,
-      tipoActividad: datos.tipoActividad,
-      modulo: datos.modulo,
+      studentId: validado.studentId,
+      tipoActividad: validado.tipoActividad,
+      modulo: validado.modulo,
       completada: false,
       estrellasGanadas: 0,
     })
@@ -51,9 +71,12 @@ export async function iniciarSesion(datos: {
 /**
  * Guarda UNA respuesta individual inmediatamente.
  * Se llama después de cada interacción del niño.
+ *
+ * Requiere autenticación + ownership (verifica a través del sessionId).
  */
 export async function guardarRespuestaIndividual(datos: {
   sessionId: string;
+  studentId: string;
   ejercicioId: string;
   tipoEjercicio: string;
   pregunta: string;
@@ -63,16 +86,33 @@ export async function guardarRespuestaIndividual(datos: {
   tiempoRespuestaMs?: number;
   intentoNumero?: number;
 }) {
+  // Validar inputs
+  const validado = guardarRespuestaSchema.parse(datos);
+
+  // Verificar que el padre autenticado es dueño del estudiante
+  await requireStudentOwnership(validado.studentId);
+
+  // Verificar que la sesión pertenece al estudiante
+  const sesion = await db.query.sessions.findFirst({
+    where: and(
+      eq(sessions.id, validado.sessionId),
+      eq(sessions.studentId, validado.studentId),
+    ),
+  });
+  if (!sesion) {
+    throw new Error('Sesión no encontrada o no pertenece al estudiante');
+  }
+
   await db.insert(responses).values({
-    sessionId: datos.sessionId,
-    ejercicioId: datos.ejercicioId,
-    tipoEjercicio: datos.tipoEjercicio,
-    pregunta: datos.pregunta,
-    respuesta: datos.respuesta,
-    respuestaCorrecta: datos.respuestaCorrecta,
-    correcta: datos.correcta,
-    tiempoRespuestaMs: datos.tiempoRespuestaMs,
-    intentoNumero: datos.intentoNumero ?? 1,
+    sessionId: validado.sessionId,
+    ejercicioId: validado.ejercicioId,
+    tipoEjercicio: validado.tipoEjercicio,
+    pregunta: validado.pregunta,
+    respuesta: validado.respuesta,
+    respuestaCorrecta: validado.respuestaCorrecta,
+    correcta: validado.correcta,
+    tiempoRespuestaMs: validado.tiempoRespuestaMs,
+    intentoNumero: validado.intentoNumero ?? 1,
   });
 
   return { ok: true };
@@ -85,25 +125,45 @@ export async function guardarRespuestaIndividual(datos: {
 /**
  * Actualiza los datos de una sesión en curso.
  * Llamar periódicamente para auto-save de estrellas, etc.
+ *
+ * Requiere autenticación + ownership (verifica a través del sessionId).
  */
 export async function actualizarSesionEnCurso(datos: {
   sessionId: string;
+  studentId: string;
   estrellasGanadas?: number;
   metadata?: Record<string, unknown>;
 }) {
-  const updates: Record<string, unknown> = {};
-  if (datos.estrellasGanadas !== undefined) {
-    updates.estrellasGanadas = datos.estrellasGanadas;
+  // Validar inputs
+  const validado = actualizarSesionSchema.parse(datos);
+
+  // Verificar que el padre autenticado es dueño del estudiante
+  await requireStudentOwnership(validado.studentId);
+
+  // Verificar que la sesión pertenece al estudiante
+  const sesion = await db.query.sessions.findFirst({
+    where: and(
+      eq(sessions.id, validado.sessionId),
+      eq(sessions.studentId, validado.studentId),
+    ),
+  });
+  if (!sesion) {
+    throw new Error('Sesión no encontrada o no pertenece al estudiante');
   }
-  if (datos.metadata) {
-    updates.metadata = datos.metadata;
+
+  const updates: Record<string, unknown> = {};
+  if (validado.estrellasGanadas !== undefined) {
+    updates.estrellasGanadas = validado.estrellasGanadas;
+  }
+  if (validado.metadata) {
+    updates.metadata = validado.metadata;
   }
 
   if (Object.keys(updates).length > 0) {
     await db
       .update(sessions)
       .set(updates)
-      .where(eq(sessions.id, datos.sessionId));
+      .where(eq(sessions.id, validado.sessionId));
   }
 
   return { ok: true };
@@ -116,6 +176,8 @@ export async function actualizarSesionEnCurso(datos: {
 /**
  * Marca una sesión como finalizada.
  * Las respuestas ya se guardaron progresivamente.
+ *
+ * Requiere autenticación + ownership del estudiante.
  */
 export async function finalizarSesionDB(datos: {
   sessionId: string;
@@ -125,26 +187,43 @@ export async function finalizarSesionDB(datos: {
   stickerGanado?: string;
   studentId: string;
 }) {
+  // Validar inputs
+  const validado = finalizarSesionSchema.parse(datos);
+
+  // Verificar que el padre autenticado es dueño del estudiante
+  await requireStudentOwnership(validado.studentId);
+
+  // Verificar que la sesión pertenece al estudiante
+  const sesion = await db.query.sessions.findFirst({
+    where: and(
+      eq(sessions.id, validado.sessionId),
+      eq(sessions.studentId, validado.studentId),
+    ),
+  });
+  if (!sesion) {
+    throw new Error('Sesión no encontrada o no pertenece al estudiante');
+  }
+
   // Actualizar sesión
   await db
     .update(sessions)
     .set({
-      duracionSegundos: datos.duracionSegundos,
-      completada: datos.completada,
-      estrellasGanadas: datos.estrellasGanadas,
-      stickerGanado: datos.stickerGanado,
+      duracionSegundos: validado.duracionSegundos,
+      completada: validado.completada,
+      estrellasGanadas: validado.estrellasGanadas,
+      stickerGanado: validado.stickerGanado,
       finalizadaEn: new Date(),
     })
-    .where(eq(sessions.id, datos.sessionId));
+    .where(eq(sessions.id, validado.sessionId));
 
   // Guardar sticker como logro
-  if (datos.stickerGanado) {
+  if (validado.stickerGanado) {
     await db.insert(achievements).values({
-      studentId: datos.studentId,
+      studentId: validado.studentId,
       tipo: 'sticker',
-      logroId: `sticker-${datos.sessionId}`,
-      nombre: datos.stickerGanado,
-      icono: datos.stickerGanado,
+      logroId: `sticker-${validado.sessionId}`,
+      nombre: validado.stickerGanado,
+      icono: validado.stickerGanado,
       coleccion: 'sesiones',
     });
   }
@@ -159,6 +238,11 @@ export async function finalizarSesionDB(datos: {
 /**
  * Actualiza el progreso de una habilidad inmediatamente tras cada respuesta.
  * Esto asegura que el progreso persiste aunque se cierre la app.
+ *
+ * Usa ventana deslizante de las últimas 10 respuestas (igual que MasteryTracker
+ * del cliente) para evitar divergencia entre mastery percibido y guardado.
+ *
+ * Requiere autenticación + ownership del estudiante.
  */
 export async function actualizarProgresoInmediato(datos: {
   studentId: string;
@@ -166,18 +250,41 @@ export async function actualizarProgresoInmediato(datos: {
   categoria: string;
   correcto: boolean;
 }) {
+  // Validar inputs
+  const validado = actualizarProgresoSchema.parse(datos);
+
+  // Verificar que el padre autenticado es dueño del estudiante
+  await requireStudentOwnership(validado.studentId);
+
+  const VENTANA_MASTERY = 10;
+  const MIN_INTENTOS = 5;
+  const UMBRAL_MASTERY = 0.9;
+
   const existente = await db.query.skillProgress.findFirst({
     where: and(
-      eq(skillProgress.studentId, datos.studentId),
-      eq(skillProgress.skillId, datos.skillId),
+      eq(skillProgress.studentId, validado.studentId),
+      eq(skillProgress.skillId, validado.skillId),
     ),
   });
 
   if (existente) {
     const totalIntentos = existente.totalIntentos + 1;
-    const totalAciertos = existente.totalAciertos + (datos.correcto ? 1 : 0);
-    const nivelMastery = totalIntentos >= 5 ? totalAciertos / totalIntentos : 0;
-    const dominada = nivelMastery >= 0.9 && totalIntentos >= 5;
+    const totalAciertos = existente.totalAciertos + (validado.correcto ? 1 : 0);
+
+    // Ventana deslizante: mantener historial de las últimas N respuestas
+    const meta = (existente.metadata ?? {}) as Record<string, unknown>;
+    const historial = (meta.historialReciente as boolean[] | undefined) ?? [];
+    historial.push(validado.correcto);
+    // Mantener solo las últimas VENTANA_MASTERY respuestas
+    const historialReciente = historial.slice(-VENTANA_MASTERY);
+
+    // Calcular mastery con ventana deslizante (igual que MasteryTracker del cliente)
+    let nivelMastery = 0;
+    if (totalIntentos >= MIN_INTENTOS) {
+      const aciertosRecientes = historialReciente.filter(Boolean).length;
+      nivelMastery = aciertosRecientes / historialReciente.length;
+    }
+    const dominada = nivelMastery >= UMBRAL_MASTERY && totalIntentos >= MIN_INTENTOS;
 
     await db
       .update(skillProgress)
@@ -188,23 +295,27 @@ export async function actualizarProgresoInmediato(datos: {
         dominada,
         ultimaPractica: new Date(),
         actualizadoEn: new Date(),
+        metadata: { ...meta, historialReciente },
       })
       .where(eq(skillProgress.id, existente.id));
 
     return { ok: true, nivelMastery, dominada, totalIntentos, totalAciertos };
   } else {
+    const historialReciente = [validado.correcto];
+
     await db.insert(skillProgress).values({
-      studentId: datos.studentId,
-      skillId: datos.skillId,
-      categoria: datos.categoria,
+      studentId: validado.studentId,
+      skillId: validado.skillId,
+      categoria: validado.categoria,
       totalIntentos: 1,
-      totalAciertos: datos.correcto ? 1 : 0,
+      totalAciertos: validado.correcto ? 1 : 0,
       nivelMastery: 0,
       dominada: false,
       ultimaPractica: new Date(),
+      metadata: { historialReciente },
     });
 
-    return { ok: true, nivelMastery: 0, dominada: false, totalIntentos: 1, totalAciertos: datos.correcto ? 1 : 0 };
+    return { ok: true, nivelMastery: 0, dominada: false, totalIntentos: 1, totalAciertos: validado.correcto ? 1 : 0 };
   }
 }
 
@@ -215,22 +326,30 @@ export async function actualizarProgresoInmediato(datos: {
 /**
  * Carga todo el progreso de un estudiante: estrellas, stickers, habilidades.
  * Se usa al llegar al mapa o cualquier pantalla que necesite el estado real.
+ *
+ * Requiere autenticación + ownership del estudiante.
  */
 export async function cargarProgresoEstudiante(studentId: string) {
+  // Validar input
+  const validStudentId = cargarProgresoSchema.parse(studentId);
+
+  // Verificar que el padre autenticado es dueño del estudiante
+  await requireStudentOwnership(validStudentId);
+
   // Progreso de habilidades
   const habilidades = await db.query.skillProgress.findMany({
-    where: eq(skillProgress.studentId, studentId),
+    where: eq(skillProgress.studentId, validStudentId),
   });
 
   // Logros / stickers
   const logros = await db.query.achievements.findMany({
-    where: eq(achievements.studentId, studentId),
+    where: eq(achievements.studentId, validStudentId),
     orderBy: [desc(achievements.ganadoEn)],
   });
 
-  // Sesiones para calcular estrellas totales
+  // Sesiones para calcular estrellas totales (sin limit para total correcto)
   const sesiones = await db.query.sessions.findMany({
-    where: eq(sessions.studentId, studentId),
+    where: eq(sessions.studentId, validStudentId),
     orderBy: [desc(sessions.iniciadaEn)],
   });
 

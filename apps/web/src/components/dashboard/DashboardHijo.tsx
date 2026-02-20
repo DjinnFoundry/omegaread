@@ -14,8 +14,12 @@ interface DashboardHijoProps {
     vocalesDominadas: string[];
     racha: number;
     stickers: Array<{ icono: string | null; nombre: string }>;
+    proximaMeta: string | null;
+    diasUsoSemana: boolean[];
   } | null;
 }
+
+const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHijoProps) {
   const edad = calcularEdad(fechaNacimiento);
@@ -51,6 +55,34 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
             <span className="text-texto-suave">⚪ Sin sesiones hoy</span>
           )}
         </span>
+      </div>
+
+      {/* Próxima meta */}
+      {resumen.proximaMeta && (
+        <div className="mt-3 rounded-2xl bg-turquesa/10 px-4 py-2">
+          <p className="text-sm font-semibold text-turquesa">
+            🎯 Próxima meta: {resumen.proximaMeta}
+          </p>
+        </div>
+      )}
+
+      {/* Días de uso esta semana */}
+      <div className="mt-3">
+        <p className="text-xs font-semibold text-texto-suave mb-1.5">📅 Días de uso esta semana</p>
+        <div className="flex gap-1.5">
+          {DIAS_SEMANA.map((dia, i) => (
+            <div
+              key={dia}
+              className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                resumen.diasUsoSemana[i]
+                  ? 'bg-acierto text-white'
+                  : 'bg-neutro/20 text-neutro'
+              }`}
+            >
+              {dia}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Métricas */}

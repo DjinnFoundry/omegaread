@@ -5,8 +5,8 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
-import { db, parents } from '@omegaread/db';
-import { eq } from 'drizzle-orm';
+import { db, parents, students } from '@omegaread/db';
+import { eq, and } from 'drizzle-orm';
 import { SignJWT, jwtVerify } from 'jose';
 
 const AUTH_COOKIE = 'omega-auth';
@@ -120,6 +120,23 @@ export async function requireAuth() {
   const padre = await obtenerPadreActual();
   if (!padre) redirect('/padre/login');
   return padre;
+}
+
+/**
+ * Verifica que el padre autenticado es dueño del estudiante.
+ * Combina requireAuth() + verificación de ownership en un solo helper.
+ * @throws Redirige a /padre/login si no hay sesión.
+ * @throws Error si el estudiante no pertenece al padre.
+ */
+export async function requireStudentOwnership(studentId: string) {
+  const padre = await requireAuth();
+  const estudiante = await db.query.students.findFirst({
+    where: and(eq(students.id, studentId), eq(students.parentId, padre.id)),
+  });
+  if (!estudiante) {
+    throw new Error('Acceso no autorizado: el estudiante no pertenece a este padre');
+  }
+  return { padre, estudiante };
 }
 
 /** Cierra sesión */

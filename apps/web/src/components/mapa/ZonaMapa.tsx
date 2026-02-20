@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { click as sonidoClick } from '@/lib/audio/sonidos';
 
 /**
@@ -58,21 +58,15 @@ export function ZonaMapa({
         ${className}
       `}
       style={{
+        '--zona-color': color,
         backgroundColor: color,
         boxShadow: bloqueada
           ? 'none'
           : `0 8px 24px ${color}66, inset 0 2px 0 rgba(255,255,255,0.3)`,
         // Expand hit area with padding
         padding: '8px',
-      }}
+      } as React.CSSProperties}
     >
-      <style>{`
-        @keyframes pulse-soft {
-          0%, 100% { box-shadow: 0 8px 24px ${color}66, 0 0 0 0 ${color}44; }
-          50% { box-shadow: 0 8px 24px ${color}66, 0 0 0 12px ${color}00; }
-        }
-        .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
-      `}</style>
 
       {/* Icono grande */}
       <span className="text-6xl leading-none mb-1" role="presentation">

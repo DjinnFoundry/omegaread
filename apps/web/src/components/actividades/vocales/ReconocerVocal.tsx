@@ -134,21 +134,10 @@ export function ReconocerVocal({
 
       {/* Estrella voladora al acertar */}
       {estado === 'correcto' && (
-        <div className="estrella-vuela text-4xl" aria-hidden="true">
+        <div className="animate-vuela-estrella text-4xl" aria-hidden="true">
           ⭐
         </div>
       )}
-
-      <style>{`
-        @keyframes vuela-estrella {
-          0% { opacity: 1; transform: scale(1) translateY(0); }
-          50% { opacity: 1; transform: scale(1.5) translateY(-30px); }
-          100% { opacity: 0; transform: scale(0.5) translateY(-80px); }
-        }
-        .estrella-vuela {
-          animation: vuela-estrella 1s ease-out forwards;
-        }
-      `}</style>
     </div>
   );
 }

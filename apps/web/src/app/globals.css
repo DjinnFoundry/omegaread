@@ -28,8 +28,8 @@
   --color-texto: #2D3436;
   --color-texto-suave: #636e72;
 
-  /* Tipografía */
-  --font-principal: 'Nunito', system-ui, sans-serif;
+  /* Tipografía — uses next/font CSS variable */
+  --font-principal: var(--font-nunito), 'Nunito', system-ui, sans-serif;
 }
 
 /* Reset para app infantil */
@@ -125,5 +125,196 @@ button, a, [role="button"] {
 }
 
 /* ─────────────────────────────────────────────
-   Fuente Nunito (Google Fonts)
+   Animaciones de componentes
+   ───────────────────────────────────────────── */
+
+/* Mascota */
+@keyframes sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+@keyframes blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+@keyframes zzz {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.5); }
+  50% { opacity: 1; transform: translate(10px, -15px) scale(1); }
+  100% { opacity: 0; transform: translate(20px, -30px) scale(0.5); }
+}
+
+.animate-sway { animation: sway 3s ease-in-out infinite; }
+.animate-blink { animation: blink 4s ease-in-out infinite; }
+.animate-zzz { animation: zzz 2s ease-in-out infinite; }
+
+/* LetraGrande */
+@keyframes letra-brilla {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.08); filter: brightness(1.2); }
+}
+@keyframes letra-tiembla {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-6px); }
+  20% { transform: translateX(6px); }
+  30% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  50% { transform: translateX(-3px); }
+  60% { transform: translateX(3px); }
+  70% { transform: translateX(-1px); }
+  80% { transform: translateX(1px); }
+}
+
+.letra-correcta { animation: letra-brilla 1s ease-in-out infinite; }
+.letra-incorrecta { animation: letra-tiembla 0.5s ease-in-out; }
+
+/* Estrella voladora (actividades vocales) */
+@keyframes vuela-estrella {
+  0% { opacity: 1; transform: scale(1) translateY(0); }
+  50% { opacity: 1; transform: scale(1.5) translateY(-30px); }
+  100% { opacity: 0; transform: scale(0.5) translateY(-80px); }
+}
+
+.animate-vuela-estrella { animation: vuela-estrella 1s ease-out forwards; }
+
+/* CompletarVocal */
+@keyframes pulsa-imagen {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+@keyframes aparece-palabra {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.palabra-imagen { animation: pulsa-imagen 2s ease-in-out infinite; }
+.palabra-completa { animation: aparece-palabra 0.5s ease-out; display: inline-block; }
+
+/* Celebracion */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop-in-center {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  60% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+.animate-fade-in { animation: fade-in 0.3s ease-out; }
+
+/* Estrellas */
+@keyframes star-shine {
+  0%, 100% { filter: brightness(1); transform: scale(1); }
+  50% { filter: brightness(1.3); transform: scale(1.1); }
+}
+@keyframes star-bounce {
+  0% { transform: scale(0) rotate(-180deg); }
+  60% { transform: scale(1.3) rotate(10deg); }
+  80% { transform: scale(0.9) rotate(-5deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.star-active { animation: star-shine 2s ease-in-out infinite; }
+.star-new { animation: star-bounce 0.6s ease-out forwards; }
+
+/* BarraProgreso */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ZonaMapa (usa --zona-color CSS custom property) */
+@keyframes pulse-soft {
+  0%, 100% {
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--zona-color) 40%, transparent),
+                0 0 0 0 color-mix(in srgb, var(--zona-color) 27%, transparent);
+  }
+  50% {
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--zona-color) 40%, transparent),
+                0 0 0 12px transparent;
+  }
+}
+
+.animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
+/* StickerReveal — card flip */
+.sticker-card {
+  perspective: 1000px;
+  width: 200px;
+  height: 260px;
+}
+.sticker-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform-style: preserve-3d;
+}
+.sticker-card-inner.flipped {
+  transform: rotateY(180deg);
+}
+.sticker-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.sticker-front {
+  background: linear-gradient(135deg, #FFE66D 0%, #FFB347 100%);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+.sticker-back {
+  background: linear-gradient(135deg, #FFF9F0 0%, #FFFFFF 100%);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  transform: rotateY(180deg);
+}
+
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.5) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1) rotate(180deg); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up { animation: fade-in-up 0.5s ease-out 0.3s both; }
+
+/* AlbumStickers */
+@keyframes shine {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 230, 109, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(255, 230, 109, 0.8); }
+}
+@keyframes pop-in {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.sticker-shine { animation: shine 2s ease-in-out infinite; }
+.animate-pop-in { animation: pop-in 0.3s ease-out; }
+
+/* DiagnosticoInvisible */
+@keyframes num-brilla {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+@keyframes rima-brilla {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.numero-correcto { animation: num-brilla 0.5s ease-in-out; }
+.numero-incorrecto { animation: shake 0.4s ease-in-out; }
+.rima-correcta { animation: rima-brilla 0.5s ease-in-out; }
+.rima-incorrecta { animation: shake 0.4s ease-in-out; }
+
+/* ─────────────────────────────────────────────
+   Fuente Nunito — Self-hosted via next/font
+   (ver layout.tsx para la configuración)
    ───────────────────────────────────────────── */

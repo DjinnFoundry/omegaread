@@ -1,5 +1,13 @@
 import type { Metadata, Viewport } from 'next';
+import { Nunito } from 'next/font/google';
 import './globals.css';
+
+const nunito = Nunito({
+  subsets: ['latin'],
+  weight: ['400', '600', '700', '800'],
+  display: 'swap',
+  variable: '--font-nunito',
+});
 
 export const metadata: Metadata = {
   title: 'OmegaAnywhere — Aprende jugando',
@@ -22,13 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es">
-      <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="es" className={nunito.variable}>
       <body className="min-h-screen bg-fondo text-texto antialiased">
         {children}
       </body>

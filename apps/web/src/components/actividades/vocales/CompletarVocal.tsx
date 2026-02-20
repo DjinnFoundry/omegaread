@@ -172,36 +172,10 @@ export function CompletarVocal({
 
       {/* Celebración al completar */}
       {estado === 'correcto' && (
-        <div className="estrella-vuela-completar text-4xl" aria-hidden="true">
+        <div className="animate-vuela-estrella text-4xl" aria-hidden="true">
           🎉
         </div>
       )}
-
-      <style>{`
-        @keyframes pulsa-imagen {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-        }
-        .palabra-imagen {
-          animation: pulsa-imagen 2s ease-in-out infinite;
-        }
-        @keyframes aparece-palabra {
-          0% { transform: scale(0.8); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        .palabra-completa {
-          animation: aparece-palabra 0.5s ease-out;
-          display: inline-block;
-        }
-        @keyframes vuela-completar {
-          0% { opacity: 1; transform: scale(1) translateY(0); }
-          50% { opacity: 1; transform: scale(1.5) translateY(-30px); }
-          100% { opacity: 0; transform: scale(0.5) translateY(-80px); }
-        }
-        .estrella-vuela-completar {
-          animation: vuela-completar 1s ease-out forwards;
-        }
-      `}</style>
     </div>
   );
 }

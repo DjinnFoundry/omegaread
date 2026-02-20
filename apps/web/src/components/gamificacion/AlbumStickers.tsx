@@ -59,14 +59,6 @@ export function AlbumStickers({
       className={`flex flex-col min-h-screen w-full ${className}`}
       style={{ backgroundColor: '#FFF9F0' }}
     >
-      <style>{`
-        @keyframes shine {
-          0%, 100% { box-shadow: 0 0 8px rgba(255, 230, 109, 0.4); }
-          50% { box-shadow: 0 0 20px rgba(255, 230, 109, 0.8); }
-        }
-        .sticker-shine { animation: shine 2s ease-in-out infinite; }
-      `}</style>
-
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-6 pb-4">
         <BotonGrande
@@ -142,7 +134,7 @@ export function AlbumStickers({
             style={{
               backgroundColor: 'white',
               boxShadow: '0 16px 48px rgba(0, 0, 0, 0.15)',
-              animation: 'popIn 0.3s ease-out',
+              animation: 'pop-in 0.3s ease-out',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -163,12 +155,6 @@ export function AlbumStickers({
         </div>
       )}
 
-      <style>{`
-        @keyframes popIn {
-          0% { transform: scale(0.8); opacity: 0; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }

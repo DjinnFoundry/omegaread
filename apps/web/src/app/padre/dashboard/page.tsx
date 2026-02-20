@@ -73,17 +73,18 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Sugerencia offline */}
-        <div className="mt-8 rounded-3xl bg-amarillo/20 p-5">
-          <p className="text-sm font-semibold text-texto">
-            💡 Sugerencia para hoy
-          </p>
-          <p className="mt-1 text-sm text-texto-suave">
-            Practiquen las vocales en casa: busquen objetos que empiecen con A
-            (avión, agua, árbol). ¡El aprendizaje también ocurre fuera de la
-            pantalla!
-          </p>
-        </div>
+        {/* Sugerencia offline personalizada */}
+        {resumenes.length > 0 && (
+          <div className="mt-8 rounded-3xl bg-amarillo/20 p-5">
+            <p className="text-sm font-semibold text-texto">
+              💡 Sugerencia para hoy
+            </p>
+            <p className="mt-1 text-sm text-texto-suave">
+              {resumenes[0]?.resumen?.sugerenciaOffline ??
+                'Practiquen las vocales en casa: busquen objetos que empiecen con A (avión, agua, árbol). ¡El aprendizaje también ocurre fuera de la pantalla!'}
+            </p>
+          </div>
+        )}
       </div>
     </main>
   );

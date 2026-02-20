@@ -599,19 +599,6 @@ function JuegoConteo({ onComplete }: JuegoConteoProps) {
         </div>
       )}
 
-      <style>{`
-        @keyframes num-brilla {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.1); }
-        }
-        @keyframes num-tiembla {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-4px); }
-          75% { transform: translateX(4px); }
-        }
-        .numero-correcto { animation: num-brilla 0.5s ease-in-out; }
-        .numero-incorrecto { animation: num-tiembla 0.4s ease-in-out; }
-      `}</style>
     </div>
   );
 }
@@ -771,19 +758,6 @@ function JuegoRimas({ onComplete }: JuegoRimasProps) {
         })}
       </div>
 
-      <style>{`
-        @keyframes rima-brilla {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-        }
-        @keyframes rima-tiembla {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-4px); }
-          75% { transform: translateX(4px); }
-        }
-        .rima-correcta { animation: rima-brilla 0.5s ease-in-out; }
-        .rima-incorrecta { animation: rima-tiembla 0.4s ease-in-out; }
-      `}</style>
     </div>
   );
 }

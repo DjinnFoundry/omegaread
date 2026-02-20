@@ -99,31 +99,6 @@ export function LetraGrande({
       : '';
 
   return (
-    <>
-      <style>{`
-        @keyframes letra-brilla {
-          0%, 100% { transform: scale(1); filter: brightness(1); }
-          50% { transform: scale(1.08); filter: brightness(1.2); }
-        }
-        @keyframes letra-tiembla {
-          0%, 100% { transform: translateX(0); }
-          10% { transform: translateX(-6px); }
-          20% { transform: translateX(6px); }
-          30% { transform: translateX(-5px); }
-          40% { transform: translateX(5px); }
-          50% { transform: translateX(-3px); }
-          60% { transform: translateX(3px); }
-          70% { transform: translateX(-1px); }
-          80% { transform: translateX(1px); }
-        }
-        .letra-correcta {
-          animation: letra-brilla 1s ease-in-out infinite;
-        }
-        .letra-incorrecta {
-          animation: letra-tiembla 0.5s ease-in-out;
-        }
-      `}</style>
-
       <button
         type="button"
         onClick={manejarClick}
@@ -152,6 +127,5 @@ export function LetraGrande({
       >
         {letra}
       </button>
-    </>
   );
 }

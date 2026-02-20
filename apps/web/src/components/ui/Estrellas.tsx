@@ -36,21 +36,6 @@ export function Estrellas({ cantidad, max = 5, className = '' }: EstrellasProps)
       role="img"
       aria-label={`${cantidad} de ${max} estrellas`}
     >
-      <style>{`
-        @keyframes star-shine {
-          0%, 100% { filter: brightness(1); transform: scale(1); }
-          50% { filter: brightness(1.3); transform: scale(1.1); }
-        }
-        @keyframes star-bounce {
-          0% { transform: scale(0) rotate(-180deg); }
-          60% { transform: scale(1.3) rotate(10deg); }
-          80% { transform: scale(0.9) rotate(-5deg); }
-          100% { transform: scale(1) rotate(0deg); }
-        }
-        .star-active { animation: star-shine 2s ease-in-out infinite; }
-        .star-new { animation: star-bounce 0.6s ease-out forwards; }
-      `}</style>
-
       {Array.from({ length: max }, (_, i) => {
         const ganada = i < cantidad;
         const esNueva = i === cantidad - 1 && cantidad > cantidadAnterior.current;

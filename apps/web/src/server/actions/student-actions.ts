@@ -1,11 +1,14 @@
 'use server';
 
 /**
- * Server Actions para gestión de estudiantes (niños)
+ * Server Actions para gestión de estudiantes (niños).
+ *
+ * Funciones de padre: crear estudiante, obtener lista, obtener resumen.
+ * TODAS verifican autenticación y ownership.
  */
 import { db, students, sessions, responses, achievements, skillProgress } from '@omegaread/db';
-import { eq, desc, and, sql, count } from 'drizzle-orm';
-import { requireAuth } from '../auth';
+import { eq, desc, and, gte } from 'drizzle-orm';
+import { requireAuth, requireStudentOwnership } from '../auth';
 import type { DiagnosticoNivel } from '@omegaread/db/schema';
 
 /** Crear perfil de niño */
@@ -21,12 +24,24 @@ export async function crearEstudiante(formData: FormData) {
     return { ok: false, error: 'Nombre y fecha de nacimiento son obligatorios' };
   }
 
+  // Validar edad (3-10 años)
+  const fechaNac = new Date(fechaNacStr);
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - fechaNac.getFullYear();
+  const m = hoy.getMonth() - fechaNac.getMonth();
+  if (m < 0 || (m === 0 && hoy.getDate() < fechaNac.getDate())) {
+    edad--;
+  }
+  if (edad < 3 || edad > 10) {
+    return { ok: false, error: 'La edad debe estar entre 3 y 10 años' };
+  }
+
   const [estudiante] = await db
     .insert(students)
     .values({
       parentId: padre.id,
       nombre: nombre.trim(),
-      fechaNacimiento: new Date(fechaNacStr),
+      fechaNacimiento: fechaNac,
       mascotaTipo,
       mascotaNombre: mascotaNombre.trim(),
     })
@@ -58,6 +73,9 @@ export async function obtenerEstudiante(studentId: string) {
 
 /** Guardar resultado de diagnóstico invisible */
 export async function guardarDiagnostico(studentId: string, resultado: DiagnosticoNivel) {
+  // Verificar ownership
+  await requireStudentOwnership(studentId);
+
   await db
     .update(students)
     .set({
@@ -66,121 +84,6 @@ export async function guardarDiagnostico(studentId: string, resultado: Diagnosti
       actualizadoEn: new Date(),
     })
     .where(eq(students.id, studentId));
-
-  return { ok: true };
-}
-
-/** Guardar sesión completa */
-export async function guardarSesion(datos: {
-  studentId: string;
-  tipoActividad: string;
-  modulo: string;
-  duracionSegundos: number;
-  completada: boolean;
-  estrellasGanadas: number;
-  stickerGanado?: string;
-  respuestas: Array<{
-    ejercicioId: string;
-    tipoEjercicio: string;
-    pregunta: string;
-    respuesta: string;
-    respuestaCorrecta: string;
-    correcta: boolean;
-    tiempoRespuestaMs?: number;
-    intentoNumero?: number;
-  }>;
-}) {
-  // Crear sesión
-  const [sesion] = await db
-    .insert(sessions)
-    .values({
-      studentId: datos.studentId,
-      tipoActividad: datos.tipoActividad,
-      modulo: datos.modulo,
-      duracionSegundos: datos.duracionSegundos,
-      completada: datos.completada,
-      estrellasGanadas: datos.estrellasGanadas,
-      stickerGanado: datos.stickerGanado,
-      finalizadaEn: new Date(),
-    })
-    .returning();
-
-  // Guardar respuestas
-  if (datos.respuestas.length > 0) {
-    await db.insert(responses).values(
-      datos.respuestas.map((r) => ({
-        sessionId: sesion.id,
-        ejercicioId: r.ejercicioId,
-        tipoEjercicio: r.tipoEjercicio,
-        pregunta: r.pregunta,
-        respuesta: r.respuesta,
-        respuestaCorrecta: r.respuestaCorrecta,
-        correcta: r.correcta,
-        tiempoRespuestaMs: r.tiempoRespuestaMs,
-        intentoNumero: r.intentoNumero ?? 1,
-      }))
-    );
-  }
-
-  // Dar sticker como logro si hay uno
-  if (datos.stickerGanado) {
-    await db.insert(achievements).values({
-      studentId: datos.studentId,
-      tipo: 'sticker',
-      logroId: `sticker-${Date.now()}`,
-      nombre: datos.stickerGanado,
-      icono: datos.stickerGanado,
-      coleccion: 'sesiones',
-    });
-  }
-
-  return { ok: true, sesionId: sesion.id };
-}
-
-/** Actualizar progreso de habilidad */
-export async function actualizarProgreso(datos: {
-  studentId: string;
-  skillId: string;
-  categoria: string;
-  correcto: boolean;
-}) {
-  // Buscar progreso existente
-  const existente = await db.query.skillProgress.findFirst({
-    where: and(
-      eq(skillProgress.studentId, datos.studentId),
-      eq(skillProgress.skillId, datos.skillId)
-    ),
-  });
-
-  if (existente) {
-    const totalIntentos = existente.totalIntentos + 1;
-    const totalAciertos = existente.totalAciertos + (datos.correcto ? 1 : 0);
-    const nivelMastery = totalIntentos >= 5 ? totalAciertos / totalIntentos : 0;
-    const dominada = nivelMastery >= 0.9 && totalIntentos >= 5;
-
-    await db
-      .update(skillProgress)
-      .set({
-        totalIntentos,
-        totalAciertos,
-        nivelMastery,
-        dominada,
-        ultimaPractica: new Date(),
-        actualizadoEn: new Date(),
-      })
-      .where(eq(skillProgress.id, existente.id));
-  } else {
-    await db.insert(skillProgress).values({
-      studentId: datos.studentId,
-      skillId: datos.skillId,
-      categoria: datos.categoria,
-      totalIntentos: 1,
-      totalAciertos: datos.correcto ? 1 : 0,
-      nivelMastery: 0,
-      dominada: false,
-      ultimaPractica: new Date(),
-    });
-  }
 
   return { ok: true };
 }
@@ -201,11 +104,10 @@ export async function obtenerResumenProgreso(studentId: string) {
     orderBy: [skillProgress.categoria, skillProgress.skillId],
   });
 
-  // Sesiones recientes
-  const sesionesRecientes = await db.query.sessions.findMany({
+  // Todas las sesiones (sin limit para total de estrellas correcto)
+  const todasSesiones = await db.query.sessions.findMany({
     where: eq(sessions.studentId, studentId),
     orderBy: [desc(sessions.iniciadaEn)],
-    limit: 10,
   });
 
   // Logros / stickers
@@ -217,7 +119,7 @@ export async function obtenerResumenProgreso(studentId: string) {
   // Estadísticas de hoy
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const sesionesHoy = sesionesRecientes.filter(
+  const sesionesHoy = todasSesiones.filter(
     (s) => new Date(s.iniciadaEn) >= hoy
   );
   const tiempoHoyMin = sesionesHoy.reduce(
@@ -226,23 +128,58 @@ export async function obtenerResumenProgreso(studentId: string) {
   ) / 60;
 
   // Calcular racha
-  const racha = calcularRacha(sesionesRecientes);
+  const racha = calcularRacha(todasSesiones);
 
   // Vocales dominadas
   const vocalesDominadas = habilidades
     .filter((h) => h.categoria === 'vocales' && h.dominada)
     .map((h) => h.skillId.replace('vocal-', '').toUpperCase());
 
+  // Próxima meta: primera vocal no dominada
+  const ORDEN_VOCALES = ['A', 'E', 'I', 'O', 'U'];
+  const proximaMeta = ORDEN_VOCALES.find((v) => !vocalesDominadas.includes(v));
+
+  // Días de uso esta semana (L-D)
+  const inicioSemana = new Date();
+  const diaSemana = inicioSemana.getDay(); // 0=dom, 1=lun...
+  const diasDesdelunes = diaSemana === 0 ? 6 : diaSemana - 1;
+  inicioSemana.setDate(inicioSemana.getDate() - diasDesdelunes);
+  inicioSemana.setHours(0, 0, 0, 0);
+
+  const diasUsoSemana: boolean[] = Array(7).fill(false); // [L, M, X, J, V, S, D]
+  for (const s of todasSesiones) {
+    const fechaSesion = new Date(s.iniciadaEn);
+    if (fechaSesion >= inicioSemana) {
+      const dia = fechaSesion.getDay(); // 0=dom, 1=lun...
+      const idx = dia === 0 ? 6 : dia - 1; // Convertir a L=0, M=1... D=6
+      diasUsoSemana[idx] = true;
+    }
+  }
+
+  // Sugerencia personalizada basada en progreso
+  const vocalParaSugerencia = proximaMeta ?? vocalesDominadas[vocalesDominadas.length - 1] ?? 'A';
+  const PALABRAS_SUGERENCIA: Record<string, string> = {
+    A: 'avión, agua, árbol',
+    E: 'elefante, estrella, escuela',
+    I: 'iglú, isla, imán',
+    O: 'oso, ojo, oveja',
+    U: 'uva, unicornio, uno',
+  };
+  const sugerenciaOffline = `Practiquen las vocales en casa: busquen objetos que empiecen con ${vocalParaSugerencia} (${PALABRAS_SUGERENCIA[vocalParaSugerencia] ?? 'avión, agua, árbol'}). ¡El aprendizaje también ocurre fuera de la pantalla!`;
+
   return {
     estudiante,
     habilidades,
     sesionesHoy: sesionesHoy.length,
     tiempoHoyMin: Math.round(tiempoHoyMin),
-    totalEstrellas: sesionesRecientes.reduce((acc, s) => acc + s.estrellasGanadas, 0),
+    totalEstrellas: todasSesiones.reduce((acc, s) => acc + s.estrellasGanadas, 0),
     stickers: logros.filter((l) => l.tipo === 'sticker'),
     vocalesDominadas,
     racha,
-    sesionesRecientes,
+    sesionesRecientes: todasSesiones.slice(0, 10),
+    proximaMeta: proximaMeta ? `aprender la letra ${proximaMeta}` : null,
+    diasUsoSemana,
+    sugerenciaOffline,
   };
 }
 
