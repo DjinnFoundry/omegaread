@@ -21,7 +21,7 @@ interface ErrorBoundaryNinoState {
  * Captura errores de runtime en componentes hijos y muestra
  * una pantalla colorida y no-aterradora en vez del "white screen of death".
  *
- * Diseño: emoji grande, mensaje simple, botón para volver al mapa.
+ * Diseno: emoji grande, mensaje simple, boton para volver al inicio.
  */
 export class ErrorBoundaryNino extends Component<ErrorBoundaryNinoProps, ErrorBoundaryNinoState> {
   constructor(props: ErrorBoundaryNinoProps) {
@@ -40,7 +40,7 @@ export class ErrorBoundaryNino extends Component<ErrorBoundaryNinoProps, ErrorBo
 
   render() {
     if (this.state.hasError) {
-      const rutaVolver = this.props.rutaVolver ?? '/jugar/mapa';
+      const rutaVolver = this.props.rutaVolver ?? '/jugar';
 
       return (
         <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-fondo p-6">
@@ -51,19 +51,19 @@ export class ErrorBoundaryNino extends Component<ErrorBoundaryNinoProps, ErrorBo
             className="text-2xl font-extrabold text-center"
             style={{ color: '#5D4037' }}
           >
-            ¡Ups! Algo salió mal
+            Ups, algo salio mal
           </h1>
           <p
             className="text-base text-center max-w-xs"
             style={{ color: '#8D6E63' }}
           >
-            No te preocupes, ¡vamos a volver al mapa!
+            No te preocupes, vamos a volver al inicio.
           </p>
           <a
             href={rutaVolver}
             className="rounded-3xl bg-turquesa px-8 py-4 text-lg font-bold text-white shadow-md active:scale-95 transition-transform"
           >
-            🏠 Volver al mapa
+            🏠 Volver al inicio
           </a>
         </main>
       );

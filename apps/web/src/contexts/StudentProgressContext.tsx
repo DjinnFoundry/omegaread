@@ -33,9 +33,6 @@ export interface StickerData {
 export interface EstudianteActivo {
   id: string;
   nombre: string;
-  mascotaTipo: string | null;
-  mascotaNombre: string | null;
-  diagnosticoCompletado?: boolean;
 }
 
 export interface StudentProgress {

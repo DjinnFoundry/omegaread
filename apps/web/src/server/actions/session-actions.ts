@@ -27,13 +27,22 @@ import {
   actualizarProgresoSchema,
   cargarProgresoSchema,
 } from '../validation';
-import { ORDEN_SILABAS } from '@/lib/actividades/generadorSilabas';
 import {
   fsrsInit,
   fsrsRatingFromOutcome,
   fsrsReview,
   readFsrsState,
 } from '@/lib/actividades/fsrs';
+
+/** Orden pedagogico de silabas (inlined, legacy) */
+const ORDEN_SILABAS = [
+  'MA', 'ME', 'MI', 'MO', 'MU',
+  'PA', 'PE', 'PI', 'PO', 'PU',
+  'LA', 'LE', 'LI', 'LO', 'LU',
+  'SA', 'SE', 'SI', 'SO', 'SU',
+  'TA', 'TE', 'TI', 'TO', 'TU',
+  'NA', 'NE', 'NI', 'NO', 'NU',
+] as const;
 
 // ─────────────────────────────────────────────
 // INICIAR SESIÓN
