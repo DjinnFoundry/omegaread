@@ -133,6 +133,33 @@ Despues de cada sesion:
 5. Alineacion con COPPA y FERPA desde diseno.
 6. Gobernanza de audio infantil (captura, retencion, borrado y acceso).
 
+### R9. Fluidez oral V1 (heuristico, sin entrenamiento propio)
+1. Pipeline minimo:
+   a) captura de audio por frase o bloque corto  
+   b) VAD para segmentar silencio/voz  
+   c) STT con timestamps por palabra  
+   d) alineacion texto esperado vs texto reconocido  
+   e) extraccion de metricas temporales
+2. Metricas V1 obligatorias:
+   a) `oral_wpm` (palabras por minuto oral)  
+   b) `avg_word_duration_ms`  
+   c) `pause_count` y `pause_ratio_ms`  
+   d) `long_pause_count` (pausas por encima de umbral)  
+   e) `repetition_count` y `restart_count` (marcadores de bloqueo)  
+   f) `word_error_rate_proxy` (sustitucion/omision/insercion via alineacion)
+3. Proxy de silaba:
+   a) contar silabas ortograficas del texto esperado (no fonetica perfecta)  
+   b) calcular `syllables_per_minute_proxy`  
+   c) usarlo solo como senal auxiliar, no como metrica principal
+4. Gating de confianza:
+   a) calcular `asr_confidence` por bloque  
+   b) si confianza baja, no penalizar al nino por errores de ASR  
+   c) activar fallback manual o repetir lectura corta
+5. Salida para producto:
+   a) score de fluidez oral explicable para padres  
+   b) senales internas para adaptacion de dificultad  
+   c) feedback simple para nino (ritmo, pausas, constancia)
+
 ## 7) Requisitos no funcionales
 
 1. p95 carga de lectura < 2s.
@@ -141,6 +168,8 @@ Despues de cada sesion:
 4. Trazabilidad completa de decisiones de adaptacion.
 5. Internacionalizacion (ES/EN en v1.1).
 6. Accesibilidad: WCAG 2.1 AA.
+7. p95 de scoring ASR por bloque de lectura < 3s.
+8. p95 de tiempo fin-a-fin (fin de lectura -> feedback oral) < 5s.
 
 ## 8) Arquitectura de alto nivel
 
@@ -194,6 +223,30 @@ Entidades:
    Campos clave: skill, prob_mastery, evidencia, timestamp.
 7. `xp_event`
    Campos clave: puntos, razon, multiplicador, timestamp.
+8. `oral_reading_sample`
+   Campos clave: session_id, audio_uri, expected_text, transcript, asr_confidence, duration_ms.
+9. `oral_fluency_signal`
+   Campos clave: oral_wpm, avg_word_duration_ms, pause_ratio_ms, repetition_count, wer_proxy, timestamp.
+
+## 10.1) Estrategia ASR V1 (sin dataset propio)
+
+Objetivo: lanzar lectura en voz alta util sin entrenar un modelo desde cero.
+
+Enfoque:
+1. Usar STT ya disponible y estable para espanol.
+2. Extraer tiempos por palabra y pausas.
+3. Aplicar heuristicas de fluidez para `4-6` y `7-9`.
+4. Ajustar umbrales con uso real (dogfooding + piloto), no con entrenamiento inicial.
+
+No objetivo de V1:
+1. Diagnostico fonologico clinico.
+2. Scoring fino de pronunciacion por fonema.
+3. Deteccion perfecta de silaba hablada.
+
+Trade-off explicito:
+1. V1 gana velocidad de lanzamiento y aprendizaje de producto.
+2. V1 sacrifica precision fonetica avanzada.
+3. Evolucion prevista: calibracion por cohortes y luego fine-tuning cuando exista dataset suficiente.
 
 ## 11) Calidad de contenido (punto critico)
 
@@ -242,6 +295,8 @@ Umbral recomendado de lanzamiento:
 4. XP solo se concede con accuracy minima configurable (default 80%).
 5. Deteccion de rushing activa con recomendaciones concretas.
 6. Logs de contenido permiten auditar por que se mostro cada texto/pregunta.
+7. Lectura oral entrega feedback en menos de 5s p95 tras finalizar bloque.
+8. Cuando `asr_confidence` sea baja, el sistema activa fallback y evita penalizacion injusta.
 
 ## 14) Riesgos y mitigaciones
 
@@ -259,6 +314,9 @@ Umbral recomendado de lanzamiento:
 
 5. Riesgo: privacidad infantil.  
    Mitigacion: data minimization, consentimiento parental, cifrado, retencion corta.
+
+6. Riesgo: ASR inestable en voces infantiles, acentos o ruido.  
+   Mitigacion: confidence gating, umbrales por edad y fallback manual.
 
 ## 15) Estrategia open source y acceso
 
