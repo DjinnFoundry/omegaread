@@ -26,7 +26,7 @@ import {
   calcularNivelReescritura,
   type PromptInput,
 } from '@/lib/ai/prompts';
-import { TOPICS_SEED } from '@/lib/data/topics';
+import { TOPICS_SEED, CATEGORIAS } from '@/lib/data/topics';
 import { calcularEdad } from '@/lib/utils/fecha';
 import { calcularAjusteDificultad } from './reading-actions';
 
@@ -88,12 +88,20 @@ export async function generarHistoria(datos: {
   const intereses = estudiante.intereses ?? [];
 
   let topicSlug = validado.topicSlug;
-  if (!topicSlug && intereses.length > 0) {
-    // Elegir aleatoriamente de los intereses del nino
-    topicSlug = intereses[Math.floor(Math.random() * intereses.length)];
-  }
   if (!topicSlug) {
-    topicSlug = 'aventura'; // Fallback
+    // Elegir un topic aleatorio de las categorias de interes del nino
+    const topicsDeIntereses = TOPICS_SEED.filter(
+      t => intereses.includes(t.categoria) && edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
+    );
+    if (topicsDeIntereses.length > 0) {
+      topicSlug = topicsDeIntereses[Math.floor(Math.random() * topicsDeIntereses.length)].slug;
+    } else {
+      // Fallback: cualquier topic apropiado para la edad
+      const topicsPorEdad = TOPICS_SEED.filter(
+        t => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
+      );
+      topicSlug = topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ?? 'como-funciona-corazon';
+    }
   }
 
   const topic = TOPICS_SEED.find(t => t.slug === topicSlug);
@@ -120,9 +128,10 @@ export async function generarHistoria(datos: {
     topicNombre: topic.nombre,
     topicDescripcion: topic.descripcion,
     intereses: intereses
-      .map(slug => TOPICS_SEED.find(t => t.slug === slug)?.nombre)
+      .map(slug => CATEGORIAS.find(c => c.slug === slug)?.nombre)
       .filter((n): n is string => !!n),
     personajesFavoritos: estudiante.personajesFavoritos ?? undefined,
+    contextoPersonal: estudiante.contextoPersonal || undefined,
     historiasAnteriores: titulosPrevios.length > 0 ? titulosPrevios : undefined,
   };
 

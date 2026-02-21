@@ -26,6 +26,7 @@ import {
 } from '@/server/actions/story-actions';
 import FormularioPerfil from '@/components/perfil/FormularioPerfil';
 import SelectorIntereses from '@/components/perfil/SelectorIntereses';
+import FormularioContexto from '@/components/perfil/FormularioContexto';
 import TestBaseline from '@/components/baseline/TestBaseline';
 import InicioSesion from '@/components/lectura/InicioSesion';
 import PantallaLectura from '@/components/lectura/PantallaLectura';
@@ -73,6 +74,7 @@ export default function LecturaPage() {
   const [estado, setEstado] = useState<EstadoFlujoLectura | null>(null);
   const [datosEstudiante, setDatosEstudiante] = useState<DatosEstudianteLectura | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const cargaInicial = useRef(false);
 
   // Estado de sesion de lectura activa
@@ -91,27 +93,45 @@ export default function LecturaPage() {
   const cargarEstado = useCallback(async () => {
     if (!estudiante) return;
     setCargando(true);
-    const result = await obtenerEstadoLectura(estudiante.id);
-    if (result) {
-      setEstado(result.estado);
-      setDatosEstudiante(result.estudiante);
-    }
-    setCargando(false);
-  }, [estudiante]);
-
-  useEffect(() => {
-    if (!estudiante || cargaInicial.current) return;
-    cargaInicial.current = true;
-    let cancelled = false;
-
-    obtenerEstadoLectura(estudiante.id).then(result => {
-      if (cancelled) return;
+    setErrorCarga(null);
+    try {
+      const result = await obtenerEstadoLectura(estudiante.id);
       if (result) {
         setEstado(result.estado);
         setDatosEstudiante(result.estudiante);
       }
+    } catch (err) {
+      console.error('Error cargando estado de lectura:', err);
+      setErrorCarga('No pudimos cargar el perfil. Intenta de nuevo.');
+    } finally {
       setCargando(false);
-    });
+    }
+  }, [estudiante]);
+
+  useEffect(() => {
+    if (!estudiante) {
+      setCargando(false);
+      return;
+    }
+    if (cargaInicial.current) return;
+    cargaInicial.current = true;
+    let cancelled = false;
+
+    obtenerEstadoLectura(estudiante.id)
+      .then(result => {
+        if (cancelled) return;
+        if (result) {
+          setEstado(result.estado);
+          setDatosEstudiante(result.estudiante);
+        }
+        setCargando(false);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error('Error cargando estado de lectura:', err);
+        setErrorCarga('No pudimos cargar el perfil. Intenta de nuevo.');
+        setCargando(false);
+      });
 
     return () => { cancelled = true; };
   }, [estudiante]);
@@ -225,7 +245,7 @@ export default function LecturaPage() {
   }, [router]);
 
   // ─── Loading ───
-  if (!estudiante || cargando) {
+  if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-fondo">
         <div className="text-center animate-pulse-brillo">
@@ -236,10 +256,69 @@ export default function LecturaPage() {
     );
   }
 
+  // Sin estudiante activo en el contexto (no se selecciono hijo)
+  if (!estudiante) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
+        <div className="text-center max-w-sm">
+          <span className="text-5xl">👦</span>
+          <h2 className="mt-3 text-xl font-bold text-texto">Selecciona un lector</h2>
+          <p className="mt-2 text-sm text-texto-suave">
+            Vuelve al panel de padre y pulsa &quot;Ir a leer&quot; con uno de tus hijos.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push('/padre')}
+            className="mt-5 rounded-2xl bg-turquesa px-6 py-3 text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
+          >
+            Ir al panel
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // Error al cargar el estado
+  if (errorCarga) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
+        <div className="text-center max-w-sm">
+          <span className="text-5xl">😕</span>
+          <h2 className="mt-3 text-xl font-bold text-texto">Algo salio mal</h2>
+          <p className="mt-2 text-sm text-texto-suave">{errorCarga}</p>
+          <button
+            type="button"
+            onClick={() => {
+              cargaInicial.current = false;
+              setErrorCarga(null);
+              void cargarEstado();
+            }}
+            className="mt-5 rounded-2xl bg-coral px-6 py-3 text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
+          >
+            Reintentar
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   if (!estado || !datosEstudiante) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-fondo">
-        <p className="text-texto-suave">No se encontro el perfil.</p>
+      <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
+        <div className="text-center max-w-sm">
+          <span className="text-5xl">🔍</span>
+          <h2 className="mt-3 text-xl font-bold text-texto">Perfil no encontrado</h2>
+          <p className="mt-2 text-sm text-texto-suave">
+            No pudimos encontrar el perfil de este lector.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push('/padre')}
+            className="mt-5 rounded-2xl bg-turquesa px-6 py-3 text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
+          >
+            Volver al panel
+          </button>
+        </div>
       </main>
     );
   }
@@ -272,7 +351,20 @@ export default function LecturaPage() {
     );
   }
 
-  // ─── Paso 3: Sin baseline ───
+  // ─── Paso 3: Sin contexto personal (padre) ───
+  if (estado.paso === 'sin-contexto') {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
+        <FormularioContexto
+          studentId={datosEstudiante.id}
+          studentNombre={datosEstudiante.nombre}
+          onComplete={cargarEstado}
+        />
+      </main>
+    );
+  }
+
+  // ─── Paso 4: Sin baseline ───
   if (estado.paso === 'sin-baseline') {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">

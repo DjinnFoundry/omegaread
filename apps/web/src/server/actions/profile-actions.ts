@@ -10,6 +10,7 @@ import { requireAuth } from '../auth';
 import {
   actualizarPerfilSchema,
   guardarInteresesSchema,
+  guardarContextoPersonalSchema,
 } from '../validation';
 
 /**
@@ -80,6 +81,36 @@ export async function guardarIntereses(datos: {
     .update(students)
     .set({
       intereses: validado.intereses,
+      actualizadoEn: new Date(),
+    })
+    .where(eq(students.id, validado.studentId));
+
+  return { ok: true };
+}
+
+/**
+ * Guardar contexto personal del nino (texto libre del padre).
+ * Se usa para personalizar las historias generadas.
+ */
+export async function guardarContextoPersonal(datos: {
+  studentId: string;
+  contextoPersonal?: string;
+}) {
+  const validado = guardarContextoPersonalSchema.parse(datos);
+  const padre = await requireAuth();
+
+  const estudiante = await db.query.students.findFirst({
+    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
+  });
+  if (!estudiante) {
+    return { ok: false, error: 'Estudiante no encontrado' };
+  }
+
+  // Guardamos '' cuando el padre salta el paso (distinto de null = nunca mostrado)
+  await db
+    .update(students)
+    .set({
+      contextoPersonal: validado.contextoPersonal?.trim() || '',
       actualizadoEn: new Date(),
     })
     .where(eq(students.id, validado.studentId));

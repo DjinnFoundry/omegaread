@@ -67,6 +67,8 @@ export const students = pgTable('students', {
   temasEvitar: jsonb('temas_evitar').$type<string[]>().default([]),
   /** Personajes favoritos (texto libre del padre) */
   personajesFavoritos: text('personajes_favoritos'),
+  /** Contexto personal del nino (texto libre del padre para personalizar historias) */
+  contextoPersonal: text('contexto_personal'),
   /** Nivel de lectura actual (numerico, 1-10) */
   nivelLectura: real('nivel_lectura'),
   /** Score de comprension del baseline (0-1) */
@@ -104,10 +106,11 @@ export const topics = pgTable(
   'topics',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    slug: varchar('slug', { length: 50 }).notNull().unique(),
-    nombre: varchar('nombre', { length: 100 }).notNull(),
+    slug: varchar('slug', { length: 100 }).notNull().unique(),
+    nombre: varchar('nombre', { length: 150 }).notNull(),
     emoji: varchar('emoji', { length: 10 }).notNull(),
     descripcion: text('descripcion').notNull(),
+    categoria: varchar('categoria', { length: 50 }).notNull().default('general'),
     edadMinima: integer('edad_minima').notNull().default(5),
     edadMaxima: integer('edad_maxima').notNull().default(9),
     activo: boolean('activo').notNull().default(true),
@@ -117,6 +120,7 @@ export const topics = pgTable(
   (table) => [
     index('topics_slug_idx').on(table.slug),
     index('topics_activo_idx').on(table.activo),
+    index('topics_categoria_idx').on(table.categoria),
   ]
 );
 

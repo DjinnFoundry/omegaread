@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { actualizarPerfilEstudiante } from '@/server/actions/profile-actions';
-import { TOPICS_SEED } from '@/lib/data/topics';
+import { CATEGORIAS } from '@/lib/data/topics';
 
 interface Props {
   studentId: string;
@@ -277,19 +277,19 @@ export default function FormularioPerfil({ studentId, studentNombre, onComplete 
               Temas a evitar <span className="text-texto-suave font-normal">(opcional)</span>
             </p>
             <div className="flex flex-wrap gap-2">
-              {TOPICS_SEED.map(topic => (
+              {CATEGORIAS.map(cat => (
                 <button
-                  key={topic.slug}
+                  key={cat.slug}
                   type="button"
-                  onClick={() => toggleTemaEvitar(topic.slug)}
+                  onClick={() => toggleTemaEvitar(cat.slug)}
                   className={`rounded-full border-2 px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1
-                    ${temasEvitar.includes(topic.slug)
+                    ${temasEvitar.includes(cat.slug)
                       ? 'border-coral bg-coral/10 text-coral'
                       : 'border-neutro/20 bg-superficie text-texto-suave hover:border-neutro/40'
                     }`}
                 >
-                  <span>{topic.emoji}</span>
-                  {topic.nombre}
+                  <span>{cat.emoji}</span>
+                  {cat.nombre}
                 </button>
               ))}
             </div>

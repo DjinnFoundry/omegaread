@@ -129,6 +129,12 @@ export const guardarInteresesSchema = z.object({
   intereses: z.array(z.string().max(50)).min(1, 'Selecciona al menos 1 interes').max(10),
 });
 
+/** Schema: guardarContextoPersonal */
+export const guardarContextoPersonalSchema = z.object({
+  studentId: uuid,
+  contextoPersonal: z.string().max(2000, 'Maximo 2000 caracteres').optional(),
+});
+
 // ─────────────────────────────────────────────
 // BASELINE ACTIONS (Sprint 1)
 // ─────────────────────────────────────────────

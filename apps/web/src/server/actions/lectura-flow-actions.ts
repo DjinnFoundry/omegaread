@@ -12,6 +12,7 @@ import { calcularEdad } from '@/lib/utils/fecha';
 export type EstadoFlujoLectura =
   | { paso: 'perfil-incompleto' }
   | { paso: 'sin-intereses' }
+  | { paso: 'sin-contexto' }
   | { paso: 'sin-baseline' }
   | { paso: 'listo'; nivelLectura: number; confianza: string };
 
@@ -61,6 +62,9 @@ export async function obtenerEstadoLectura(studentId: string): Promise<{
     estado = { paso: 'perfil-incompleto' };
   } else if (!estudiante.intereses || estudiante.intereses.length === 0) {
     estado = { paso: 'sin-intereses' };
+  } else if (estudiante.contextoPersonal === null) {
+    // contextoPersonal null = nunca se presento el paso (distinto de '' = se salto)
+    estado = { paso: 'sin-contexto' };
   } else if (!estudiante.baselineCompletado) {
     estado = { paso: 'sin-baseline' };
   } else {

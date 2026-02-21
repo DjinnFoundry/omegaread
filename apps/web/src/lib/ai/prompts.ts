@@ -69,6 +69,7 @@ export interface PromptInput {
   topicDescripcion: string;
   intereses: string[];
   personajesFavoritos?: string;
+  contextoPersonal?: string;
   historiasAnteriores?: string[];
 }
 
@@ -76,18 +77,30 @@ export interface PromptInput {
  * Genera el prompt del sistema para el LLM.
  */
 export function buildSystemPrompt(): string {
-  return `Eres un autor de cuentos educativos para ninos hispanohablantes.
-Tu trabajo es crear historias cortas que sean:
-- Entretenidas y apropiadas para la edad indicada
-- Escritas en espanol correcto (es-ES)
-- Educativas sin ser aburridas
-- Seguras: sin violencia, contenido sexual, lenguaje inapropiado, ni temas que asusten a un nino
+  return `Eres un autor de textos educativos tipo "Como funcionan las cosas" para ninos hispanohablantes.
+Tu trabajo es crear textos informativos cortos que:
+- Expliquen de forma clara y precisa como funciona algo del mundo real
+- Sean entretenidos y apropiados para la edad indicada
+- Usen analogias y ejemplos concretos que un nino pueda visualizar
+- Esten escritos en espanol correcto (es-ES)
+- Sean cientificamente correctos pero simplificados para la edad
+- Sean seguros: sin violencia, contenido sexual, lenguaje inapropiado, ni temas que asusten a un nino
+
+El enfoque es INFORMATIVO, no ficcion. El nino debe aprender algo real sobre como funciona el tema.
+Puedes usar personajes o situaciones narrativas para hacer el contenido mas ameno, pero el nucleo
+debe ser la explicacion real del fenomeno, mecanismo o proceso.
 
 Tambien generas preguntas de comprension lectora de 4 tipos:
 1. LITERAL: pregunta sobre informacion explicita del texto
 2. INFERENCIA: requiere leer entre lineas o deducir
 3. VOCABULARIO: sobre el significado de una palabra en contexto
 4. RESUMEN: sobre la idea principal del texto
+
+Si el nino tiene contexto personal proporcionado por su padre/madre, USALO para personalizar la historia:
+- Usa nombres de sus amigos, familia o mascotas como personajes secundarios o referencias
+- Incluye sus intereses reales en ejemplos o analogias
+- Haz referencias a cosas que le gustan para que se sienta identificado
+- No fuerces todos los datos, usa solo los que encajen naturalmente con el tema
 
 IMPORTANTE:
 - Responde SOLO con JSON valido, sin markdown ni texto extra
@@ -215,23 +228,31 @@ export function buildUserPrompt(input: PromptInput): string {
     ? `\nPersonajes favoritos: ${input.personajesFavoritos}.`
     : '';
 
+  const contexto = input.contextoPersonal
+    ? `\nContexto personal del nino (proporcionado por su padre/madre): ${input.contextoPersonal}`
+    : '';
+
   const noRepetir = input.historiasAnteriores && input.historiasAnteriores.length > 0
     ? `\n\nIMPORTANTE - NO repitas estas historias que el nino ya leyo:\n${input.historiasAnteriores.map(t => `- "${t}"`).join('\n')}\nCrea una historia completamente diferente en trama, personajes y ambientacion.`
     : '';
 
-  return `Genera una historia y 4 preguntas de comprension para un nino.
+  return `Genera un texto informativo tipo "Como funciona..." y 4 preguntas de comprension para un nino.
 
 PERFIL DEL NINO:
 - Edad: ${input.edadAnos} anos
 - Nivel de lectura: ${input.nivel} de 4
-- Topic: ${input.topicNombre} (${input.topicDescripcion})${interesesExtra}${personajes}${noRepetir}
+- Tema: ${input.topicNombre}
+- Descripcion del tema: ${input.topicDescripcion}${interesesExtra}${personajes}${contexto}${noRepetir}
 
-REQUISITOS DE LA HISTORIA:
+REQUISITOS DEL TEXTO:
+- El texto debe EXPLICAR como funciona el tema de forma clara y precisa
+- Usa analogias y comparaciones que un nino de ${input.edadAnos} anos entienda
+- Los datos deben ser cientificamente correctos, simplificados para la edad
 - Longitud: ${config.palabrasMin}-${config.palabrasMax} palabras
 - Oraciones de ${config.oracionMin}-${config.oracionMax} palabras en promedio
 - ${config.complejidadLexica}
 - ${config.densidadIdeas}
-- Titulo atractivo para un nino de ${input.edadAnos} anos
+- Titulo atractivo en formato pregunta o declaracion curiosa (ej: "Sabias que...?")
 
 REQUISITOS DE PREGUNTAS:
 Genera exactamente 4 preguntas, una de cada tipo: literal, inferencia, vocabulario, resumen.
