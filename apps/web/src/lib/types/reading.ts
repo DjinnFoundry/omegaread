@@ -79,28 +79,32 @@ export interface DifficultyAdjustment {
 // ─────────────────────────────────────────────
 
 /**
- * session_score = 0.65 * comprension + 0.25 * ritmo_normalizado + 0.10 * estabilidad
+ * session_score = 0.55 * comprension + 0.25 * wpm_ratio + 0.10 * ritmo_mejora + 0.10 * estabilidad
  *
  * - comprension: ratio de aciertos (0-1)
- * - ritmo_normalizado: tiempo de lectura relativo al esperado (0-1, donde 1 = optimo)
+ * - wpmRatio: clamp(wpm_real / wpmEsperado, 0, 1.5) normalizado a 0-1
+ * - ritmoMejora: mejora en WPM respecto a sesiones anteriores (0-1)
  * - estabilidad: consistencia en sesiones recientes (0-1)
  */
 export interface SessionScoreInput {
   comprension: number;
-  ritmoNormalizado: number;
+  wpmRatio: number;
+  ritmoMejora: number;
   estabilidad: number;
 }
 
 export const PESOS_SESSION_SCORE = {
-  comprension: 0.65,
-  ritmo: 0.25,
+  comprension: 0.55,
+  wpmRatio: 0.25,
+  ritmoMejora: 0.10,
   estabilidad: 0.10,
 } as const;
 
 export function calcularSessionScore(input: SessionScoreInput): number {
   const score =
     PESOS_SESSION_SCORE.comprension * input.comprension +
-    PESOS_SESSION_SCORE.ritmo * input.ritmoNormalizado +
+    PESOS_SESSION_SCORE.wpmRatio * input.wpmRatio +
+    PESOS_SESSION_SCORE.ritmoMejora * input.ritmoMejora +
     PESOS_SESSION_SCORE.estabilidad * input.estabilidad;
   return Math.round(score * 100) / 100;
 }

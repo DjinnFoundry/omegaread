@@ -344,6 +344,12 @@ export const sessions = pgTable(
     storyId: uuid('story_id')
       .references(() => generatedStories.id, { onDelete: 'set null' }),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
+    /** WPM promedio de la sesion (descartando pagina 1 de calentamiento) */
+    wpmPromedio: real('wpm_promedio'),
+    /** WPM por cada pagina: [{ pagina: 1, wpm: 35 }, ...] */
+    wpmPorPagina: jsonb('wpm_por_pagina').$type<Array<{ pagina: number; wpm: number }>>(),
+    /** Total de paginas en las que se dividio el texto */
+    totalPaginas: integer('total_paginas'),
     iniciadaEn: timestamp('iniciada_en', { withTimezone: true }).notNull().defaultNow(),
     finalizadaEn: timestamp('finalizada_en', { withTimezone: true }),
   },

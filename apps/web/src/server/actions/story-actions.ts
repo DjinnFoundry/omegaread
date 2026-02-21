@@ -29,6 +29,7 @@ import {
 import { TOPICS_SEED, CATEGORIAS } from '@/lib/data/topics';
 import { calcularEdad } from '@/lib/utils/fecha';
 import { calcularAjusteDificultad } from './reading-actions';
+import { actualizarProgresoInmediato } from './session-actions';
 
 const MAX_HISTORIAS_DIA = 20;
 
@@ -238,6 +239,9 @@ export async function finalizarSesionLectura(datos: {
     correcta: boolean;
     tiempoMs: number;
   }>;
+  wpmPromedio?: number | null;
+  wpmPorPagina?: Array<{ pagina: number; wpm: number }> | null;
+  totalPaginas?: number | null;
 }) {
   const validado = finalizarSesionLecturaSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
@@ -258,17 +262,38 @@ export async function finalizarSesionLectura(datos: {
     return { ok: false as const, error: 'La sesion ya fue finalizada' };
   }
 
-  // 1. Guardar respuestas individuales
-  for (const resp of validado.respuestas) {
-    await db.insert(responses).values({
+  // 1. Guardar respuestas individuales (batch insert)
+  await db.insert(responses).values(
+    validado.respuestas.map(resp => ({
       sessionId: validado.sessionId,
       ejercicioId: resp.preguntaId,
       tipoEjercicio: resp.tipo,
       pregunta: resp.preguntaId,
       respuesta: String(resp.respuestaSeleccionada),
-      respuestaCorrecta: 'N/A',
+      respuestaCorrecta: String(resp.correcta ? resp.respuestaSeleccionada : 'incorrecto'),
       correcta: resp.correcta,
       tiempoRespuestaMs: resp.tiempoMs,
+    }))
+  );
+
+  // 1b. Actualizar skill progress por tipo de pregunta
+  const topicSlug = (sesion.metadata as Record<string, unknown>)?.topicSlug as string | undefined;
+  for (const resp of validado.respuestas) {
+    await actualizarProgresoInmediato({
+      studentId: validado.studentId,
+      skillId: `comprension-${resp.tipo}`,
+      categoria: 'comprension',
+      correcto: resp.correcta,
+      tiempoRespuestaMs: resp.tiempoMs,
+    });
+  }
+  if (topicSlug) {
+    const aciertosTotal = validado.respuestas.filter(r => r.correcta).length;
+    await actualizarProgresoInmediato({
+      studentId: validado.studentId,
+      skillId: `topic-${topicSlug}`,
+      categoria: 'topic',
+      correcto: aciertosTotal >= Math.ceil(validado.respuestas.length * 0.75),
     });
   }
 
@@ -279,7 +304,8 @@ export async function finalizarSesionLectura(datos: {
 
   // 3. Marcar sesion como completada
   const duracionSegundos = Math.round(validado.tiempoLecturaMs / 1000);
-  const estrellas = aciertos >= 4 ? 3 : aciertos >= 3 ? 2 : aciertos >= 1 ? 1 : 0;
+  const ratioAciertos = totalPreguntas > 0 ? aciertos / totalPreguntas : 0;
+  const estrellas = ratioAciertos >= 1 ? 3 : ratioAciertos >= 0.75 ? 2 : ratioAciertos > 0 ? 1 : 0;
 
   await db
     .update(sessions)
@@ -288,6 +314,9 @@ export async function finalizarSesionLectura(datos: {
       duracionSegundos,
       estrellasGanadas: estrellas,
       finalizadaEn: new Date(),
+      wpmPromedio: validado.wpmPromedio ?? null,
+      wpmPorPagina: validado.wpmPorPagina ?? null,
+      totalPaginas: validado.totalPaginas ?? null,
       metadata: {
         ...(sesion.metadata as Record<string, unknown>),
         comprensionScore,
@@ -309,7 +338,22 @@ export async function finalizarSesionLectura(datos: {
     comprensionScore,
     tiempoLecturaMs: validado.tiempoLecturaMs,
     tiempoEsperadoMs,
+    wpmPromedio: validado.wpmPromedio ?? undefined,
   });
+
+  // Guardar sessionScore compuesto en metadata para que futuras sesiones lo usen
+  // en la logica de sesiones consecutivas (en vez de usar comprensionScore como proxy)
+  const metadataActual = (await db.query.sessions.findFirst({
+    where: eq(sessions.id, validado.sessionId),
+    columns: { metadata: true },
+  }))?.metadata as Record<string, unknown> | null;
+
+  await db
+    .update(sessions)
+    .set({
+      metadata: { ...metadataActual, sessionScore: ajuste.sessionScore },
+    })
+    .where(eq(sessions.id, validado.sessionId));
 
   return {
     ok: true as const,

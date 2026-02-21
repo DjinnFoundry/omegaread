@@ -6,13 +6,20 @@
 import OpenAI from 'openai';
 
 let _client: OpenAI | null = null;
+let _clientConfigKey: string | null = null;
 
 function getLLMConfig() {
-  // z.ai / GLM (prioridad)
+  // Custom LLM provider (z.ai, GLM, etc.) - requires explicit base URL
   if (process.env.LLM_API_KEY) {
+    if (!process.env.LLM_BASE_URL) {
+      throw new Error(
+        'LLM_BASE_URL is required when using LLM_API_KEY. ' +
+        'Set it to the API base URL of your LLM provider (e.g., https://open.bigmodel.cn/api/paas/v4).'
+      );
+    }
     return {
       apiKey: process.env.LLM_API_KEY,
-      baseURL: process.env.LLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
+      baseURL: process.env.LLM_BASE_URL,
       model: process.env.LLM_MODEL || 'glm-4-flash',
     };
   }
@@ -28,12 +35,14 @@ function getLLMConfig() {
 }
 
 export function getOpenAIClient(): OpenAI {
-  if (!_client) {
-    const config = getLLMConfig();
+  const config = getLLMConfig();
+  const configKey = `${config.apiKey}|${config.baseURL ?? ''}`;
+  if (!_client || _clientConfigKey !== configKey) {
     _client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseURL,
     });
+    _clientConfigKey = configKey;
   }
   return _client;
 }

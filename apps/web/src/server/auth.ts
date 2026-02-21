@@ -77,9 +77,12 @@ export async function registrarPadre(datos: {
 export async function loginPadre(email: string, password: string) {
   const normalizedEmail = email.toLowerCase().trim();
 
-  // Dev-only: auto-create admin user on first login attempt
+  // Dev-only: auto-create admin user on first login attempt.
+  // Requires NODE_ENV !== 'production' AND explicit DEV_ADMIN_ENABLED=true.
+  // This prevents accidental activation in preview/staging deployments.
   if (
     process.env.NODE_ENV !== 'production' &&
+    process.env.DEV_ADMIN_ENABLED === 'true' &&
     normalizedEmail === 'admin@admin.com' &&
     password === 'admin'
   ) {

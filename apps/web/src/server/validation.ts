@@ -214,6 +214,12 @@ export const finalizarSesionLecturaSchema = z.object({
     correcta: z.boolean(),
     tiempoMs: z.number().int().nonnegative(),
   })).min(1).max(4),
+  wpmPromedio: z.number().nonnegative().nullable().optional(),
+  wpmPorPagina: z.array(z.object({
+    pagina: z.number().int().positive(),
+    wpm: z.number().nonnegative(),
+  })).nullable().optional(),
+  totalPaginas: z.number().int().positive().nullable().optional(),
 });
 
 // ─────────────────────────────────────────────

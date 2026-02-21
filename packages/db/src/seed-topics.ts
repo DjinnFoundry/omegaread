@@ -23,73 +23,74 @@ const db = drizzle(client);
 async function seed() {
   console.log(`Sincronizando ${TOPICS_SEED.length} topics...`);
 
-  // Obtener todos los topics existentes
-  const existentes = await db.select().from(topics);
-  const existentesPorSlug = new Map(existentes.map(t => [t.slug, t]));
+  const result = await db.transaction(async (tx) => {
+    const existentes = await tx.select().from(topics);
+    const existentesPorSlug = new Map(existentes.map(t => [t.slug, t]));
 
-  let insertados = 0;
-  let actualizados = 0;
-  let desactivados = 0;
+    let insertados = 0;
+    let actualizados = 0;
+    let desactivados = 0;
 
-  for (const topic of TOPICS_SEED) {
-    const existente = existentesPorSlug.get(topic.slug);
+    for (const topic of TOPICS_SEED) {
+      const existente = existentesPorSlug.get(topic.slug);
 
-    if (!existente) {
-      // Insertar nuevo
-      await db.insert(topics).values({
-        slug: topic.slug,
-        nombre: topic.nombre,
-        emoji: topic.emoji,
-        descripcion: topic.descripcion,
-        categoria: topic.categoria,
-        edadMinima: topic.edadMinima,
-        edadMaxima: topic.edadMaxima,
-        activo: true,
-        orden: topic.orden,
-      });
-      insertados++;
-    } else {
-      // Actualizar si cambio algo
-      const necesitaUpdate =
-        existente.nombre !== topic.nombre ||
-        existente.emoji !== topic.emoji ||
-        existente.descripcion !== topic.descripcion ||
-        existente.categoria !== topic.categoria ||
-        existente.orden !== topic.orden ||
-        !existente.activo;
+      if (!existente) {
+        await tx.insert(topics).values({
+          slug: topic.slug,
+          nombre: topic.nombre,
+          emoji: topic.emoji,
+          descripcion: topic.descripcion,
+          categoria: topic.categoria,
+          edadMinima: topic.edadMinima,
+          edadMaxima: topic.edadMaxima,
+          activo: true,
+          orden: topic.orden,
+        });
+        insertados++;
+      } else {
+        const necesitaUpdate =
+          existente.nombre !== topic.nombre ||
+          existente.emoji !== topic.emoji ||
+          existente.descripcion !== topic.descripcion ||
+          existente.categoria !== topic.categoria ||
+          existente.orden !== topic.orden ||
+          !existente.activo;
 
-      if (necesitaUpdate) {
-        await db
-          .update(topics)
-          .set({
-            nombre: topic.nombre,
-            emoji: topic.emoji,
-            descripcion: topic.descripcion,
-            categoria: topic.categoria,
-            edadMinima: topic.edadMinima,
-            edadMaxima: topic.edadMaxima,
-            activo: true,
-            orden: topic.orden,
-          })
-          .where(eq(topics.id, existente.id));
-        actualizados++;
+        if (necesitaUpdate) {
+          await tx
+            .update(topics)
+            .set({
+              nombre: topic.nombre,
+              emoji: topic.emoji,
+              descripcion: topic.descripcion,
+              categoria: topic.categoria,
+              edadMinima: topic.edadMinima,
+              edadMaxima: topic.edadMaxima,
+              activo: true,
+              orden: topic.orden,
+            })
+            .where(eq(topics.id, existente.id));
+          actualizados++;
+        }
       }
     }
-  }
 
-  // Desactivar topics que ya no estan en TOPICS_SEED
-  const slugsActuales = new Set(TOPICS_SEED.map(t => t.slug));
-  for (const existente of existentes) {
-    if (!slugsActuales.has(existente.slug) && existente.activo) {
-      await db
-        .update(topics)
-        .set({ activo: false })
-        .where(eq(topics.id, existente.id));
-      desactivados++;
+    // Desactivar topics que ya no estan en TOPICS_SEED
+    const slugsActuales = new Set(TOPICS_SEED.map(t => t.slug));
+    for (const existente of existentes) {
+      if (!slugsActuales.has(existente.slug) && existente.activo) {
+        await tx
+          .update(topics)
+          .set({ activo: false })
+          .where(eq(topics.id, existente.id));
+        desactivados++;
+      }
     }
-  }
 
-  console.log(`Insertados: ${insertados}, Actualizados: ${actualizados}, Desactivados: ${desactivados}`);
+    return { insertados, actualizados, desactivados };
+  });
+
+  console.log(`Insertados: ${result.insertados}, Actualizados: ${result.actualizados}, Desactivados: ${result.desactivados}`);
   await client.end();
 }
 

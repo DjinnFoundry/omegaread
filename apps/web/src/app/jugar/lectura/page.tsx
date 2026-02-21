@@ -29,7 +29,7 @@ import SelectorIntereses from '@/components/perfil/SelectorIntereses';
 import FormularioContexto from '@/components/perfil/FormularioContexto';
 import TestBaseline from '@/components/baseline/TestBaseline';
 import InicioSesion from '@/components/lectura/InicioSesion';
-import PantallaLectura from '@/components/lectura/PantallaLectura';
+import PantallaLectura, { type WpmData } from '@/components/lectura/PantallaLectura';
 import PantallaPreguntas, { type RespuestaPregunta } from '@/components/lectura/PantallaPreguntas';
 import ResultadoSesion from '@/components/lectura/ResultadoSesion';
 
@@ -81,6 +81,7 @@ export default function LecturaPage() {
   const [pasoSesion, setPasoSesion] = useState<PasoSesion>('elegir-topic');
   const [sesionActiva, setSesionActiva] = useState<DatosSesionActiva | null>(null);
   const [tiempoLectura, setTiempoLectura] = useState(0);
+  const [wpmData, setWpmData] = useState<WpmData | null>(null);
   const [resultadoSesion, setResultadoSesion] = useState<ResultadoSesionData | null>(null);
   const [errorGeneracion, setErrorGeneracion] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
@@ -144,31 +145,37 @@ export default function LecturaPage() {
     setErrorGeneracion(null);
     setPasoSesion('generando');
 
-    const result = await generarHistoria({
-      studentId: estudiante.id,
-      topicSlug,
-    });
+    try {
+      const result = await generarHistoria({
+        studentId: estudiante.id,
+        topicSlug,
+      });
 
-    setGenerando(false);
+      if (!result.ok) {
+        setErrorGeneracion(result.error);
+        setPasoSesion('elegir-topic');
+        return;
+      }
 
-    if (!result.ok) {
-      setErrorGeneracion(result.error);
+      setSesionActiva({
+        sessionId: result.sessionId,
+        storyId: result.storyId,
+        historia: result.historia,
+        preguntas: result.preguntas,
+      });
+      setAjusteUsado(false);
+      setPasoSesion('leyendo');
+    } catch {
+      setErrorGeneracion('No pudimos crear tu historia. Intentalo de nuevo.');
       setPasoSesion('elegir-topic');
-      return;
+    } finally {
+      setGenerando(false);
     }
-
-    setSesionActiva({
-      sessionId: result.sessionId,
-      storyId: result.storyId,
-      historia: result.historia,
-      preguntas: result.preguntas,
-    });
-    setAjusteUsado(false);
-    setPasoSesion('leyendo');
   }, [estudiante, generando]);
 
-  const handleTerminarLectura = useCallback((tiempoMs: number) => {
+  const handleTerminarLectura = useCallback((tiempoMs: number, wpm: WpmData) => {
     setTiempoLectura(tiempoMs);
+    setWpmData(wpm);
     setPasoSesion('preguntas');
   }, []);
 
@@ -181,56 +188,72 @@ export default function LecturaPage() {
 
     setReescribiendo(true);
 
-    const result = await reescribirHistoria({
-      sessionId: sesionActiva.sessionId,
-      studentId: estudiante.id,
-      storyId: sesionActiva.storyId,
-      direccion,
-      tiempoLecturaAntesDePulsar: tiempoLecturaMs,
-    });
+    try {
+      const result = await reescribirHistoria({
+        sessionId: sesionActiva.sessionId,
+        studentId: estudiante.id,
+        storyId: sesionActiva.storyId,
+        direccion,
+        tiempoLecturaAntesDePulsar: tiempoLecturaMs,
+      });
 
-    setReescribiendo(false);
+      if (!result.ok) {
+        // Fallo silencioso: el nino puede seguir leyendo la historia original
+        return;
+      }
 
-    if (!result.ok) {
-      // Silently fail, the child can continue reading the original
-      return;
+      setSesionActiva(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          storyId: result.storyId,
+          historia: result.historia,
+          preguntas: result.preguntas,
+        };
+      });
+      setAjusteUsado(true);
+      setRewriteCount(c => c + 1);
+    } catch {
+      // Fallo silencioso: el nino puede seguir leyendo la historia original
+    } finally {
+      setReescribiendo(false);
     }
-
-    // Actualizar sesion activa con la historia reescrita
-    setSesionActiva(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        storyId: result.storyId,
-        historia: result.historia,
-        preguntas: result.preguntas,
-      };
-    });
-    setAjusteUsado(true);
-    setRewriteCount(c => c + 1);
   }, [estudiante, sesionActiva, reescribiendo, ajusteUsado]);
+
+  const [errorFinalizacion, setErrorFinalizacion] = useState<string | null>(null);
 
   const handleRespuestasCompletas = useCallback(async (respuestas: RespuestaPregunta[]) => {
     if (!estudiante || !sesionActiva) return;
+    setErrorFinalizacion(null);
 
-    const result = await finalizarSesionLectura({
-      sessionId: sesionActiva.sessionId,
-      studentId: estudiante.id,
-      tiempoLecturaMs: tiempoLectura,
-      respuestas,
-    });
+    try {
+      const result = await finalizarSesionLectura({
+        sessionId: sesionActiva.sessionId,
+        studentId: estudiante.id,
+        tiempoLecturaMs: tiempoLectura,
+        respuestas,
+        wpmPromedio: wpmData?.wpmPromedio ?? null,
+        wpmPorPagina: wpmData?.wpmPorPagina ?? null,
+        totalPaginas: wpmData?.totalPaginas ?? null,
+      });
 
-    if (result.ok) {
-      setResultadoSesion(result.resultado);
-      setPasoSesion('resultado');
-      void recargarProgreso();
+      if (result.ok) {
+        setResultadoSesion(result.resultado);
+        setPasoSesion('resultado');
+        void recargarProgreso();
+      } else {
+        setErrorFinalizacion('No pudimos guardar tus respuestas. Intentalo de nuevo.');
+      }
+    } catch {
+      setErrorFinalizacion('Hubo un error de conexion. Intentalo de nuevo.');
     }
-  }, [estudiante, sesionActiva, tiempoLectura, recargarProgreso]);
+  }, [estudiante, sesionActiva, tiempoLectura, wpmData, recargarProgreso]);
 
   const handleLeerOtra = useCallback(() => {
     setSesionActiva(null);
     setResultadoSesion(null);
     setTiempoLectura(0);
+    setWpmData(null);
     setErrorGeneracion(null);
     setAjusteUsado(false);
     setReescribiendo(false);
@@ -421,6 +444,12 @@ export default function LecturaPage() {
   if (pasoSesion === 'preguntas' && sesionActiva) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
+        {errorFinalizacion && (
+          <div className="w-full max-w-md mb-4 p-4 rounded-2xl bg-error-suave border border-coral/20 text-sm text-texto">
+            <p className="font-semibold mb-1">Ups!</p>
+            <p className="text-texto-suave">{errorFinalizacion}</p>
+          </div>
+        )}
         <PantallaPreguntas
           preguntas={sesionActiva.preguntas}
           onComplete={handleRespuestasCompletas}

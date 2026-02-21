@@ -95,9 +95,8 @@ export default function ResultadoSesion({
   onVolver,
 }: ResultadoSesionProps) {
   const router = useRouter();
-  const [mostrarCelebracion, setMostrarCelebracion] = useState(
-    () => resultado.aciertos >= 3
-  );
+  const ratio = resultado.totalPreguntas > 0 ? resultado.aciertos / resultado.totalPreguntas : 0;
+  const [mostrarCelebracion, setMostrarCelebracion] = useState(() => ratio >= 0.75);
 
   const mensaje = getMensajeMotivacional(resultado.aciertos, resultado.totalPreguntas);
   const nivelInfo = getNivelTexto(resultado.direccion);
@@ -111,7 +110,7 @@ export default function ResultadoSesion({
 
       {/* Emoji principal */}
       <div className="text-6xl mb-4">
-        {resultado.aciertos >= 4 ? '🏆' : resultado.aciertos >= 3 ? '🌟' : resultado.aciertos >= 2 ? '👏' : '💪'}
+        {ratio >= 1 ? '🏆' : ratio >= 0.75 ? '🌟' : ratio >= 0.5 ? '👏' : '💪'}
       </div>
 
       {/* Mensaje */}

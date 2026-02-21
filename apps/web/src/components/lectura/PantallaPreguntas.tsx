@@ -141,7 +141,7 @@ export default function PantallaPreguntas({
               touch-manipulation
             "
           >
-            <span>{mostrarHistoria ? '📖' : '📖'}</span>
+            <span>{mostrarHistoria ? '📕' : '📖'}</span>
             {mostrarHistoria ? 'Ocultar historia' : 'Volver a leer la historia'}
           </button>
           {mostrarHistoria && (
