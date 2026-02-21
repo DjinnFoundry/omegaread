@@ -75,8 +75,28 @@ export async function registrarPadre(datos: {
 
 /** Inicia sesión de padre */
 export async function loginPadre(email: string, password: string) {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Dev-only: auto-create admin user on first login attempt
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    normalizedEmail === 'admin@admin.com' &&
+    password === 'admin'
+  ) {
+    const existing = await db.query.parents.findFirst({
+      where: eq(parents.email, normalizedEmail),
+    });
+    if (!existing) {
+      await registrarPadre({
+        email: normalizedEmail,
+        password: 'admin',
+        nombre: 'Admin Test',
+      });
+    }
+  }
+
   const padre = await db.query.parents.findFirst({
-    where: eq(parents.email, email.toLowerCase().trim()),
+    where: eq(parents.email, normalizedEmail),
   });
 
   if (!padre) return null;
