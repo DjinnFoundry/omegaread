@@ -94,7 +94,7 @@ function o() {
   return ++_orden;
 }
 
-export const SKILLS: SkillDef[] = [
+const SKILLS: SkillDef[] = [
   // =========================================================================
   // NATURALEZA Y VIDA 🌿
   // =========================================================================
@@ -742,16 +742,12 @@ export function getSkillBySlug(slug: string): SkillDef | undefined {
 
 /** Get all skills for a given domain, sorted by orden. */
 export function getSkillsDeDominio(dominioSlug: DominioSlug): SkillDef[] {
-  return SKILLS.filter((s) => s.dominio === dominioSlug).sort(
-    (a, b) => a.orden - b.orden,
-  );
+  return SKILLS.filter((s) => s.dominio === dominioSlug).sort((a, b) => a.orden - b.orden);
 }
 
 /** Get all skills appropriate for a given age. */
 export function getSkillsPorEdad(edadAnos: number): SkillDef[] {
-  return SKILLS.filter(
-    (s) => edadAnos >= s.edadMinima && edadAnos <= s.edadMaxima,
-  );
+  return SKILLS.filter((s) => edadAnos >= s.edadMinima && edadAnos <= s.edadMaxima);
 }
 
 // ---------------------------------------------------------------------------
@@ -800,28 +796,3 @@ export const TOPICS_SEED: TopicSeed[] = SKILLS.map((s) => {
     orden: s.orden,
   };
 });
-
-/**
- * Groups topics by category for the UI selector.
- * Kept for backward compatibility with the old topics.ts API.
- */
-export function getTopicsPorCategoria(
-  edadAnos: number,
-): Map<string, TopicSeed[]> {
-  const agrupados = new Map<string, TopicSeed[]>();
-
-  for (const cat of CATEGORIAS) {
-    const topicsDeCat = TOPICS_SEED.filter(
-      (t) =>
-        t.categoria === cat.slug &&
-        edadAnos >= t.edadMinima &&
-        edadAnos <= t.edadMaxima,
-    ).sort((a, b) => a.orden - b.orden);
-
-    if (topicsDeCat.length > 0) {
-      agrupados.set(cat.slug, topicsDeCat);
-    }
-  }
-
-  return agrupados;
-}

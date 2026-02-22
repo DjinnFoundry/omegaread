@@ -15,7 +15,7 @@ function getSecret(): Uint8Array {
   const raw = process.env.AUTH_SECRET;
   if (!raw) {
     throw new Error(
-      'AUTH_SECRET must be set (at least 32 characters). Generate one with: openssl rand -base64 32'
+      'AUTH_SECRET must be set (at least 32 characters). Generate one with: openssl rand -base64 32',
     );
   }
   return new TextEncoder().encode(raw);
@@ -34,15 +34,10 @@ async function crearToken(payload: { parentId: string; email: string }): Promise
 }
 
 /** Verifica y decodifica un token JWT */
-async function verificarToken(
-  token: string
-): Promise<{ parentId: string; email: string } | null> {
+async function verificarToken(token: string): Promise<{ parentId: string; email: string } | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    if (
-      typeof payload.parentId === 'string' &&
-      typeof payload.email === 'string'
-    ) {
+    if (typeof payload.parentId === 'string' && typeof payload.email === 'string') {
       return { parentId: payload.parentId, email: payload.email };
     }
     return null;
@@ -54,11 +49,7 @@ async function verificarToken(
 // ─── API pública ───
 
 /** Registra un nuevo padre */
-export async function registrarPadre(datos: {
-  email: string;
-  password: string;
-  nombre: string;
-}) {
+export async function registrarPadre(datos: { email: string; password: string; nombre: string }) {
   const db = await getDb();
   const passwordHash = await bcrypt.hash(datos.password, 12);
 
@@ -164,10 +155,4 @@ export async function requireStudentOwnership(studentId: string) {
     throw new Error('Acceso no autorizado: el estudiante no pertenece a este padre');
   }
   return { padre, estudiante };
-}
-
-/** Cierra sesión */
-export async function logoutPadre() {
-  const cookieStore = await cookies();
-  cookieStore.delete(AUTH_COOKIE);
 }

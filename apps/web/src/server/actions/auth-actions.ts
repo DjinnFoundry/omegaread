@@ -4,7 +4,7 @@
  * Server Actions para autenticación de padres
  */
 import { redirect } from 'next/navigation';
-import { registrarPadre, loginPadre, logoutPadre } from '../auth';
+import { registrarPadre, loginPadre } from '../auth';
 
 export type AuthResult = {
   ok: boolean;
@@ -55,10 +55,4 @@ export async function actionLogin(formData: FormData): Promise<AuthResult> {
   }
 
   redirect('/padre/dashboard');
-}
-
-/** Acción: Cerrar sesión */
-export async function actionLogout() {
-  await logoutPadre();
-  redirect('/');
 }

@@ -40,7 +40,7 @@ function getLLMConfig() {
     if (!process.env.LLM_BASE_URL) {
       throw new Error(
         'LLM_BASE_URL is required when using LLM_API_KEY. ' +
-        'Set it to the API base URL of your LLM provider (e.g., https://open.bigmodel.cn/api/paas/v4).'
+          'Set it to the API base URL of your LLM provider (e.g., https://open.bigmodel.cn/api/paas/v4).',
       );
     }
     return {
@@ -84,11 +84,11 @@ export async function hasOpenAIKey(): Promise<boolean> {
   return !!(process.env.LLM_API_KEY || process.env.OPENAI_API_KEY);
 }
 
-export class LLMKeyMissingError extends Error {
+class LLMKeyMissingError extends Error {
   constructor() {
     super(
       'No hay API key de LLM configurada. ' +
-      'Configura LLM_API_KEY (z.ai) o OPENAI_API_KEY en .env.local.'
+        'Configura LLM_API_KEY (z.ai) o OPENAI_API_KEY en .env.local.',
     );
     this.name = 'LLMKeyMissingError';
   }

@@ -71,8 +71,6 @@ const RD_MIN = 75;
 /** RD maximo (incertidumbre total) */
 const RD_MAX = 350;
 
-const ELO_INITIAL = 1000;
-
 /**
  * Brier score "neutral" (baseline).
  *
@@ -80,7 +78,7 @@ const ELO_INITIAL = 1000;
  * Usamos 0.20 como neutral para que predicciones "decentes"
  * todavia reduzcan un poco el RD.
  */
-const NEUTRAL_BRIER = 0.20;
+const NEUTRAL_BRIER = 0.2;
 
 /**
  * Sensibilidad del ajuste de RD por consistencia.
@@ -100,13 +98,13 @@ const RD_SENSITIVITY = 120;
 
 /** Factor g(RD): atenua impacto segun incertidumbre del oponente */
 function glickoG(rd: number): number {
-  return 1 / Math.sqrt(1 + 3 * Q * Q * rd * rd / (Math.PI * Math.PI));
+  return 1 / Math.sqrt(1 + (3 * Q * Q * rd * rd) / (Math.PI * Math.PI));
 }
 
 /** Expected score E */
 function glickoE(playerRating: number, opponentRating: number, opponentRd: number): number {
   const g = glickoG(opponentRd);
-  return 1 / (1 + Math.pow(10, -g * (playerRating - opponentRating) / 400));
+  return 1 / (1 + Math.pow(10, (-g * (playerRating - opponentRating)) / 400));
 }
 
 /** Calcula nuevo rating y RD tras una respuesta */
@@ -149,9 +147,8 @@ function ajustarRdPorConsistencia(
 ): number {
   if (predicciones.length < 2) return rd;
 
-  const brier = predicciones.reduce((sum, p) =>
-    sum + (p.actual - p.expected) ** 2, 0,
-  ) / predicciones.length;
+  const brier =
+    predicciones.reduce((sum, p) => sum + (p.actual - p.expected) ** 2, 0) / predicciones.length;
 
   const deviation = brier - NEUTRAL_BRIER;
   const rdAdjustment = deviation * RD_SENSITIVITY;
@@ -168,7 +165,7 @@ function ajustarRdPorConsistencia(
  *
  * Rango: ~200 (nivel 1.0, facil, literal) a ~1380 (nivel 4.8, hard, resumen)
  */
-export function calcularQuestionRating(
+function calcularQuestionRating(
   textLevel: number,
   dificultadPregunta: number,
   tipo: TipoPregunta,
@@ -271,15 +268,3 @@ export function clasificarElo(elo: number): string {
   if (elo < 1400) return 'Competente';
   return 'Avanzado';
 }
-
-/**
- * Rating inicial para nuevos estudiantes.
- */
-export const ELO_INICIAL: EloRatings = {
-  global: ELO_INITIAL,
-  literal: ELO_INITIAL,
-  inferencia: ELO_INITIAL,
-  vocabulario: ELO_INITIAL,
-  resumen: ELO_INITIAL,
-  rd: RD_MAX,
-};

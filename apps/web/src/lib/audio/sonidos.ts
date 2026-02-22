@@ -27,7 +27,7 @@ function reproducirTono(
   duracion: number,
   tipo: OscillatorType = 'sine',
   volumen: number = 0.3,
-  inicioMs: number = 0
+  inicioMs: number = 0,
 ): void {
   const ctx = obtenerContexto();
   const osc = ctx.createOscillator();
@@ -36,35 +36,13 @@ function reproducirTono(
   osc.type = tipo;
   osc.frequency.setValueAtTime(frecuencia, ctx.currentTime);
   gain.gain.setValueAtTime(volumen, ctx.currentTime + inicioMs / 1000);
-  gain.gain.exponentialRampToValueAtTime(
-    0.001,
-    ctx.currentTime + inicioMs / 1000 + duracion
-  );
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + inicioMs / 1000 + duracion);
 
   osc.connect(gain);
   gain.connect(ctx.destination);
 
   osc.start(ctx.currentTime + inicioMs / 1000);
   osc.stop(ctx.currentTime + inicioMs / 1000 + duracion);
-}
-
-/**
- * Tono ascendente alegre (do-mi-sol) — para respuestas correctas.
- */
-export function acierto(): void {
-  // Do (C5) - Mi (E5) - Sol (G5)
-  reproducirTono(523.25, 0.15, 'sine', 0.25, 0);
-  reproducirTono(659.25, 0.15, 'sine', 0.25, 100);
-  reproducirTono(783.99, 0.25, 'sine', 0.3, 200);
-}
-
-/**
- * Tono suave descendente — para errores (sin ser triste).
- */
-export function error(): void {
-  // Tono suave que baja un poco
-  reproducirTono(440, 0.15, 'sine', 0.15, 0);
-  reproducirTono(392, 0.2, 'sine', 0.12, 120);
 }
 
 /**
@@ -100,25 +78,3 @@ export function celebracion(): void {
   reproducirTono(1318.51, 0.15, 'triangle', 0.15, 400);
   reproducirTono(1567.98, 0.3, 'triangle', 0.12, 500);
 }
-
-/**
- * Twinkle — para estrellas ganadas.
- */
-export function estrellaGanada(): void {
-  // Brillito ascendente rápido
-  reproducirTono(1200, 0.08, 'sine', 0.2, 0);
-  reproducirTono(1600, 0.08, 'sine', 0.2, 60);
-  reproducirTono(2000, 0.15, 'sine', 0.15, 120);
-  reproducirTono(2400, 0.25, 'triangle', 0.1, 180);
-}
-
-/**
- * Objeto agrupado para importar como `sonidos.acierto()`, etc.
- */
-export const sonidos = {
-  acierto,
-  error,
-  click,
-  celebracion,
-  estrellaGanada,
-};
