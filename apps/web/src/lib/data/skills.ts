@@ -731,6 +731,392 @@ const SKILLS: SkillDef[] = [
   },
 ];
 
+const SKILLS_EXTRA: Array<Omit<SkillDef, 'orden'>> = [
+  // =========================================================================
+  // NATURALEZA Y VIDA 🌿 (expansion)
+  // =========================================================================
+  {
+    slug: 'polinizadores',
+    nombre: 'Los polinizadores',
+    emoji: '🐝',
+    dominio: 'naturaleza-vida',
+    nivel: 1,
+    conceptoNucleo:
+      'Abejas, mariposas y otros polinizadores llevan polen de una flor a otra. Gracias a ese viaje, muchas plantas pueden formar frutas y semillas.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'hongos-descomponen',
+    nombre: 'Hongos que descomponen',
+    emoji: '🍄',
+    dominio: 'naturaleza-vida',
+    nivel: 1,
+    conceptoNucleo:
+      'Los hongos ayudan a descomponer hojas y restos de seres vivos. Asi devuelven nutrientes al suelo para que nuevas plantas puedan crecer.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'habitats-acuaticos',
+    nombre: 'Habitats acuaticos',
+    emoji: '🐟',
+    dominio: 'naturaleza-vida',
+    nivel: 1,
+    conceptoNucleo:
+      'Rios, lagos y mares son habitats acuaticos con animales y plantas adaptados al agua. Cada habitat tiene condiciones distintas de luz, temperatura y corriente.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'adaptaciones-animales',
+    nombre: 'Adaptaciones animales',
+    emoji: '🦊',
+    dominio: 'naturaleza-vida',
+    nivel: 2,
+    conceptoNucleo:
+      'Los animales tienen adaptaciones para sobrevivir: pelaje grueso, picos especiales o patas largas. Cada rasgo les ayuda en su ambiente.',
+    prerequisitos: ['animales-en-invierno', 'polinizadores'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'ciclo-agua-completo',
+    nombre: 'Ciclo del agua completo',
+    emoji: '🌧️',
+    dominio: 'naturaleza-vida',
+    nivel: 2,
+    conceptoNucleo:
+      'El agua se evapora, forma nubes, cae como lluvia y vuelve a rios y mares. Ese ciclo se repite todo el tiempo y mantiene viva la naturaleza.',
+    prerequisitos: ['el-agua-cambia', 'habitats-acuaticos'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'equilibrio-del-bosque',
+    nombre: 'Equilibrio del bosque',
+    emoji: '🌲',
+    dominio: 'naturaleza-vida',
+    nivel: 2,
+    conceptoNucleo:
+      'En un bosque, plantas, animales, hongos y suelo funcionan como equipo. Si una parte cambia mucho, todo el sistema se puede desequilibrar.',
+    prerequisitos: ['plantas-que-crecen', 'hongos-descomponen'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+
+  // =========================================================================
+  // COMO FUNCIONAN LAS COSAS 🔧 (expansion)
+  // =========================================================================
+  {
+    slug: 'que-hacen-imanes',
+    nombre: 'Que hacen los imanes',
+    emoji: '🧲',
+    dominio: 'como-funcionan',
+    nivel: 1,
+    conceptoNucleo:
+      'Los imanes atraen algunos metales como el hierro y pueden empujar o jalar otros imanes. Tienen polos que se atraen o se repelen.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'sonido-vibra',
+    nombre: 'El sonido vibra',
+    emoji: '🔊',
+    dominio: 'como-funcionan',
+    nivel: 1,
+    conceptoNucleo:
+      'El sonido nace cuando algo vibra y mueve el aire. Esas vibraciones viajan hasta nuestros oidos, donde el cerebro las interpreta como sonidos.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'friccion-y-movimiento',
+    nombre: 'Friccion y movimiento',
+    emoji: '🛹',
+    dominio: 'como-funcionan',
+    nivel: 1,
+    conceptoNucleo:
+      'La friccion es una fuerza que frena el movimiento cuando dos superficies se rozan. Puede ayudar, como al caminar, o dificultar, como al arrastrar algo.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'energia-se-transforma',
+    nombre: 'La energia se transforma',
+    emoji: '🔋',
+    dominio: 'como-funcionan',
+    nivel: 2,
+    conceptoNucleo:
+      'La energia no desaparece, cambia de forma: de movimiento a calor, de electricidad a luz, o de comida a energia para el cuerpo.',
+    prerequisitos: ['fuerzas-empujar-jalar', 'friccion-y-movimiento'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'presion-del-aire',
+    nombre: 'Presion del aire',
+    emoji: '🎈',
+    dominio: 'como-funcionan',
+    nivel: 2,
+    conceptoNucleo:
+      'Aunque no lo veamos, el aire empuja en todas direcciones. Esa presion explica por que vuelan globos, funcionan pajitas y cambian objetos al subir montanas.',
+    prerequisitos: ['por-que-flotan', 'sonido-vibra'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'mecanismos-engranajes',
+    nombre: 'Mecanismos y engranajes',
+    emoji: '⚙️',
+    dominio: 'como-funcionan',
+    nivel: 2,
+    conceptoNucleo:
+      'Los engranajes transmiten movimiento entre ruedas dentadas. Permiten cambiar velocidad, fuerza y direccion en relojes, bicicletas y maquinas.',
+    prerequisitos: ['fuerzas-empujar-jalar', 'que-hacen-imanes'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+
+  // =========================================================================
+  // TIEMPO, PERSONAS Y LUGARES 🗺️ (expansion)
+  // =========================================================================
+  {
+    slug: 'lineas-del-tiempo',
+    nombre: 'Lineas del tiempo',
+    emoji: '🕰️',
+    dominio: 'tiempo-personas',
+    nivel: 1,
+    conceptoNucleo:
+      'Una linea del tiempo ordena hechos del pasado al presente. Ayuda a entender que ocurrio primero, despues y por que cambiaron las cosas.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'pueblos-originarios-america',
+    nombre: 'Pueblos originarios de America',
+    emoji: '🛖',
+    dominio: 'tiempo-personas',
+    nivel: 1,
+    conceptoNucleo:
+      'Antes de los viajes europeos, en America ya existian pueblos con lenguas, ciencias y culturas propias. Conocerlos ayuda a entender la historia completa.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'navegacion-antigua',
+    nombre: 'Navegacion antigua',
+    emoji: '🧭',
+    dominio: 'tiempo-personas',
+    nivel: 1,
+    conceptoNucleo:
+      'Los navegantes antiguos usaban estrellas, vientos y brujulas para orientarse en el mar. Viajar era dificil y requeria mucha observacion.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'viaje-de-colon',
+    nombre: 'El viaje de Colon',
+    emoji: '🚢',
+    dominio: 'tiempo-personas',
+    nivel: 2,
+    conceptoNucleo:
+      'El viaje de Colon conecto continentes que no se conocian entre si. Tambien inicio cambios profundos y conflictos para los pueblos que ya vivian en America.',
+    prerequisitos: ['grandes-exploradores', 'navegacion-antigua'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'expedicion-de-pizarro',
+    nombre: 'La expedicion de Pizarro',
+    emoji: '⛰️',
+    dominio: 'tiempo-personas',
+    nivel: 2,
+    conceptoNucleo:
+      'La expedicion de Pizarro en los Andes cambio la historia de muchos pueblos. Sirve para comprender encuentros culturales, conflictos y consecuencias historicas.',
+    prerequisitos: ['grandes-exploradores', 'pueblos-originarios-america'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'rutas-oceanicas-globales',
+    nombre: 'Rutas oceanicas globales',
+    emoji: '🌍',
+    dominio: 'tiempo-personas',
+    nivel: 2,
+    conceptoNucleo:
+      'Las rutas oceanicas unieron regiones lejanas para intercambiar alimentos, ideas y objetos. Viajar por mar acelero el contacto entre culturas.',
+    prerequisitos: ['lineas-del-tiempo', 'navegacion-antigua'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+
+  // =========================================================================
+  // EL UNIVERSO 🚀 (expansion)
+  // =========================================================================
+  {
+    slug: 'dia-y-noche',
+    nombre: 'Dia y noche',
+    emoji: '🌗',
+    dominio: 'universo',
+    nivel: 1,
+    conceptoNucleo:
+      'El dia y la noche ocurren porque la Tierra gira sobre si misma. Cuando tu lado mira al Sol es de dia, y cuando queda en sombra es de noche.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'eclipses',
+    nombre: 'Los eclipses',
+    emoji: '🌘',
+    dominio: 'universo',
+    nivel: 1,
+    conceptoNucleo:
+      'Un eclipse ocurre cuando Sol, Tierra y Luna se alinean. A veces la Luna tapa al Sol, y otras la Tierra proyecta sombra sobre la Luna.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'meteoritos',
+    nombre: 'Meteoritos y estrellas fugaces',
+    emoji: '☄️',
+    dominio: 'universo',
+    nivel: 1,
+    conceptoNucleo:
+      'Las estrellas fugaces son pequenas rocas que se queman al entrar en la atmosfera. Si una parte llega al suelo, se llama meteorito.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'telescopios',
+    nombre: 'Telescopios',
+    emoji: '🔭',
+    dominio: 'universo',
+    nivel: 2,
+    conceptoNucleo:
+      'Los telescopios recogen mas luz que nuestros ojos y permiten ver objetos muy lejanos. Gracias a ellos descubrimos detalles de planetas y galaxias.',
+    prerequisitos: ['el-sol', 'eclipses'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'cometas-y-asteroides',
+    nombre: 'Cometas y asteroides',
+    emoji: '🪨',
+    dominio: 'universo',
+    nivel: 2,
+    conceptoNucleo:
+      'Los asteroides son rocas espaciales y los cometas tienen hielo y polvo. Al acercarse al Sol, los cometas forman una cola brillante.',
+    prerequisitos: ['meteoritos', 'el-sol'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'estaciones-del-ano',
+    nombre: 'Estaciones del ano',
+    emoji: '🍂',
+    dominio: 'universo',
+    nivel: 2,
+    conceptoNucleo:
+      'Las estaciones cambian porque la Tierra gira inclinada alrededor del Sol. Esa inclinacion hace que llegue distinta cantidad de luz durante el ano.',
+    prerequisitos: ['dia-y-noche', 'el-sol'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+
+  // =========================================================================
+  // CUERPO Y MENTE 🧠 (expansion)
+  // =========================================================================
+  {
+    slug: 'respiramos-aire',
+    nombre: 'Como respiramos',
+    emoji: '🫁',
+    dominio: 'cuerpo-mente',
+    nivel: 1,
+    conceptoNucleo:
+      'Al respirar, llevamos oxigeno a los pulmones y expulsamos dioxido de carbono. El cuerpo necesita ese intercambio para obtener energia.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'musculos-y-huesos',
+    nombre: 'Musculos y huesos',
+    emoji: '🦴',
+    dominio: 'cuerpo-mente',
+    nivel: 1,
+    conceptoNucleo:
+      'Los huesos dan estructura al cuerpo y los musculos los mueven al contraerse. Juntos permiten caminar, saltar y mantener equilibrio.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'higiene-y-microbios',
+    nombre: 'Higiene y microbios',
+    emoji: '🧼',
+    dominio: 'cuerpo-mente',
+    nivel: 1,
+    conceptoNucleo:
+      'Lavarse manos y mantener higiene reduce microbios que pueden enfermarnos. No todos los microbios son malos, pero la limpieza ayuda a cuidarnos.',
+    prerequisitos: [],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'sistema-digestivo',
+    nombre: 'Sistema digestivo',
+    emoji: '🥗',
+    dominio: 'cuerpo-mente',
+    nivel: 2,
+    conceptoNucleo:
+      'El sistema digestivo transforma la comida en nutrientes. Esos nutrientes pasan a la sangre para dar energia y ayudar a crecer.',
+    prerequisitos: ['el-corazon', 'respiramos-aire'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'sueno-y-memoria',
+    nombre: 'Sueno y memoria',
+    emoji: '😴',
+    dominio: 'cuerpo-mente',
+    nivel: 2,
+    conceptoNucleo:
+      'Dormir bien ayuda al cerebro a organizar recuerdos y aprender mejor. El descanso influye en atencion, humor y energia diaria.',
+    prerequisitos: ['como-aprendemos', 'respiramos-aire'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+  {
+    slug: 'emociones-en-el-cuerpo',
+    nombre: 'Emociones en el cuerpo',
+    emoji: '💓',
+    dominio: 'cuerpo-mente',
+    nivel: 2,
+    conceptoNucleo:
+      'Las emociones tambien se sienten en el cuerpo: corazon acelerado, manos frias o respiracion rapida. Reconocer esas senales ayuda a regularse mejor.',
+    prerequisitos: ['las-emociones', 'el-corazon'],
+    edadMinima: 5,
+    edadMaxima: 9,
+  },
+];
+
+for (const skill of SKILLS_EXTRA) {
+  SKILLS.push({ ...skill, orden: o() });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

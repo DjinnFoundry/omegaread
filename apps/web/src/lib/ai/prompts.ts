@@ -1,8 +1,8 @@
 /**
  * Prompt templates para generacion de historias + preguntas.
  *
- * 20 subniveles granulares (1.0 - 4.8) con saltos de 0.2.
- * Cada subnivel define palabras, oraciones, lexico, WPM y directivas de estilo.
+ * 50 subniveles granulares (1.0 - 4.8) con saltos finos.
+ * Los 20 niveles ancla definen estilo y limites, y se interpola para subniveles intermedios.
  *
  * Soporta dos modos:
  * - educativo: el personaje DESCUBRE un concepto a traves de la experiencia
@@ -27,6 +27,15 @@ export interface NivelConfig {
   tecnicasEngagement: string[];
   aperturasSugeridas: string[];
 }
+
+export const NIVEL_MIN = 1.0;
+export const NIVEL_MAX = 4.8;
+export const SUBNIVELES_TOTALES = 50;
+export const PASO_SUBNIVEL = Number(
+  ((NIVEL_MAX - NIVEL_MIN) / (SUBNIVELES_TOTALES - 1)).toFixed(4),
+);
+
+const PASO_NIVEL_ANCLA = 0.2;
 
 // ─────────────────────────────────────────────
 // ESTILOS POR BANDA
@@ -114,7 +123,7 @@ const HOOKS_BANDA_4: string[] = [
 ];
 
 // ─────────────────────────────────────────────
-// CONFIGURACION DE 20 NIVELES
+// CONFIGURACION DE 20 NIVELES ANCLA
 // ─────────────────────────────────────────────
 
 export const NIVELES_CONFIG: Record<number, NivelConfig> = {
@@ -400,10 +409,68 @@ export const NIVELES_CONFIG: Record<number, NivelConfig> = {
   },
 };
 
+function clampNivel(nivel: number): number {
+  return Math.max(NIVEL_MIN, Math.min(NIVEL_MAX, nivel));
+}
+
+function interpolateNumber(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+export function normalizarSubnivel(nivel: number): number {
+  const clamped = clampNivel(nivel);
+  const idx = Math.round((clamped - NIVEL_MIN) / PASO_SUBNIVEL);
+  const snapped = NIVEL_MIN + (idx * PASO_SUBNIVEL);
+  return Number(snapped.toFixed(2));
+}
+
+export function desplazarSubnivel(
+  nivelActual: number,
+  direccion: 'subir' | 'bajar',
+  pasos = 1,
+): number {
+  const delta = PASO_SUBNIVEL * Math.max(1, pasos);
+  const siguiente = direccion === 'subir' ? nivelActual + delta : nivelActual - delta;
+  return normalizarSubnivel(siguiente);
+}
+
 export function getNivelConfig(nivel: number): NivelConfig {
-  const clamped = Math.max(1.0, Math.min(4.8, nivel));
-  const rounded = Math.round(clamped * 5) / 5; // Redondear al 0.2 mas cercano
-  return NIVELES_CONFIG[rounded] ?? NIVELES_CONFIG[2.0];
+  const subnivel = normalizarSubnivel(nivel);
+
+  const lowerAnchor = Number(
+    (
+      NIVEL_MIN
+      + (Math.floor(((subnivel - NIVEL_MIN) / PASO_NIVEL_ANCLA) + 1e-9) * PASO_NIVEL_ANCLA)
+    ).toFixed(1),
+  );
+  const upperAnchor = Number(Math.min(NIVEL_MAX, lowerAnchor + PASO_NIVEL_ANCLA).toFixed(1));
+
+  const lowerConfig = NIVELES_CONFIG[lowerAnchor] ?? NIVELES_CONFIG[2.0];
+  const upperConfig = NIVELES_CONFIG[upperAnchor] ?? lowerConfig;
+
+  if (lowerAnchor === upperAnchor) return lowerConfig;
+
+  const t = Math.max(0, Math.min(1, (subnivel - lowerAnchor) / (upperAnchor - lowerAnchor)));
+  const styleRef = t < 0.5 ? lowerConfig : upperConfig;
+
+  return {
+    palabrasMin: Math.round(interpolateNumber(lowerConfig.palabrasMin, upperConfig.palabrasMin, t)),
+    palabrasMax: Math.round(interpolateNumber(lowerConfig.palabrasMax, upperConfig.palabrasMax, t)),
+    oracionMin: Math.round(interpolateNumber(lowerConfig.oracionMin, upperConfig.oracionMin, t)),
+    oracionMax: Math.round(interpolateNumber(lowerConfig.oracionMax, upperConfig.oracionMax, t)),
+    complejidadLexica: styleRef.complejidadLexica,
+    densidadIdeas: styleRef.densidadIdeas,
+    tiempoEsperadoMs: Math.round(
+      interpolateNumber(lowerConfig.tiempoEsperadoMs, upperConfig.tiempoEsperadoMs, t),
+    ),
+    wpmEsperado: Math.round(interpolateNumber(lowerConfig.wpmEsperado, upperConfig.wpmEsperado, t)),
+    dialogoPorcentaje: Math.round(
+      interpolateNumber(lowerConfig.dialogoPorcentaje, upperConfig.dialogoPorcentaje, t),
+    ),
+    estiloNarrativo: styleRef.estiloNarrativo,
+    tecnicasEngagement: styleRef.tecnicasEngagement,
+    aperturasSugeridas: styleRef.aperturasSugeridas,
+  };
 }
 
 export type EstrategiaPedagogica = 'story_first' | 'balanced' | 'learning_first';
@@ -712,8 +779,8 @@ export interface RewritePromptInput {
  */
 export function buildRewritePrompt(input: RewritePromptInput): string {
   const nivelObjetivo = input.direccion === 'mas_facil'
-    ? Math.max(1.0, input.nivelActual - 0.2)
-    : Math.min(4.8, input.nivelActual + 0.2);
+    ? desplazarSubnivel(input.nivelActual, 'bajar')
+    : desplazarSubnivel(input.nivelActual, 'subir');
 
   const configNuevo = getNivelConfig(nivelObjetivo);
 
@@ -745,8 +812,8 @@ JSON:${JSON_SCHEMA}`;
  * Calcula el nivel objetivo despues de un ajuste manual.
  */
 export function calcularNivelReescritura(nivelActual: number, direccion: DireccionReescritura): number {
-  if (direccion === 'mas_facil') return Math.max(1.0, nivelActual - 0.2);
-  return Math.min(4.8, nivelActual + 0.2);
+  if (direccion === 'mas_facil') return desplazarSubnivel(nivelActual, 'bajar');
+  return desplazarSubnivel(nivelActual, 'subir');
 }
 
 // ─────────────────────────────────────────────

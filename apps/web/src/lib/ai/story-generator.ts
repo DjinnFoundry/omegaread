@@ -467,8 +467,8 @@ export async function rewriteStory(input: RewritePromptInput): Promise<StoryGene
       const storyOutput = parsed as StoryLLMOutput;
       const nivelObjetivo =
         input.direccion === 'mas_facil'
-          ? Math.max(1, input.nivelActual - 1)
-          : Math.min(4, input.nivelActual + 1);
+          ? Math.max(1.0, input.nivelActual - 0.2)
+          : Math.min(4.8, input.nivelActual + 0.2);
       const qa: QAResult = evaluarHistoria(storyOutput, nivelObjetivo);
 
       const metadataCalc = calcularMetadataHistoria(

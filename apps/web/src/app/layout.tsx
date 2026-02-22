@@ -1,11 +1,25 @@
 import type { Metadata, Viewport } from 'next';
-import { Nunito } from 'next/font/google';
+import { Nunito, Literata, Atkinson_Hyperlegible } from 'next/font/google';
 import './globals.css';
 
 const nunito = Nunito({
   subsets: ['latin'],
   display: 'swap',
   variable: '--font-nunito',
+});
+
+const literata = Literata({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-libro',
+  weight: ['400', '600', '700'],
+});
+
+const atkinson = Atkinson_Hyperlegible({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-lectura-accesible',
+  weight: ['400', '700'],
 });
 
 export const metadata: Metadata = {
@@ -45,7 +59,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={nunito.variable}>
+    <html lang="es" className={`${nunito.variable} ${literata.variable} ${atkinson.variable}`}>
       <body className="min-h-screen bg-fondo text-texto antialiased">
         {children}
       </body>

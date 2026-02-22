@@ -22,11 +22,16 @@ import {
   registrarRespuestaComprensionSchema,
 } from '../validation';
 import {
-  calcularSessionScore,
   determinarAjuste,
   type DireccionAjuste,
 } from '@/lib/types/reading';
-import { getNivelConfig } from '@/lib/ai/prompts';
+import {
+  getNivelConfig,
+  NIVEL_MAX,
+  NIVEL_MIN,
+  desplazarSubnivel,
+  normalizarSubnivel,
+} from '@/lib/ai/prompts';
 
 /**
  * Crear una sesion de lectura adaptativa.
@@ -104,8 +109,8 @@ export async function registrarRespuestaComprension(datos: {
  * Calcular ajuste de dificultad tras una sesion.
  * Registra la decision con trazabilidad (por que).
  *
- * Formula:
- *   session_score = 0.65 * comprension + 0.25 * ritmo_normalizado + 0.10 * estabilidad
+ * Formula actual (simple):
+ *   session_score = comprension
  *
  * Reglas:
  *   - score >= 80%: subir
@@ -123,8 +128,10 @@ export async function calcularAjusteDificultad(datos: {
   const db = await getDb();
   const { estudiante } = await requireStudentOwnership(datos.studentId);
 
-  // Clamp nivel anterior a [1.0, 4.8]
-  const nivelAnterior = Math.max(1.0, Math.min(4.8, estudiante.nivelLectura ?? 1.0));
+  // Clamp nivel anterior al rango y alineado al subnivel valido.
+  const nivelAnterior = normalizarSubnivel(
+    Math.max(NIVEL_MIN, Math.min(NIVEL_MAX, estudiante.nivelLectura ?? NIVEL_MIN)),
+  );
 
   // Calcular wpm_ratio: clamp(wpm_real / wpmEsperado, 0, 1.5) normalizado a 0-1
   const nivelConfig = getNivelConfig(nivelAnterior);
@@ -196,11 +203,8 @@ export async function calcularAjusteDificultad(datos: {
     }
 
     const ritmoNormalizado = Math.max(0, Math.min(1, (wpmRatio * 0.7) + (ritmoMejora * 0.3)));
-    const sessionScoreBase = calcularSessionScore({
-      comprension: datos.comprensionScore,
-      ritmoNormalizado,
-      estabilidad,
-    });
+    // Por simplicidad pedagogica, el ajuste se decide por comprension de preguntas.
+    const sessionScoreBase = Math.round(datos.comprensionScore * 100) / 100;
 
     const sessionScore = Math.max(0, Math.min(1,
       Math.round((sessionScoreBase + modificadorManual) * 100) / 100
@@ -222,10 +226,10 @@ export async function calcularAjusteDificultad(datos: {
 
     if (direccionCandidata === 'subir') {
       const scoresPrevios = sesionesRecientes
-        .slice(0, 2)
+        .slice(0, 1)
         .map(getSessionScorePrevio)
         .filter((sc): sc is number => sc !== null);
-      if (scoresPrevios.filter(sc => sc >= 0.80).length < 2) {
+      if (scoresPrevios.filter(sc => sc >= 0.80).length < 1) {
         direccion = 'mantener';
       }
     }
@@ -241,12 +245,12 @@ export async function calcularAjusteDificultad(datos: {
     }
 
     let nivelNuevo = nivelAnterior;
-    if (direccion === 'subir') nivelNuevo = Math.min(nivelAnterior + 0.5, 4);
-    if (direccion === 'bajar') nivelNuevo = Math.max(nivelAnterior - 0.5, 1);
+    if (direccion === 'subir') nivelNuevo = desplazarSubnivel(nivelAnterior, 'subir');
+    if (direccion === 'bajar') nivelNuevo = desplazarSubnivel(nivelAnterior, 'bajar');
 
     const scorePct = Math.round(sessionScore * 100);
     const RAZONES: Record<DireccionAjuste, string> = {
-      subir: `Score ${scorePct}% (>=80%) en 3 sesiones consecutivas. Subimos dificultad.`,
+      subir: `Score ${scorePct}% (>=80%) en 2 sesiones consecutivas. Subimos dificultad.`,
       mantener: `Score ${scorePct}% (60-79%). Mantenemos nivel actual.`,
       bajar: `Score ${scorePct}% (<60%) en 2 sesiones consecutivas. Bajamos dificultad para consolidar.`,
     };

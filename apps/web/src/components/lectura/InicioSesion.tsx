@@ -93,6 +93,10 @@ export default function InicioSesion({
         <h1 className="mt-3 text-2xl font-extrabold text-texto">
           Hola, {studentNombre}!
         </h1>
+        <p className="mt-2 text-sm text-texto-suave leading-relaxed">
+          Empezamos con un nivel inicial segun tu edad y lo ajustamos automaticamente
+          segun tus respuestas de comprension.
+        </p>
       </div>
 
       {/* Sorprendeme button */}

@@ -30,6 +30,8 @@
 
   /* Tipografia */
   --font-principal: var(--font-nunito), 'Nunito', system-ui, sans-serif;
+  --font-lectura-normal: var(--font-libro), 'Literata', Georgia, serif;
+  --font-lectura-dislexia: var(--font-lectura-accesible), 'Atkinson Hyperlegible', Arial, sans-serif;
   /* Lectura dinamica */
   --reading-font-size: 20px;
   --reading-font-size-min: 16px;

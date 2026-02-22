@@ -8,7 +8,7 @@
  * 2. Si no tiene contexto -> FormularioContexto (padre)
  * 3. Si tiene todo -> SesionLectura (ciclo completo de lectura)
  *
- * Sprint 4: reescritura en sesion con ajuste manual de dificultad.
+ * La dificultad se ajusta automaticamente por respuestas (sin ajuste manual en UI).
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,7 +22,6 @@ import {
   generarHistoria,
   generarPreguntasSesion,
   finalizarSesionLectura,
-  reescribirHistoria,
   analizarLecturaAudio,
 } from '@/server/actions/story-actions';
 import SelectorIntereses from '@/components/perfil/SelectorIntereses';
@@ -87,11 +86,6 @@ export default function LecturaPage() {
   // Estado de generacion de preguntas en background (por sesion)
   const [preguntasGenerandoPara, setPreguntasGenerandoPara] = useState<string | null>(null);
   const [errorPreguntas, setErrorPreguntas] = useState<string | null>(null);
-
-  // Sprint 4: estado de reescritura
-  const [reescribiendo, setReescribiendo] = useState(false);
-  const [ajusteUsado, setAjusteUsado] = useState(false);
-  const [rewriteCount, setRewriteCount] = useState(0);
 
   const preguntasCargando = !!sesionActiva && preguntasGenerandoPara === sesionActiva.sessionId;
 
@@ -184,7 +178,6 @@ export default function LecturaPage() {
           historia: result.historia,
           preguntas: tienePreguntas ? result.preguntas : [],
         });
-        setAjusteUsado(false);
         setErrorPreguntas(null);
         if (tienePreguntas) {
           setPreguntasGenerandoPara(null);
@@ -268,49 +261,6 @@ export default function LecturaPage() {
     void handleStartReading(sesionActiva.historia.topicSlug, true);
   }, [sesionActiva, handleStartReading]);
 
-  // Sprint 4: handler de ajuste manual (reescritura)
-  const handleAjusteManual = useCallback(
-    async (direccion: 'mas_facil' | 'mas_desafiante', tiempoLecturaMs: number) => {
-      if (!estudiante || !sesionActiva || reescribiendo || ajusteUsado) return;
-
-      setReescribiendo(true);
-
-      try {
-        const result = await reescribirHistoria({
-          sessionId: sesionActiva.sessionId,
-          studentId: estudiante.id,
-          storyId: sesionActiva.storyId,
-          direccion,
-          tiempoLecturaAntesDePulsar: tiempoLecturaMs,
-        });
-
-        if (!result.ok) {
-          // Fallo silencioso: el nino puede seguir leyendo la historia original
-          return;
-        }
-
-        setSesionActiva((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            storyId: result.storyId,
-            historia: result.historia,
-            preguntas: result.preguntas,
-          };
-        });
-        setPreguntasGenerandoPara(null);
-        setErrorPreguntas(null);
-        setAjusteUsado(true);
-        setRewriteCount((c) => c + 1);
-      } catch {
-        // Fallo silencioso: el nino puede seguir leyendo la historia original
-      } finally {
-        setReescribiendo(false);
-      }
-    },
-    [estudiante, sesionActiva, reescribiendo, ajusteUsado],
-  );
-
   const [errorFinalizacion, setErrorFinalizacion] = useState<string | null>(null);
 
   const handleRespuestasCompletas = useCallback(
@@ -351,15 +301,22 @@ export default function LecturaPage() {
     setWpmData(null);
     setErrorGeneracion(null);
     setUltimoTopicIntentado(null);
-    setAjusteUsado(false);
-    setReescribiendo(false);
-    setRewriteCount(0);
     setPreguntasGenerandoPara(null);
     setErrorPreguntas(null);
     setPasoSesion('elegir-topic');
     // Recargar estado por si el nivel cambio
     void cargarEstado();
   }, [cargarEstado]);
+
+  const handleSalirLectura = useCallback(() => {
+    setSesionActiva(null);
+    setTiempoLectura(0);
+    setWpmData(null);
+    setErrorGeneracion(null);
+    setPreguntasGenerandoPara(null);
+    setErrorPreguntas(null);
+    setPasoSesion('elegir-topic');
+  }, []);
 
   // ─── Loading ───
   if (cargando) {
@@ -486,17 +443,12 @@ export default function LecturaPage() {
         <PantallaLectura
           titulo={sesionActiva.historia.titulo}
           contenido={sesionActiva.historia.contenido}
-          topicEmoji={sesionActiva.historia.topicEmoji}
-          topicNombre={sesionActiva.historia.topicNombre}
           nivel={sesionActiva.historia.nivel}
           onTerminar={handleTerminarLectura}
           onAnalizarAudio={handleAnalizarAudio}
-          onAjusteManual={handleAjusteManual}
-          reescribiendo={reescribiendo}
-          ajusteUsado={ajusteUsado}
-          rewriteCount={rewriteCount}
           fromCache={sesionActiva.fromCache}
           onRegenerar={handleRegenerar}
+          onSalir={handleSalirLectura}
         />
       </main>
     );

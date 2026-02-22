@@ -21,8 +21,6 @@ interface DashboardHijoProps {
   } | null;
 }
 
-const DIAS_SEMANA_CORTO = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -42,72 +40,45 @@ function HeatmapMes({ actividadMes }: { actividadMes: Record<string, number> }) 
   const diasEnMes = new Date(year, month + 1, 0).getDate();
   const hoyDia = hoy.getDate();
 
-  // Dia de la semana del 1 del mes (0=domingo, convertir a lunes=0)
-  const primerDiaSemana = new Date(year, month, 1).getDay();
-  const offsetInicio = primerDiaSemana === 0 ? 6 : primerDiaSemana - 1;
+  const dias = Array.from({ length: diasEnMes }, (_, i) => {
+    const dia = i + 1;
+    const fecha = `${year}-${String(month + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    return {
+      dia,
+      sesiones: actividadMes[fecha] ?? 0,
+      futuro: dia > hoyDia,
+      fecha,
+    };
+  });
 
-  // Construir grid: 7 filas (L-D) x N columnas (semanas)
-  const totalSlots = offsetInicio + diasEnMes;
-  const numSemanas = Math.ceil(totalSlots / 7);
-
-  // Matriz semanas x dias
-  const grid: Array<Array<{ dia: number; sesiones: number; futuro: boolean } | null>> = [];
-  for (let semana = 0; semana < numSemanas; semana++) {
-    const fila: Array<{ dia: number; sesiones: number; futuro: boolean } | null> = [];
-    for (let diaSemana = 0; diaSemana < 7; diaSemana++) {
-      const slot = semana * 7 + diaSemana;
-      const dia = slot - offsetInicio + 1;
-      if (dia < 1 || dia > diasEnMes) {
-        fila.push(null);
-      } else {
-        const fecha = `${year}-${String(month + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-        fila.push({
-          dia,
-          sesiones: actividadMes[fecha] ?? 0,
-          futuro: dia > hoyDia,
-        });
-      }
-    }
-    grid.push(fila);
-  }
+  const marcas = new Set([1, Math.ceil(diasEnMes / 2), hoyDia]);
+  const gridColumns = { gridTemplateColumns: `repeat(${diasEnMes}, minmax(0, 1fr))` };
 
   return (
     <div>
       <p className="text-xs font-semibold text-texto-suave mb-2">
         {MESES[month]}
       </p>
-      <div className="flex gap-1">
-        {/* Labels de dias */}
-        <div className="flex flex-col gap-1 mr-0.5">
-          {DIAS_SEMANA_CORTO.map((d) => (
-            <div key={d} className="h-3 w-3 flex items-center justify-center">
-              <span className="text-[8px] text-texto-suave leading-none">{d}</span>
-            </div>
-          ))}
-        </div>
-        {/* Columnas (semanas) */}
-        {grid.map((semana, si) => (
-          <div key={si} className="flex flex-col gap-1">
-            {semana.map((celda, di) => (
-              <div
-                key={di}
-                className={`h-3 w-3 rounded-[3px] ${
-                  celda === null
-                    ? 'bg-transparent'
-                    : celda.futuro
-                      ? 'bg-neutro/5'
-                      : celda.dia === hoyDia
-                        ? `${intensidadColor(celda.sesiones)} ring-1 ring-turquesa`
-                        : intensidadColor(celda.sesiones)
-                }`}
-                title={
-                  celda
-                    ? `${celda.dia} ${MESES[month]}: ${celda.sesiones} sesion${celda.sesiones !== 1 ? 'es' : ''}`
-                    : undefined
-                }
-              />
-            ))}
-          </div>
+      <div className="grid w-full gap-1" style={gridColumns}>
+        {dias.map((celda) => (
+          <div
+            key={celda.fecha}
+            className={`aspect-square rounded-[3px] ${
+              celda.futuro
+                ? 'bg-neutro/5'
+                : celda.dia === hoyDia
+                  ? `${intensidadColor(celda.sesiones)} ring-1 ring-turquesa`
+                  : intensidadColor(celda.sesiones)
+            }`}
+            title={`${celda.dia} ${MESES[month]}: ${celda.sesiones} sesion${celda.sesiones !== 1 ? 'es' : ''}`}
+          />
+        ))}
+      </div>
+      <div className="mt-1 grid w-full gap-1" style={gridColumns}>
+        {dias.map((celda) => (
+          <span key={`marca-${celda.fecha}`} className="text-[8px] leading-none text-texto-suave text-center">
+            {marcas.has(celda.dia) ? celda.dia : ''}
+          </span>
         ))}
       </div>
       {/* Leyenda */}
