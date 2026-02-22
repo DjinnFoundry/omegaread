@@ -7,8 +7,8 @@
  * - Actualiza topics existentes si cambiaron
  * - Desactiva topics que ya no estan en TOPICS_SEED
  */
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { Pool } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
 import { eq } from 'drizzle-orm';
 import { topics } from './schema';
 
@@ -17,8 +17,8 @@ import { topics } from './schema';
 const TOPICS_SEED = (await import('../../apps/web/src/lib/data/topics')).TOPICS_SEED;
 
 const connectionString = process.env.DATABASE_URL ?? 'postgresql://localhost:5432/omegaread';
-const client = postgres(connectionString);
-const db = drizzle(client);
+const pool = new Pool({ connectionString });
+const db = drizzle(pool);
 
 async function seed() {
   console.log(`Sincronizando ${TOPICS_SEED.length} topics...`);
@@ -91,7 +91,7 @@ async function seed() {
   });
 
   console.log(`Insertados: ${result.insertados}, Actualizados: ${result.actualizados}, Desactivados: ${result.desactivados}`);
-  await client.end();
+  await pool.end();
 }
 
 seed().catch(err => {

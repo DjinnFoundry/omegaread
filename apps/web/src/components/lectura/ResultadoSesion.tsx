@@ -57,7 +57,7 @@ export default function ResultadoSesion({
   studentNombre,
   onLeerOtra,
 }: ResultadoSesionProps) {
-  const router = useRouter();
+  const _router = useRouter();
   const ratio = resultado.totalPreguntas > 0 ? resultado.aciertos / resultado.totalPreguntas : 0;
   const [mostrarCelebracion, setMostrarCelebracion] = useState(() => ratio >= 0.75);
 

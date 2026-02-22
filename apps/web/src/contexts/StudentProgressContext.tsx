@@ -13,6 +13,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  startTransition,
   type ReactNode,
 } from 'react';
 import { cargarProgresoEstudiante } from '@/server/actions/session-actions';
@@ -91,8 +92,10 @@ export function StudentProgressProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const saved = leerEstudianteDesdeStorage();
     if (saved) {
-      setEstudianteState(saved);
-      setAutoSelecting(false);
+      startTransition(() => {
+        setEstudianteState(saved);
+        setAutoSelecting(false);
+      });
       return;
     }
 

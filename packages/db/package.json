@@ -15,8 +15,8 @@
     "seed-topics": "tsx src/seed-topics.ts"
   },
   "dependencies": {
-    "drizzle-orm": "^0.38.0",
-    "postgres": "^3.4.0"
+    "@neondatabase/serverless": "^1.0.2",
+    "drizzle-orm": "^0.38.0"
   },
   "devDependencies": {
     "drizzle-kit": "^0.30.0",

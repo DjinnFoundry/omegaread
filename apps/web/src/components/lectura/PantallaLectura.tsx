@@ -122,8 +122,8 @@ function contarPalabras(texto: string): number {
 export default function PantallaLectura({
   titulo,
   contenido,
-  topicEmoji,
-  topicNombre,
+  topicEmoji: _topicEmoji,
+  topicNombre: _topicNombre,
   nivel,
   onTerminar,
   onAjusteManual,

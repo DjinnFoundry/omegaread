@@ -10,7 +10,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DOMINIOS,
-  SKILLS,
   getSkillsPorEdad,
   type DominioInfo,
   type SkillDef,
