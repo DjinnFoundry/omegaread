@@ -5,15 +5,17 @@
  * Sprint 1: contrato de datos (tipos + acciones).
  * Sprint 2+: conectar con generacion de historias.
  */
+import { getDb } from '@/server/db';
 import {
-  db,
   sessions,
   responses,
   difficultyAdjustments,
   manualAdjustments,
   students,
+  eq,
+  and,
+  desc,
 } from '@omegaread/db';
-import { eq, and, desc } from 'drizzle-orm';
 import { requireStudentOwnership } from '../auth';
 import {
   crearSesionLecturaSchema,
@@ -35,6 +37,7 @@ export async function crearSesionLectura(datos: {
   nivelTexto?: number;
   topicId?: string;
 }) {
+  const db = await getDb();
   const validado = crearSesionLecturaSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
 
@@ -69,6 +72,7 @@ export async function registrarRespuestaComprension(datos: {
   correcta: boolean;
   tiempoMs: number;
 }) {
+  const db = await getDb();
   const validado = registrarRespuestaComprensionSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
 
@@ -116,6 +120,7 @@ export async function calcularAjusteDificultad(datos: {
   tiempoEsperadoMs: number;
   wpmPromedio?: number;
 }) {
+  const db = await getDb();
   const { estudiante } = await requireStudentOwnership(datos.studentId);
 
   // Clamp nivel anterior a [1.0, 4.8]

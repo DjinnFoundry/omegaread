@@ -5,8 +5,8 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
-import { db, parents, students } from '@omegaread/db';
-import { eq, and } from 'drizzle-orm';
+import { getDb } from '@/server/db';
+import { parents, students, eq, and } from '@omegaread/db';
 import { SignJWT, jwtVerify } from 'jose';
 
 const AUTH_COOKIE = 'omega-auth';
@@ -59,6 +59,7 @@ export async function registrarPadre(datos: {
   password: string;
   nombre: string;
 }) {
+  const db = await getDb();
   const passwordHash = await bcrypt.hash(datos.password, 12);
 
   const [padre] = await db
@@ -75,6 +76,7 @@ export async function registrarPadre(datos: {
 
 /** Inicia sesión de padre */
 export async function loginPadre(email: string, password: string) {
+  const db = await getDb();
   const normalizedEmail = email.toLowerCase().trim();
 
   // Dev-only: auto-create admin user on first login attempt.
@@ -123,6 +125,7 @@ export async function loginPadre(email: string, password: string) {
 
 /** Obtiene el padre autenticado actual (o null) */
 export async function obtenerPadreActual() {
+  const db = await getDb();
   const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE)?.value;
   if (!token) return null;
@@ -152,6 +155,7 @@ export async function requireAuth() {
  * @throws Error si el estudiante no pertenece al padre.
  */
 export async function requireStudentOwnership(studentId: string) {
+  const db = await getDb();
   const padre = await requireAuth();
   const estudiante = await db.query.students.findFirst({
     where: and(eq(students.id, studentId), eq(students.parentId, padre.id)),

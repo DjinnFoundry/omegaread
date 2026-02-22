@@ -4,8 +4,8 @@
  * Server Actions para el test de baseline de lectura.
  * Sprint 1: medir nivel inicial y confianza.
  */
-import { db, students, baselineAssessments } from '@omegaread/db';
-import { eq, and } from 'drizzle-orm';
+import { getDb } from '@/server/db';
+import { students, baselineAssessments, eq, and } from '@omegaread/db';
 import { requireAuth } from '../auth';
 import {
   guardarRespuestaBaselineSchema,
@@ -31,6 +31,7 @@ export async function guardarRespuestaBaseline(datos: {
     tiempoMs?: number;
   }>;
 }) {
+  const db = await getDb();
   const validado = guardarRespuestaBaselineSchema.parse(datos);
   const padre = await requireAuth();
 
@@ -67,6 +68,7 @@ export async function finalizarBaseline(datos: {
   comprensionScore: number;
   confianza: 'alto' | 'medio' | 'bajo';
 }) {
+  const db = await getDb();
   const validado = finalizarBaselineSchema.parse(datos);
   const padre = await requireAuth();
 

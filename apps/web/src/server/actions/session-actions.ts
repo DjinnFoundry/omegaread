@@ -8,14 +8,16 @@
  *
  * TODAS las funciones verifican autenticacion (JWT) y ownership.
  */
+import { getDb } from '@/server/db';
 import {
-  db,
   sessions,
   responses,
   achievements,
   skillProgress,
+  eq,
+  and,
+  desc,
 } from '@omegaread/db';
-import { eq, and, desc } from 'drizzle-orm';
 import { requireStudentOwnership } from '../auth';
 import {
   iniciarSesionSchema,
@@ -35,6 +37,7 @@ export async function iniciarSesion(datos: {
   tipoActividad: string;
   modulo: string;
 }) {
+  const db = await getDb();
   const validado = iniciarSesionSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
 
@@ -68,6 +71,7 @@ export async function guardarRespuestaIndividual(datos: {
   tiempoRespuestaMs?: number;
   intentoNumero?: number;
 }) {
+  const db = await getDb();
   const validado = guardarRespuestaSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
 
@@ -106,6 +110,7 @@ export async function actualizarSesionEnCurso(datos: {
   estrellasGanadas?: number;
   metadata?: Record<string, unknown>;
 }) {
+  const db = await getDb();
   const validado = actualizarSesionSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
 
@@ -149,6 +154,7 @@ export async function finalizarSesionDB(datos: {
   stickerGanado?: string;
   studentId: string;
 }) {
+  const db = await getDb();
   const validado = finalizarSesionSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
 
@@ -202,6 +208,7 @@ export async function actualizarProgresoInmediato(datos: {
   correcto: boolean;
   tiempoRespuestaMs?: number;
 }) {
+  const db = await getDb();
   const validado = actualizarProgresoSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
 
@@ -278,6 +285,7 @@ export async function actualizarProgresoInmediato(datos: {
  * Carga el progreso de un estudiante: sesiones, habilidades, logros.
  */
 export async function cargarProgresoEstudiante(studentId: string) {
+  const db = await getDb();
   const validStudentId = cargarProgresoSchema.parse(studentId);
   await requireStudentOwnership(validStudentId);
 

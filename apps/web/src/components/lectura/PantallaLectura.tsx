@@ -7,11 +7,32 @@
  * Sprint 4: Botones "Hazlo mas facil" / "Hazlo mas desafiante".
  */
 import { useRef, useCallback, useEffect, useState } from 'react';
+import type { AudioReadingAnalysis } from '@/lib/types/reading';
 
 export interface WpmData {
   wpmPromedio: number;
   wpmPorPagina: Array<{ pagina: number; wpm: number }>;
   totalPaginas: number;
+  fuenteWpm: 'audio' | 'pagina';
+  audioAnalisis?: AudioReadingAnalysis | null;
+}
+
+export interface AudioAnalisisPayload {
+  audioBase64: string;
+  mimeType?: string;
+  tiempoVozActivaMs: number;
+  tiempoTotalMs: number;
+}
+
+export type AudioAnalisisHandler = (
+  payload: AudioAnalisisPayload,
+) => Promise<
+  | { ok: true; analisis: AudioReadingAnalysis }
+  | { ok: false; error: string }
+>;
+
+interface BrowserAudioContextConstructor {
+  new(): AudioContext;
 }
 
 interface PantallaLecturaProps {
@@ -21,6 +42,7 @@ interface PantallaLecturaProps {
   topicNombre: string;
   nivel: number;
   onTerminar: (tiempoLecturaMs: number, wpmData: WpmData) => void;
+  onAnalizarAudio?: AudioAnalisisHandler;
   onAjusteManual?: (direccion: 'mas_facil' | 'mas_desafiante', tiempoLecturaMs: number) => void;
   reescribiendo?: boolean;
   ajusteUsado?: boolean;
@@ -119,6 +141,27 @@ function contarPalabras(texto: string): number {
   return texto.split(/\s+/).filter(w => w.length > 0).length;
 }
 
+function getAudioContextConstructor(): BrowserAudioContextConstructor | null {
+  if (typeof window === 'undefined') return null;
+  const ctor = (window as unknown as { AudioContext?: BrowserAudioContextConstructor; webkitAudioContext?: BrowserAudioContextConstructor }).AudioContext
+    ?? (window as unknown as { webkitAudioContext?: BrowserAudioContextConstructor }).webkitAudioContext;
+  return ctor ?? null;
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...sub);
+  }
+
+  return btoa(binary);
+}
+
 export default function PantallaLectura({
   titulo,
   contenido,
@@ -126,6 +169,7 @@ export default function PantallaLectura({
   topicNombre: _topicNombre,
   nivel,
   onTerminar,
+  onAnalizarAudio,
   onAjusteManual,
   reescribiendo = false,
   ajusteUsado = false,
@@ -142,6 +186,8 @@ export default function PantallaLectura({
   const [botonesAjusteVisibles, setBotonesAjusteVisibles] = useState(false);
   const [mostrarToast, setMostrarToast] = useState(false);
   const [fading, setFading] = useState(false);
+  const [audioEstado, setAudioEstado] = useState<'idle' | 'recording' | 'unsupported' | 'denied' | 'processing'>('idle');
+  const [audioError, setAudioError] = useState<string | null>(null);
   const prevRewriteCountRef = useRef(rewriteCount);
 
   // Timestamps: uno por cada transicion de pagina + inicio
@@ -149,6 +195,155 @@ export default function PantallaLectura({
   const timestampsRef = useRef<number[]>([0]);
   const inicioTotalRef = useRef(0);
   const maxPaginaRef = useRef(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const vadRafRef = useRef<number | null>(null);
+  const ultimoTickVadRef = useRef(0);
+  const vozActivaMsRef = useRef(0);
+
+  const detenerAnalisisAudio = useCallback(async () => {
+    if (vadRafRef.current !== null) {
+      cancelAnimationFrame(vadRafRef.current);
+      vadRafRef.current = null;
+    }
+    ultimoTickVadRef.current = 0;
+
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      await new Promise<void>(resolve => {
+        const onStop = () => {
+          recorder.removeEventListener('stop', onStop);
+          resolve();
+        };
+        recorder.addEventListener('stop', onStop, { once: true });
+        recorder.stop();
+      });
+    }
+    mediaRecorderRef.current = null;
+
+    const stream = audioStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      audioStreamRef.current = null;
+    }
+
+    const ctx = audioContextRef.current;
+    if (ctx) {
+      try {
+        await ctx.close();
+      } catch {
+        // Ignorado: puede estar ya cerrado.
+      }
+      audioContextRef.current = null;
+    }
+  }, []);
+
+  const iniciarAnalisisAudio = useCallback(async () => {
+    if (!onAnalizarAudio) return;
+    setAudioError(null);
+    setAudioEstado('idle');
+
+    if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setAudioEstado('unsupported');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      audioStreamRef.current = stream;
+
+      const Ctx = getAudioContextConstructor();
+      if (Ctx) {
+        const audioContext = new Ctx();
+        audioContextRef.current = audioContext;
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.75;
+        source.connect(analyser);
+        const buffer = new Float32Array(analyser.fftSize);
+        const thresholdRms = 0.02;
+
+        const tick = () => {
+          analyser.getFloatTimeDomainData(buffer);
+          let sum = 0;
+          for (let i = 0; i < buffer.length; i++) {
+            sum += buffer[i] * buffer[i];
+          }
+          const rms = Math.sqrt(sum / buffer.length);
+
+          const now = performance.now();
+          const delta = ultimoTickVadRef.current > 0 ? now - ultimoTickVadRef.current : 0;
+          ultimoTickVadRef.current = now;
+
+          if (rms >= thresholdRms && delta > 0 && delta < 1000) {
+            vozActivaMsRef.current += delta;
+          }
+
+          vadRafRef.current = requestAnimationFrame(tick);
+        };
+        vadRafRef.current = requestAnimationFrame(tick);
+      }
+
+      const preferred = 'audio/webm;codecs=opus';
+      const mimeType = MediaRecorder.isTypeSupported(preferred) ? preferred : 'audio/webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+      setAudioEstado('recording');
+    } catch {
+      setAudioEstado('denied');
+      setAudioError('No se pudo activar el microfono. Usaremos ritmo por pagina.');
+    }
+  }, [onAnalizarAudio]);
+
+  const finalizarAudioYAnalizar = useCallback(async (tiempoTotalMs: number) => {
+    if (!onAnalizarAudio || audioEstado !== 'recording') {
+      return null;
+    }
+
+    setAudioEstado('processing');
+    await detenerAnalisisAudio();
+
+    const vozActivaMs = Math.round(vozActivaMsRef.current);
+    const chunks = audioChunksRef.current;
+    if (chunks.length === 0 || vozActivaMs <= 0) {
+      setAudioEstado('idle');
+      return null;
+    }
+
+    const mimeType = chunks[0]?.type || 'audio/webm';
+    const blob = new Blob(chunks, { type: mimeType });
+    const audioBase64 = await blobToBase64(blob);
+
+    const resultado = await onAnalizarAudio({
+      audioBase64,
+      mimeType,
+      tiempoVozActivaMs: vozActivaMs,
+      tiempoTotalMs,
+    });
+
+    setAudioEstado('idle');
+    if (!resultado.ok) {
+      setAudioError('No pudimos analizar el audio. Usaremos ritmo por pagina.');
+      return null;
+    }
+
+    return resultado.analisis;
+  }, [audioEstado, detenerAnalisisAudio, onAnalizarAudio]);
 
   // Reset cuando cambia el contenido (reescritura)
   useEffect(() => {
@@ -157,7 +352,14 @@ export default function PantallaLectura({
     timestampsRef.current = [Date.now()];
     inicioTotalRef.current = Date.now();
     maxPaginaRef.current = 0;
-  }, [contenido]);
+    audioChunksRef.current = [];
+    vozActivaMsRef.current = 0;
+    void iniciarAnalisisAudio();
+
+    return () => {
+      void detenerAnalisisAudio();
+    };
+  }, [contenido, iniciarAnalisisAudio, detenerAnalisisAudio]);
 
   // Mostrar botones de ajuste despues de 10 segundos (solo en pagina 1)
   useEffect(() => {
@@ -202,7 +404,7 @@ export default function PantallaLectura({
     setPaginaActual(p => Math.max(0, p - 1));
   }, []);
 
-  const handleTerminar = useCallback(() => {
+  const handleTerminar = useCallback(async () => {
     const ahora = Date.now();
     // Only push final timestamp if we haven't already recorded it
     if (timestampsRef.current.length <= totalPaginas) {
@@ -224,12 +426,29 @@ export default function PantallaLectura({
 
     // Promedio descartando pagina 1 (calentamiento)
     const paginasParaPromedio = wpmPorPagina.filter(p => p.pagina > 1);
-    const wpmPromedio = paginasParaPromedio.length > 0
+    const wpmPromedioPorPagina = paginasParaPromedio.length > 0
       ? Math.round(paginasParaPromedio.reduce((sum, p) => sum + p.wpm, 0) / paginasParaPromedio.length)
       : wpmPorPagina[0]?.wpm ?? 0;
 
-    onTerminar(tiempoTotalMs, { wpmPromedio, wpmPorPagina, totalPaginas });
-  }, [onTerminar, totalPaginas, paginas]);
+    let audioAnalisis: AudioReadingAnalysis | null = null;
+    try {
+      audioAnalisis = await finalizarAudioYAnalizar(tiempoTotalMs);
+    } catch {
+      setAudioError('No pudimos analizar el audio. Usaremos ritmo por pagina.');
+    }
+    const usarAudio = !!audioAnalisis?.confiable && audioAnalisis.wpmUtil > 0;
+    const wpmPromedioFinal = usarAudio && audioAnalisis
+      ? audioAnalisis.wpmUtil
+      : wpmPromedioPorPagina;
+
+    onTerminar(tiempoTotalMs, {
+      wpmPromedio: wpmPromedioFinal,
+      wpmPorPagina,
+      totalPaginas,
+      fuenteWpm: usarAudio ? 'audio' : 'pagina',
+      audioAnalisis,
+    });
+  }, [onTerminar, totalPaginas, paginas, finalizarAudioYAnalizar]);
 
   const handlePrint = useCallback(() => {
     window.print();
@@ -243,6 +462,7 @@ export default function PantallaLectura({
 
   const esUltimaPagina = paginaActual >= totalPaginas - 1;
   const esPrimeraPagina = paginaActual === 0;
+  const procesandoAudio = audioEstado === 'processing';
   const textoPaginaActual = paginas[paginaActual] ?? '';
   const parrafos = textoPaginaActual.split('\n\n').filter(p => p.trim().length > 0);
 
@@ -296,6 +516,28 @@ export default function PantallaLectura({
           </button>
         )}
       </div>
+      {onAnalizarAudio && (
+        <div className="flex justify-center mb-3 no-print">
+          {audioEstado === 'recording' && (
+            <span className="text-xs text-bosque bg-bosque/10 px-3 py-1 rounded-full border border-bosque/20">
+              Microfono activo
+            </span>
+          )}
+          {(audioEstado === 'unsupported' || audioEstado === 'denied') && (
+            <span className="text-xs text-texto-suave bg-superficie px-3 py-1 rounded-full border border-neutro/10">
+              Sin audio (fallback por pagina)
+            </span>
+          )}
+          {audioEstado === 'processing' && (
+            <span className="text-xs text-turquesa bg-turquesa/10 px-3 py-1 rounded-full border border-turquesa/20">
+              Analizando audio...
+            </span>
+          )}
+        </div>
+      )}
+      {audioError && (
+        <p className="text-xs text-center text-texto-suave mb-3 no-print">{audioError}</p>
+      )}
 
       {/* Contenido de la pagina */}
       <div className={`bg-superficie rounded-3xl p-6 shadow-sm border border-neutro/10 mb-6 ${contentOpacity}`}>
@@ -397,7 +639,7 @@ export default function PantallaLectura({
         <button
           type="button"
           onClick={handlePaginaAnterior}
-          disabled={esPrimeraPagina || reescribiendo}
+          disabled={esPrimeraPagina || reescribiendo || procesandoAudio}
           className={`
             flex items-center gap-1.5
             px-4 py-3 rounded-2xl
@@ -425,7 +667,7 @@ export default function PantallaLectura({
           <button
             type="button"
             onClick={handleTerminar}
-            disabled={reescribiendo}
+            disabled={reescribiendo || procesandoAudio}
             className="
               flex items-center gap-1.5
               px-4 py-3 rounded-2xl
@@ -438,14 +680,14 @@ export default function PantallaLectura({
             "
             aria-label="Terminar lectura"
           >
-            <span>Terminar</span>
+            <span>{procesandoAudio ? 'Analizando...' : 'Terminar'}</span>
             <span>✓</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={handleSiguientePagina}
-            disabled={reescribiendo}
+            disabled={reescribiendo || procesandoAudio}
             className="
               flex items-center gap-1.5
               px-4 py-3 rounded-2xl

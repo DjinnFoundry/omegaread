@@ -35,6 +35,20 @@ export interface ComprehensionResult {
   tiempoMs: number;
 }
 
+export interface AudioReadingAnalysis {
+  wpmUtil: number;
+  precisionLectura: number;
+  coberturaTexto: number;
+  pauseRatio: number;
+  tiempoVozActivaMs: number;
+  totalPalabrasTranscritas: number;
+  totalPalabrasAlineadas: number;
+  qualityScore: number;
+  confiable: boolean;
+  motivoNoConfiable: string | null;
+  motor: string;
+}
+
 // ─────────────────────────────────────────────
 // SESION DE LECTURA
 // ─────────────────────────────────────────────

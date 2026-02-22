@@ -4,8 +4,8 @@
  * Server Actions para gestion de perfil enriquecido del estudiante.
  * Sprint 1: capturar identidad, contexto e intereses.
  */
-import { db, students } from '@omegaread/db';
-import { eq, and } from 'drizzle-orm';
+import { getDb } from '@/server/db';
+import { students, eq, and } from '@omegaread/db';
 import { requireAuth } from '../auth';
 import {
   actualizarPerfilSchema,
@@ -32,6 +32,7 @@ export async function actualizarPerfilEstudiante(datos: {
   personajesFavoritos?: string;
   temasEvitar?: string[];
 }) {
+  const db = await getDb();
   const validado = actualizarPerfilSchema.parse(datos);
   const padre = await requireAuth();
 
@@ -67,6 +68,7 @@ export async function guardarIntereses(datos: {
   studentId: string;
   intereses: string[];
 }) {
+  const db = await getDb();
   const validado = guardarInteresesSchema.parse(datos);
   const padre = await requireAuth();
 
@@ -96,6 +98,7 @@ export async function guardarContextoPersonal(datos: {
   studentId: string;
   contextoPersonal?: string;
 }) {
+  const db = await getDb();
   const validado = guardarContextoPersonalSchema.parse(datos);
   const padre = await requireAuth();
 

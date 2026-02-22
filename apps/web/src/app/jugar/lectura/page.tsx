@@ -22,11 +22,15 @@ import {
   generarHistoria,
   finalizarSesionLectura,
   reescribirHistoria,
+  analizarLecturaAudio,
 } from '@/server/actions/story-actions';
 import SelectorIntereses from '@/components/perfil/SelectorIntereses';
 import FormularioContexto from '@/components/perfil/FormularioContexto';
 import InicioSesion from '@/components/lectura/InicioSesion';
-import PantallaLectura, { type WpmData } from '@/components/lectura/PantallaLectura';
+import PantallaLectura, {
+  type WpmData,
+  type AudioAnalisisPayload,
+} from '@/components/lectura/PantallaLectura';
 import PantallaPreguntas, { type RespuestaPregunta } from '@/components/lectura/PantallaPreguntas';
 import ResultadoSesion from '@/components/lectura/ResultadoSesion';
 
@@ -154,6 +158,32 @@ export default function LecturaPage() {
     setPasoSesion('preguntas');
   }, []);
 
+  const handleAnalizarAudio = useCallback(async (payload: AudioAnalisisPayload) => {
+    if (!estudiante || !sesionActiva) {
+      return { ok: false as const, error: 'Sesion de lectura no activa' };
+    }
+
+    try {
+      const result = await analizarLecturaAudio({
+        sessionId: sesionActiva.sessionId,
+        studentId: estudiante.id,
+        storyId: sesionActiva.storyId,
+        audioBase64: payload.audioBase64,
+        mimeType: payload.mimeType,
+        tiempoVozActivaMs: payload.tiempoVozActivaMs,
+        tiempoTotalMs: payload.tiempoTotalMs,
+      });
+
+      if (!result.ok) {
+        return { ok: false as const, error: result.error };
+      }
+
+      return { ok: true as const, analisis: result.analisis };
+    } catch {
+      return { ok: false as const, error: 'No se pudo analizar el audio' };
+    }
+  }, [estudiante, sesionActiva]);
+
   // Handler de regeneracion (cuando la historia viene de cache y el nino quiere otra)
   const handleRegenerar = useCallback(() => {
     if (!sesionActiva) return;
@@ -216,6 +246,7 @@ export default function LecturaPage() {
         wpmPromedio: wpmData?.wpmPromedio ?? null,
         wpmPorPagina: wpmData?.wpmPorPagina ?? null,
         totalPaginas: wpmData?.totalPaginas ?? null,
+        audioAnalisis: wpmData?.audioAnalisis ?? undefined,
       });
 
       if (result.ok) {
@@ -377,6 +408,7 @@ export default function LecturaPage() {
           topicNombre={sesionActiva.historia.topicNombre}
           nivel={sesionActiva.historia.nivel}
           onTerminar={handleTerminarLectura}
+          onAnalizarAudio={handleAnalizarAudio}
           onAjusteManual={handleAjusteManual}
           reescribiendo={reescribiendo}
           ajusteUsado={ajusteUsado}

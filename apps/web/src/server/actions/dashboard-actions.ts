@@ -4,16 +4,21 @@
  * Server Actions para dashboards de nino y padre.
  * Sprint 5: Agregan datos de sesiones, respuestas, ajustes de dificultad.
  */
+import { getDb } from '@/server/db';
 import {
-  db,
   sessions,
   responses,
   difficultyAdjustments,
   generatedStories,
   topics,
   eloSnapshots,
+  eq,
+  and,
+  desc,
+  asc,
+  inArray,
+  type InferSelectModel,
 } from '@omegaread/db';
-import { eq, and, desc, asc, inArray } from 'drizzle-orm';
 import { requireStudentOwnership } from '../auth';
 import {
   calcularProgresoNivel,
@@ -151,6 +156,7 @@ export interface DashboardPadreData {
 // ─────────────────────────────────────────────
 
 export async function obtenerDashboardNino(estudianteId: string): Promise<DashboardNinoData> {
+  const db = await getDb();
   const { estudiante } = await requireStudentOwnership(estudianteId);
 
   // Obtener sesiones de lectura completadas
@@ -243,6 +249,7 @@ export async function obtenerDashboardNino(estudianteId: string): Promise<Dashbo
 // ─────────────────────────────────────────────
 
 export async function obtenerDashboardPadre(estudianteId: string): Promise<DashboardPadreData> {
+  const db = await getDb();
   const { estudiante } = await requireStudentOwnership(estudianteId);
 
   // Sesiones completadas
@@ -423,12 +430,13 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
 // HELPERS INTERNOS
 // ─────────────────────────────────────────────
 
-type SessionRow = Awaited<ReturnType<typeof db.query.sessions.findMany>>[number];
-type ResponseRow = Awaited<ReturnType<typeof db.query.responses.findMany>>[number];
-type StoryRow = Awaited<ReturnType<typeof db.query.generatedStories.findMany>>[number];
-type TopicRow = Awaited<ReturnType<typeof db.query.topics.findMany>>[number];
+type SessionRow = InferSelectModel<typeof sessions>;
+type ResponseRow = InferSelectModel<typeof responses>;
+type StoryRow = InferSelectModel<typeof generatedStories>;
+type TopicRow = InferSelectModel<typeof topics>;
 
 async function obtenerRespuestasDeSesiones(sessionIds: string[]) {
+  const db = await getDb();
   const allResponses: ResponseRow[] = [];
   const CHUNK = 50;
   for (let i = 0; i < sessionIds.length; i += CHUNK) {
@@ -442,6 +450,7 @@ async function obtenerRespuestasDeSesiones(sessionIds: string[]) {
 }
 
 async function obtenerHistorias(storyIds: string[]) {
+  const db = await getDb();
   const uniqueIds = [...new Set(storyIds)];
   const all: StoryRow[] = [];
   const CHUNK = 50;

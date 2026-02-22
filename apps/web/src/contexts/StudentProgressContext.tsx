@@ -103,9 +103,9 @@ export function StudentProgressProvider({ children }: { children: ReactNode }) {
     fetch('/api/estudiantes')
       .then((r) => {
         if (!r.ok) throw new Error('auth');
-        return r.json();
+        return r.json() as Promise<EstudianteActivo[]>;
       })
-      .then((hijos: EstudianteActivo[]) => {
+      .then((hijos) => {
         if (cancelled) return;
         if (hijos.length > 0) {
           const primero = hijos[0];

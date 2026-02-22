@@ -4,8 +4,8 @@
  * Server Actions para el flujo de /jugar/lectura.
  * Determina en que paso esta el estudiante: intereses, contexto, o listo.
  */
-import { db, students } from '@omegaread/db';
-import { eq, and } from 'drizzle-orm';
+import { getDb } from '@/server/db';
+import { students, eq, and } from '@omegaread/db';
 import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
 
@@ -33,6 +33,7 @@ export async function obtenerEstadoLectura(studentId: string): Promise<{
   estado: EstadoFlujoLectura;
   estudiante: DatosEstudianteLectura;
 } | null> {
+  const db = await getDb();
   const padre = await requireAuth();
 
   const estudiante = await db.query.students.findFirst({

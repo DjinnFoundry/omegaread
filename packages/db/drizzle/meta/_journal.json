@@ -1,40 +1,12 @@
 {
   "version": "7",
-  "dialect": "postgresql",
+  "dialect": "sqlite",
   "entries": [
     {
       "idx": 0,
-      "version": "7",
-      "when": 1771589307477,
-      "tag": "0000_swift_wendell_vaughn",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1771590311615,
-      "tag": "0001_wild_obadiah_stane",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1771705354310,
-      "tag": "0002_cultured_zarek",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1771705681086,
-      "tag": "0003_tranquil_maestro",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1771730552069,
-      "tag": "0004_fat_namor",
+      "version": "6",
+      "when": 1771733461255,
+      "tag": "0000_lazy_scourge",
       "breakpoints": true
     }
   ]

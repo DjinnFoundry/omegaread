@@ -4,8 +4,8 @@
  * Server Actions para gestion de estudiantes (ninos).
  * TODAS verifican autenticacion y ownership.
  */
-import { db, students, sessions, achievements, skillProgress } from '@omegaread/db';
-import { eq, desc, and } from 'drizzle-orm';
+import { getDb } from '@/server/db';
+import { students, sessions, achievements, skillProgress, eq, desc, and } from '@omegaread/db';
 import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
 
@@ -20,6 +20,7 @@ function nivelPorEdad(edad: number): number {
 
 /** Crear perfil de nino */
 export async function crearEstudiante(formData: FormData) {
+  const db = await getDb();
   const padre = await requireAuth();
 
   const nombre = formData.get('nombre') as string;
@@ -52,6 +53,7 @@ export async function crearEstudiante(formData: FormData) {
 
 /** Obtener estudiantes del padre actual */
 export async function obtenerEstudiantes() {
+  const db = await getDb();
   const padre = await requireAuth();
 
   return db.query.students.findMany({
@@ -62,6 +64,7 @@ export async function obtenerEstudiantes() {
 
 /** Obtener un estudiante por ID (verificando pertenencia al padre) */
 export async function obtenerEstudiante(studentId: string) {
+  const db = await getDb();
   const padre = await requireAuth();
 
   return db.query.students.findFirst({
@@ -71,6 +74,7 @@ export async function obtenerEstudiante(studentId: string) {
 
 /** Obtener resumen de progreso para dashboard de padre */
 export async function obtenerResumenProgreso(studentId: string) {
+  const db = await getDb();
   const padre = await requireAuth();
 
   const estudiante = await db.query.students.findFirst({

@@ -1,6 +1,8 @@
 import { obtenerPadreActual } from '@/server/auth';
 import { NavPadre } from '@/components/ui/NavPadre';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Layout para la zona de padres.
  * Muestra navbar con nombre del padre si esta autenticado.

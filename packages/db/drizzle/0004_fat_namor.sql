@@ -1,2 +1,0 @@
-ALTER TABLE "generated_stories" ADD COLUMN "reutilizable" boolean DEFAULT true NOT NULL;--> statement-breakpoint
-CREATE INDEX "stories_cache_idx" ON "generated_stories" USING btree ("student_id","topic_slug","nivel","reutilizable");

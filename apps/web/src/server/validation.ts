@@ -222,6 +222,30 @@ export const finalizarSesionLecturaSchema = z.object({
     wpm: z.number().nonnegative(),
   })).nullable().optional(),
   totalPaginas: z.number().int().positive().nullable().optional(),
+  audioAnalisis: z.object({
+    wpmUtil: z.number().nonnegative(),
+    precisionLectura: z.number().min(0).max(1),
+    coberturaTexto: z.number().min(0).max(1),
+    pauseRatio: z.number().min(0).max(1),
+    tiempoVozActivaMs: z.number().int().nonnegative(),
+    totalPalabrasTranscritas: z.number().int().nonnegative(),
+    totalPalabrasAlineadas: z.number().int().nonnegative(),
+    qualityScore: z.number().min(0).max(1),
+    confiable: z.boolean(),
+    motivoNoConfiable: z.string().max(200).nullable().optional(),
+    motor: z.string().max(100),
+  }).optional(),
+});
+
+/** Schema: analizarLecturaAudio */
+export const analizarLecturaAudioSchema = z.object({
+  sessionId: uuid,
+  studentId: uuid,
+  storyId: uuid.optional(),
+  audioBase64: z.string().min(1).max(20_000_000),
+  mimeType: z.string().max(100).optional(),
+  tiempoVozActivaMs: z.number().int().nonnegative(),
+  tiempoTotalMs: z.number().int().positive(),
 });
 
 // ─────────────────────────────────────────────

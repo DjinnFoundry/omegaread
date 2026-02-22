@@ -4,8 +4,8 @@
  * Server Actions para generacion de historias y finalizacion de sesiones.
  * Sprint 2: pipeline LLM + QA + adaptacion de dificultad.
  */
+import { getDb } from '@/server/db';
 import {
-  db,
   generatedStories,
   storyQuestions,
   sessions,
@@ -14,16 +14,22 @@ import {
   students,
   eloSnapshots,
   manualAdjustments,
+  eq,
+  and,
+  gte,
+  desc,
+  sql,
+  type InferSelectModel,
 } from '@omegaread/db';
-import { eq, and, gte, desc, sql } from 'drizzle-orm';
 import { requireStudentOwnership } from '../auth';
 import {
   generarHistoriaSchema,
   finalizarSesionLecturaSchema,
   reescribirHistoriaSchema,
+  analizarLecturaAudioSchema,
 } from '../validation';
 import { generateStory, rewriteStory } from '@/lib/ai/story-generator';
-import { hasOpenAIKey } from '@/lib/ai/openai';
+import { getOpenAIClient, hasOpenAIKey, OpenAIKeyMissingError } from '@/lib/ai/openai';
 import {
   getNivelConfig,
   calcularNivelReescritura,
@@ -51,12 +57,100 @@ const MAX_HISTORIAS_DIA = 20;
 const UMBRAL_SKILL_DOMINADA = 0.85;
 const INTENTOS_MIN_REFORZAR = 3;
 
-type SkillProgressRow = Awaited<ReturnType<typeof db.query.skillProgress.findMany>>[number];
+type SkillProgressRow = InferSelectModel<typeof skillProgress>;
+
+interface PalabraTimestamp {
+  palabra: string;
+  inicioSeg?: number;
+  finSeg?: number;
+}
+
+export interface AudioAnalisisLectura {
+  wpmUtil: number;
+  precisionLectura: number;
+  coberturaTexto: number;
+  pauseRatio: number;
+  tiempoVozActivaMs: number;
+  totalPalabrasTranscritas: number;
+  totalPalabrasAlineadas: number;
+  qualityScore: number;
+  confiable: boolean;
+  motivoNoConfiable: string | null;
+  motor: string;
+}
+
+function normalizarToken(valor: string): string {
+  return valor
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9ñ]+/g, '')
+    .trim();
+}
+
+function tokenizarTexto(valor: string): string[] {
+  return valor
+    .split(/\s+/)
+    .map(normalizarToken)
+    .filter(Boolean);
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function alinearPalabrasAlTexto(params: {
+  textoObjetivo: string;
+  palabrasTranscritas: string[];
+}) {
+  const objetivo = tokenizarTexto(params.textoObjetivo);
+  const habladas = params.palabrasTranscritas
+    .map(normalizarToken)
+    .filter(Boolean);
+
+  let cursor = 0;
+  let totalAlineadas = 0;
+  const indicesUnicos = new Set<number>();
+
+  for (const palabra of habladas) {
+    let match = -1;
+    const lookAhead = 8;
+    const lookBehind = 3;
+    const inicio = Math.max(0, cursor - lookBehind);
+    const fin = Math.min(objetivo.length, cursor + lookAhead);
+
+    for (let i = inicio; i < fin; i++) {
+      if (objetivo[i] === palabra) {
+        match = i;
+        break;
+      }
+    }
+
+    if (match === -1) continue;
+    totalAlineadas++;
+    indicesUnicos.add(match);
+    if (match >= cursor) cursor = match + 1;
+  }
+
+  const totalObjetivo = objetivo.length;
+  const coberturaTexto = totalObjetivo > 0 ? indicesUnicos.size / totalObjetivo : 0;
+  const precisionLectura = habladas.length > 0 ? totalAlineadas / habladas.length : 0;
+
+  return {
+    totalObjetivo,
+    totalHabladas: habladas.length,
+    totalAlineadas,
+    totalUnicasAlineadas: indicesUnicos.size,
+    coberturaTexto: clamp01(coberturaTexto),
+    precisionLectura: clamp01(precisionLectura),
+  };
+}
 
 /**
  * Verifica cuantas historias ha generado un estudiante hoy.
  */
 async function contarHistoriasHoy(studentId: string): Promise<number> {
+  const db = await getDb();
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
@@ -71,6 +165,189 @@ async function contarHistoriasHoy(studentId: string): Promise<number> {
     );
 
   return result[0]?.count ?? 0;
+}
+
+/**
+ * Analiza lectura en voz alta:
+ * - Transcribe audio
+ * - Alinea palabras con el texto objetivo
+ * - Calcula metrica robusta de fluidez (WPM util por voz activa)
+ */
+export async function analizarLecturaAudio(datos: {
+  sessionId: string;
+  studentId: string;
+  storyId?: string;
+  audioBase64: string;
+  mimeType?: string;
+  tiempoVozActivaMs: number;
+  tiempoTotalMs: number;
+}) {
+  const db = await getDb();
+  const validado = analizarLecturaAudioSchema.parse(datos);
+  await requireStudentOwnership(validado.studentId);
+
+  if (!hasOpenAIKey()) {
+    return {
+      ok: false as const,
+      error: 'No hay API key de LLM configurada para analisis de audio',
+      code: 'NO_API_KEY' as const,
+    };
+  }
+
+  const sesion = await db.query.sessions.findFirst({
+    where: and(
+      eq(sessions.id, validado.sessionId),
+      eq(sessions.studentId, validado.studentId),
+    ),
+    with: {
+      story: {
+        columns: {
+          id: true,
+          contenido: true,
+        },
+      },
+    },
+  });
+
+  if (!sesion || !sesion.story) {
+    return {
+      ok: false as const,
+      error: 'Sesion o historia no encontrada para analisis de audio',
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  if (validado.storyId && validado.storyId !== sesion.story.id) {
+    return {
+      ok: false as const,
+      error: 'El audio no corresponde a la historia activa de la sesion',
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  const raw = validado.audioBase64.includes(',')
+    ? validado.audioBase64.split(',')[1]
+    : validado.audioBase64;
+  const audioBuffer = Buffer.from(raw, 'base64');
+
+  if (audioBuffer.length < 8_000) {
+    return {
+      ok: false as const,
+      error: 'Audio insuficiente para medir fluidez',
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  if (audioBuffer.length > 12_000_000) {
+    return {
+      ok: false as const,
+      error: 'Audio demasiado grande para analizar en una sola peticion',
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  let transcripcionTexto = '';
+  let palabrasConTiempo: PalabraTimestamp[] = [];
+  const transcribeModel = process.env.LLM_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
+
+  try {
+    const client = getOpenAIClient();
+    const mimeType = validado.mimeType || 'audio/webm';
+    const extension = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp4') ? 'mp4' : 'webm';
+    const file = new File([audioBuffer], `lectura.${extension}`, { type: mimeType });
+
+    try {
+      const verbose = await client.audio.transcriptions.create({
+        file,
+        model: transcribeModel,
+        language: 'es',
+        response_format: 'verbose_json',
+        timestamp_granularities: ['word'],
+      });
+
+      transcripcionTexto = String((verbose as { text?: string }).text ?? '').trim();
+      const words = (verbose as { words?: Array<{ word?: string; start?: number; end?: number }> }).words;
+      if (Array.isArray(words) && words.length > 0) {
+        palabrasConTiempo = words.map(w => ({
+          palabra: String(w.word ?? ''),
+          inicioSeg: typeof w.start === 'number' ? w.start : undefined,
+          finSeg: typeof w.end === 'number' ? w.end : undefined,
+        }));
+      }
+    } catch {
+      // Fallback cuando el proveedor no soporta verbose_json/timestamps.
+      const simple = await client.audio.transcriptions.create({
+        file,
+        model: transcribeModel,
+        language: 'es',
+      });
+      transcripcionTexto = String((simple as { text?: string }).text ?? '').trim();
+    }
+  } catch (error) {
+    if (error instanceof OpenAIKeyMissingError) {
+      return {
+        ok: false as const,
+        error: error.message,
+        code: 'NO_API_KEY' as const,
+      };
+    }
+    const msg = error instanceof Error ? error.message : 'Error desconocido';
+    return {
+      ok: false as const,
+      error: `Fallo al transcribir audio: ${msg}`,
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  const palabrasTranscritas = palabrasConTiempo.length > 0
+    ? palabrasConTiempo.map(p => p.palabra)
+    : tokenizarTexto(transcripcionTexto);
+
+  const alineacion = alinearPalabrasAlTexto({
+    textoObjetivo: sesion.story.contenido,
+    palabrasTranscritas,
+  });
+
+  const minutosVozActiva = validado.tiempoVozActivaMs / 60_000;
+  const wpmUtil = minutosVozActiva > 0
+    ? Math.round((alineacion.totalUnicasAlineadas / minutosVozActiva) * 10) / 10
+    : 0;
+  const pauseRatio = clamp01(
+    (validado.tiempoTotalMs - validado.tiempoVozActivaMs) / validado.tiempoTotalMs,
+  );
+
+  const scoreVoz = clamp01(validado.tiempoVozActivaMs / 25_000);
+  const scorePrecision = clamp01(alineacion.precisionLectura / 0.75);
+  const scoreCobertura = clamp01(alineacion.coberturaTexto / 0.65);
+  const qualityScore = Math.round((scoreVoz * 0.35 + scorePrecision * 0.4 + scoreCobertura * 0.25) * 100) / 100;
+
+  const motivos: string[] = [];
+  if (validado.tiempoVozActivaMs < 20_000) motivos.push('poca voz activa');
+  if (alineacion.totalHabladas < 25) motivos.push('muy pocas palabras transcritas');
+  if (alineacion.precisionLectura < 0.35) motivos.push('baja precision de alineacion');
+  if (alineacion.coberturaTexto < 0.2) motivos.push('cobertura de texto baja');
+
+  const confiable = qualityScore >= 0.55 && motivos.length === 0;
+
+  const analisis: AudioAnalisisLectura = {
+    wpmUtil,
+    precisionLectura: Math.round(alineacion.precisionLectura * 1000) / 1000,
+    coberturaTexto: Math.round(alineacion.coberturaTexto * 1000) / 1000,
+    pauseRatio: Math.round(pauseRatio * 1000) / 1000,
+    tiempoVozActivaMs: validado.tiempoVozActivaMs,
+    totalPalabrasTranscritas: alineacion.totalHabladas,
+    totalPalabrasAlineadas: alineacion.totalAlineadas,
+    qualityScore,
+    confiable,
+    motivoNoConfiable: confiable ? null : motivos.join(', '),
+    motor: transcribeModel,
+  };
+
+  return {
+    ok: true as const,
+    analisis,
+    transcripcionPreview: transcripcionTexto.slice(0, 180),
+  };
 }
 
 function normalizarSkillSlug(skillId: string): string | null {
@@ -216,6 +493,7 @@ export async function generarHistoria(datos: {
   topicSlug?: string;
   forceRegenerate?: boolean;
 }) {
+  const db = await getDb();
   const validado = generarHistoriaSchema.parse(datos);
   const { estudiante } = await requireStudentOwnership(validado.studentId);
 
@@ -494,7 +772,9 @@ export async function finalizarSesionLectura(datos: {
   wpmPromedio?: number | null;
   wpmPorPagina?: Array<{ pagina: number; wpm: number }> | null;
   totalPaginas?: number | null;
+  audioAnalisis?: AudioAnalisisLectura;
 }) {
+  const db = await getDb();
   const validado = finalizarSesionLecturaSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
 
@@ -558,6 +838,11 @@ export async function finalizarSesionLectura(datos: {
   const duracionSegundos = Math.round(validado.tiempoLecturaMs / 1000);
   const ratioAciertos = totalPreguntas > 0 ? aciertos / totalPreguntas : 0;
   const estrellas = ratioAciertos >= 1 ? 3 : ratioAciertos >= 0.75 ? 2 : ratioAciertos > 0 ? 1 : 0;
+  const usarAudioParaWpm = !!validado.audioAnalisis?.confiable && validado.audioAnalisis.wpmUtil > 0;
+  const wpmPromedioFinal = usarAudioParaWpm
+    ? validado.audioAnalisis?.wpmUtil ?? null
+    : validado.wpmPromedio ?? null;
+  const fuenteWpm = usarAudioParaWpm ? 'audio' : 'pagina';
 
   await db
     .update(sessions)
@@ -566,7 +851,7 @@ export async function finalizarSesionLectura(datos: {
       duracionSegundos,
       estrellasGanadas: estrellas,
       finalizadaEn: new Date(),
-      wpmPromedio: validado.wpmPromedio ?? null,
+      wpmPromedio: wpmPromedioFinal,
       wpmPorPagina: validado.wpmPorPagina ?? null,
       totalPaginas: validado.totalPaginas ?? null,
       metadata: {
@@ -575,6 +860,22 @@ export async function finalizarSesionLectura(datos: {
         aciertos,
         totalPreguntas,
         tiempoLecturaMs: validado.tiempoLecturaMs,
+        fuenteWpm,
+        audioAnalisis: validado.audioAnalisis
+          ? {
+            wpmUtil: validado.audioAnalisis.wpmUtil,
+            precisionLectura: validado.audioAnalisis.precisionLectura,
+            coberturaTexto: validado.audioAnalisis.coberturaTexto,
+            pauseRatio: validado.audioAnalisis.pauseRatio,
+            qualityScore: validado.audioAnalisis.qualityScore,
+            confiable: validado.audioAnalisis.confiable,
+            motivoNoConfiable: validado.audioAnalisis.motivoNoConfiable ?? null,
+            motor: validado.audioAnalisis.motor,
+            tiempoVozActivaMs: validado.audioAnalisis.tiempoVozActivaMs,
+            totalPalabrasTranscritas: validado.audioAnalisis.totalPalabrasTranscritas,
+            totalPalabrasAlineadas: validado.audioAnalisis.totalPalabrasAlineadas,
+          }
+          : null,
       },
     })
     .where(eq(sessions.id, validado.sessionId));
@@ -590,7 +891,7 @@ export async function finalizarSesionLectura(datos: {
     comprensionScore,
     tiempoLecturaMs: validado.tiempoLecturaMs,
     tiempoEsperadoMs,
-    wpmPromedio: validado.wpmPromedio ?? undefined,
+    wpmPromedio: wpmPromedioFinal ?? undefined,
   });
 
   // Guardar sessionScore compuesto en metadata para que futuras sesiones lo usen
@@ -678,7 +979,7 @@ export async function finalizarSesionLectura(datos: {
           eloVocabulario: eloResult.nuevoElo.vocabulario,
           eloResumen: eloResult.nuevoElo.resumen,
           rdGlobal: eloResult.nuevoElo.rd,
-          wpmPromedio: validado.wpmPromedio ?? null,
+          wpmPromedio: wpmPromedioFinal,
         });
       }
     }
@@ -716,6 +1017,7 @@ export async function reescribirHistoria(datos: {
   direccion: 'mas_facil' | 'mas_desafiante';
   tiempoLecturaAntesDePulsar: number;
 }) {
+  const db = await getDb();
   const validado = reescribirHistoriaSchema.parse(datos);
   const { estudiante } = await requireStudentOwnership(validado.studentId);
 

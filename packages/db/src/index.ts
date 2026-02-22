@@ -1,26 +1,26 @@
 /**
- * @omegaread/db — Conexión a base de datos y exports
+ * @omegaread/db -- Conexion a base de datos y exports
  *
- * Uso:
- *   import { db } from '@omegaread/db';
+ * Para Cloudflare D1 (SQLite):
+ *   import { createDb } from '@omegaread/db';
+ *   const db = createDb(env.DB);
+ *
+ * Schema:
  *   import { parents, students } from '@omegaread/db/schema';
- *
- * Usa Neon serverless driver via WebSocket Pool.
- * Compatible con Cloudflare Workers edge runtime y soporta transacciones.
  */
-import { Pool } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
+import { drizzle } from 'drizzle-orm/d1';
 import * as schema from './schema';
 
-const connectionString = process.env.DATABASE_URL ?? 'postgresql://localhost:5432/omegaread';
+/** Crea instancia de Drizzle ORM para un binding D1 */
+export function createDb(d1: D1Database) {
+  return drizzle(d1, { schema });
+}
 
-/** Pool Neon serverless (WebSocket) */
-const pool = new Pool({ connectionString });
-
-/** Instancia de Drizzle ORM con schema tipado */
-export const db = drizzle(pool, { schema });
-
-export type Database = typeof db;
+export type Database = ReturnType<typeof createDb>;
 
 // Re-export schema
 export * from './schema';
+
+// Re-export drizzle-orm operators (so web app doesn't need its own drizzle-orm dep)
+export { eq, and, or, not, desc, asc, gte, lte, gt, lt, ne, sql, inArray, isNull, isNotNull, count, sum, avg, min, max } from 'drizzle-orm';
+export type { InferSelectModel, InferInsertModel } from 'drizzle-orm';
