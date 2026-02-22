@@ -156,6 +156,35 @@ function ajustarRdPorConsistencia(
   return Math.min(RD_MAX, Math.max(RD_MIN, Math.round((rd + rdAdjustment) * 10) / 10));
 }
 
+/**
+ * Factor anti-farming:
+ * - Si la respuesta era muy esperable, reduce el delta.
+ * - Si ademas era un acierto contra una pregunta claramente mas facil
+ *   que el rating actual del nino, lo reduce aun mas.
+ *
+ * Objetivo: evitar que una racha de aciertos en preguntas faciles
+ * infle artificialmente el Elo.
+ */
+function factorAntiFarming(
+  playerRating: number,
+  questionRating: number,
+  score: number,
+  expected: number,
+): number {
+  const sorpresa = Math.abs(score - expected); // 0..1
+  const factorSorpresa = 0.2 + (0.8 * sorpresa); // 0.2..1
+
+  // Solo penalizamos aciertos cuando el item era claramente mas facil.
+  if (score === 1 && playerRating > questionRating) {
+    const gap = playerRating - questionRating;
+    // Gap >= 500 => penalizacion maxima (pero nunca 0 para no congelar del todo).
+    const penalizacionFacil = Math.max(0.05, 1 - (gap / 500));
+    return Math.max(0.02, factorSorpresa * penalizacionFacil);
+  }
+
+  return factorSorpresa;
+}
+
 // ─────────────────────────────────────────────
 // FUNCIONES PUBLICAS
 // ─────────────────────────────────────────────
@@ -226,14 +255,19 @@ export function procesarRespuestasElo(
     predicciones.push({ expected: E, actual: score });
 
     // Glicko update para rating global + RD
-    const globalUpdate = glickoUpdate(global, rd, qRating, QUESTION_RD, score);
-    global = globalUpdate.newRating;
+    // Aplicamos damping anti-farming al delta de rating, no al RD.
+    const globalUpdate = glickoUpdate(prevGlobal, rd, qRating, QUESTION_RD, score);
+    const rawDeltaGlobal = globalUpdate.newRating - prevGlobal;
+    const factorGlobal = factorAntiFarming(prevGlobal, qRating, score, E);
+    global = Math.round((prevGlobal + (rawDeltaGlobal * factorGlobal)) * 10) / 10;
     rd = globalUpdate.newRd;
 
     // Para el tipo: K derivado del RD actual
     const K = Math.max(8, rd * 0.1);
-    const expected = 1 / (1 + Math.pow(10, (qRating - prevTipo) / 400));
-    porTipo[resp.tipo] = Math.round((prevTipo + K * (score - expected)) * 10) / 10;
+    const expectedTipo = 1 / (1 + Math.pow(10, (qRating - prevTipo) / 400));
+    const rawDeltaTipo = K * (score - expectedTipo);
+    const factorTipo = factorAntiFarming(prevTipo, qRating, score, expectedTipo);
+    porTipo[resp.tipo] = Math.round((prevTipo + (rawDeltaTipo * factorTipo)) * 10) / 10;
 
     cambios.push({
       tipo: resp.tipo,
