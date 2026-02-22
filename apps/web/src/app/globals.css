@@ -189,5 +189,42 @@ button, a, [role="button"] {
 .animate-fade-in-up { animation: fade-in-up 0.5s ease-out 0.3s both; }
 
 /* ─────────────────────────────────────────────
+   Print styles — historia completa
+   ───────────────────────────────────────────── */
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .print-story,
+  .print-story * {
+    visibility: visible;
+  }
+
+  .print-story {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 2rem;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+
+  .print-story p {
+    orphans: 2;
+    widows: 2;
+  }
+}
+
+/* ─────────────────────────────────────────────
    Tipografía principal: Nunito con fallbacks del sistema
    ───────────────────────────────────────────── */

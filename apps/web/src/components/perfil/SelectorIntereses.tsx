@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { guardarIntereses } from '@/server/actions/profile-actions';
-import { CATEGORIAS } from '@/lib/data/topics';
+import { CATEGORIAS } from '@/lib/data/skills';
 
 interface Props {
   studentId: string;

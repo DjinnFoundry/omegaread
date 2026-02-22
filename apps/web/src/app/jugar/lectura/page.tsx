@@ -4,14 +4,13 @@
  * Ruta de lectura adaptativa.
  *
  * Flujo:
- * 1. Si no tiene perfil completo -> FormularioPerfil (padre)
- * 2. Si no tiene intereses -> SelectorIntereses (nino)
- * 3. Si no tiene baseline -> TestBaseline
- * 4. Si tiene todo -> SesionLectura (ciclo completo de lectura)
+ * 1. Si no tiene intereses -> SelectorIntereses (nino)
+ * 2. Si no tiene contexto -> FormularioContexto (padre)
+ * 3. Si tiene todo -> SesionLectura (ciclo completo de lectura)
  *
  * Sprint 4: reescritura en sesion con ajuste manual de dificultad.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStudentProgress } from '@/contexts/StudentProgressContext';
 import {
@@ -24,10 +23,8 @@ import {
   finalizarSesionLectura,
   reescribirHistoria,
 } from '@/server/actions/story-actions';
-import FormularioPerfil from '@/components/perfil/FormularioPerfil';
 import SelectorIntereses from '@/components/perfil/SelectorIntereses';
 import FormularioContexto from '@/components/perfil/FormularioContexto';
-import TestBaseline from '@/components/baseline/TestBaseline';
 import InicioSesion from '@/components/lectura/InicioSesion';
 import PantallaLectura, { type WpmData } from '@/components/lectura/PantallaLectura';
 import PantallaPreguntas, { type RespuestaPregunta } from '@/components/lectura/PantallaPreguntas';
@@ -38,6 +35,7 @@ type PasoSesion = 'elegir-topic' | 'generando' | 'leyendo' | 'preguntas' | 'resu
 interface DatosSesionActiva {
   sessionId: string;
   storyId: string;
+  fromCache: boolean;
   historia: {
     titulo: string;
     contenido: string;
@@ -60,22 +58,16 @@ interface DatosSesionActiva {
 interface ResultadoSesionData {
   aciertos: number;
   totalPreguntas: number;
-  comprensionScore: number;
   estrellas: number;
-  direccion: 'subir' | 'bajar' | 'mantener';
-  nivelAnterior: number;
-  nivelNuevo: number;
-  razon: string;
 }
 
 export default function LecturaPage() {
   const router = useRouter();
-  const { estudiante, recargarProgreso } = useStudentProgress();
+  const { estudiante, autoSelecting, recargarProgreso } = useStudentProgress();
   const [estado, setEstado] = useState<EstadoFlujoLectura | null>(null);
   const [datosEstudiante, setDatosEstudiante] = useState<DatosEstudianteLectura | null>(null);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  const cargaInicial = useRef(false);
 
   // Estado de sesion de lectura activa
   const [pasoSesion, setPasoSesion] = useState<PasoSesion>('elegir-topic');
@@ -92,7 +84,10 @@ export default function LecturaPage() {
   const [rewriteCount, setRewriteCount] = useState(0);
 
   const cargarEstado = useCallback(async () => {
-    if (!estudiante) return;
+    if (!estudiante) {
+      setCargando(false);
+      return;
+    }
     setCargando(true);
     setErrorCarga(null);
     try {
@@ -109,37 +104,15 @@ export default function LecturaPage() {
     }
   }, [estudiante]);
 
+  // Cargar estado cuando el provider resuelve el estudiante
   useEffect(() => {
-    if (!estudiante) {
-      setCargando(false);
-      return;
-    }
-    if (cargaInicial.current) return;
-    cargaInicial.current = true;
-    let cancelled = false;
-
-    obtenerEstadoLectura(estudiante.id)
-      .then(result => {
-        if (cancelled) return;
-        if (result) {
-          setEstado(result.estado);
-          setDatosEstudiante(result.estudiante);
-        }
-        setCargando(false);
-      })
-      .catch(err => {
-        if (cancelled) return;
-        console.error('Error cargando estado de lectura:', err);
-        setErrorCarga('No pudimos cargar el perfil. Intenta de nuevo.');
-        setCargando(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [estudiante]);
+    if (autoSelecting) return; // Provider aun resolviendo, esperar
+    void cargarEstado();
+  }, [autoSelecting, cargarEstado]);
 
   // ─── Handlers de sesion ───
 
-  const handleStartReading = useCallback(async (topicSlug: string) => {
+  const handleStartReading = useCallback(async (topicSlug: string, forceRegenerate?: boolean) => {
     if (!estudiante || generando) return;
     setGenerando(true);
     setErrorGeneracion(null);
@@ -149,6 +122,7 @@ export default function LecturaPage() {
       const result = await generarHistoria({
         studentId: estudiante.id,
         topicSlug,
+        forceRegenerate,
       });
 
       if (!result.ok) {
@@ -160,6 +134,7 @@ export default function LecturaPage() {
       setSesionActiva({
         sessionId: result.sessionId,
         storyId: result.storyId,
+        fromCache: result.fromCache ?? false,
         historia: result.historia,
         preguntas: result.preguntas,
       });
@@ -178,6 +153,12 @@ export default function LecturaPage() {
     setWpmData(wpm);
     setPasoSesion('preguntas');
   }, []);
+
+  // Handler de regeneracion (cuando la historia viene de cache y el nino quiere otra)
+  const handleRegenerar = useCallback(() => {
+    if (!sesionActiva) return;
+    void handleStartReading(sesionActiva.historia.topicSlug, true);
+  }, [sesionActiva, handleStartReading]);
 
   // Sprint 4: handler de ajuste manual (reescritura)
   const handleAjusteManual = useCallback(async (
@@ -263,10 +244,6 @@ export default function LecturaPage() {
     void cargarEstado();
   }, [cargarEstado]);
 
-  const handleVolver = useCallback(() => {
-    router.push('/jugar');
-  }, [router]);
-
   // ─── Loading ───
   if (cargando) {
     return (
@@ -279,15 +256,15 @@ export default function LecturaPage() {
     );
   }
 
-  // Sin estudiante activo en el contexto (no se selecciono hijo)
+  // Sin estudiante activo (auto-select fallo o no hay hijos registrados)
   if (!estudiante) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
         <div className="text-center max-w-sm">
           <span className="text-5xl">👦</span>
-          <h2 className="mt-3 text-xl font-bold text-texto">Selecciona un lector</h2>
+          <h2 className="mt-3 text-xl font-bold text-texto">No hay lectores</h2>
           <p className="mt-2 text-sm text-texto-suave">
-            Vuelve al panel de padre y pulsa &quot;Ir a leer&quot; con uno de tus hijos.
+            Primero crea el perfil de un lector desde el panel de padre.
           </p>
           <button
             type="button"
@@ -311,11 +288,7 @@ export default function LecturaPage() {
           <p className="mt-2 text-sm text-texto-suave">{errorCarga}</p>
           <button
             type="button"
-            onClick={() => {
-              cargaInicial.current = false;
-              setErrorCarga(null);
-              void cargarEstado();
-            }}
+            onClick={() => void cargarEstado()}
             className="mt-5 rounded-2xl bg-coral px-6 py-3 text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
           >
             Reintentar
@@ -346,20 +319,7 @@ export default function LecturaPage() {
     );
   }
 
-  // ─── Paso 1: Perfil incompleto (padre) ───
-  if (estado.paso === 'perfil-incompleto') {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
-        <FormularioPerfil
-          studentId={datosEstudiante.id}
-          studentNombre={datosEstudiante.nombre}
-          onComplete={cargarEstado}
-        />
-      </main>
-    );
-  }
-
-  // ─── Paso 2: Sin intereses (nino) ───
+  // ─── Paso 1: Sin intereses (nino) ───
   if (estado.paso === 'sin-intereses') {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
@@ -387,21 +347,7 @@ export default function LecturaPage() {
     );
   }
 
-  // ─── Paso 4: Sin baseline ───
-  if (estado.paso === 'sin-baseline') {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
-        <TestBaseline
-          studentId={datosEstudiante.id}
-          studentNombre={datosEstudiante.nombre}
-          onComplete={cargarEstado}
-        />
-      </main>
-    );
-  }
-
-  // ─── Paso 4: Listo → Sesion de lectura ───
-  const nivelActual = datosEstudiante.nivelLectura ?? estado.nivelLectura;
+  // ─── Paso 3: Listo → Sesion de lectura ───
 
   // Generando historia
   if (pasoSesion === 'generando') {
@@ -435,6 +381,8 @@ export default function LecturaPage() {
           reescribiendo={reescribiendo}
           ajusteUsado={ajusteUsado}
           rewriteCount={rewriteCount}
+          fromCache={sesionActiva.fromCache}
+          onRegenerar={handleRegenerar}
         />
       </main>
     );
@@ -468,7 +416,6 @@ export default function LecturaPage() {
           resultado={resultadoSesion}
           studentNombre={datosEstudiante.nombre}
           onLeerOtra={handleLeerOtra}
-          onVolver={handleVolver}
         />
       </main>
     );
@@ -488,7 +435,6 @@ export default function LecturaPage() {
 
       <InicioSesion
         studentNombre={datosEstudiante.nombre}
-        nivelLectura={nivelActual}
         intereses={datosEstudiante.intereses}
         edadAnos={datosEstudiante.edadAnos}
         onStart={handleStartReading}

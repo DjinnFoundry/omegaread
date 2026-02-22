@@ -2,12 +2,11 @@
 
 /**
  * Pantalla de lectura con paginacion.
- * Divide el texto en paginas segun nivel. Registra timestamps por pagina.
+ * Divide el texto en 6-10 paginas segun nivel. Registra timestamps por pagina.
  * Calcula WPM por pagina al terminar.
  * Sprint 4: Botones "Hazlo mas facil" / "Hazlo mas desafiante".
  */
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { BotonGrande } from '@/components/ui/BotonGrande';
 
 export interface WpmData {
   wpmPromedio: number;
@@ -26,45 +25,98 @@ interface PantallaLecturaProps {
   reescribiendo?: boolean;
   ajusteUsado?: boolean;
   rewriteCount?: number;
+  /** Si la historia viene de cache, mostrar boton "Quiero otra" */
+  fromCache?: boolean;
+  /** Callback para pedir regeneracion de historia */
+  onRegenerar?: () => void;
 }
 
 const DELAY_BOTONES_MS = 10_000;
 const TOAST_DURACION_MS = 3_000;
 
-/** Palabras por pagina segun rango de nivel */
+/** Palabras por pagina: interpolacion lineal continua (nivel 1.0 -> 5, nivel 4.8 -> 50) */
 function getPalabrasPorPagina(nivel: number): number {
-  if (nivel < 2) return 30;
-  if (nivel < 3) return 50;
-  if (nivel < 4) return 70;
-  return 90;
+  const t = (Math.min(4.8, Math.max(1.0, nivel)) - 1.0) / 3.8;
+  return Math.round(5 + t * 45);
 }
 
-/** Divide el texto en paginas de N palabras, respetando limites de parrafo cuando es posible */
+/** Font size adaptativo: interpolacion lineal continua (nivel 1.0 -> 28px, nivel 4.8 -> 16px) */
+function getFontSizePx(nivel: number): number {
+  const t = (Math.min(4.8, Math.max(1.0, nivel)) - 1.0) / 3.8;
+  return Math.round(28 - t * 12);
+}
+
+/** Divide el texto en paginas respetando parrafos y oraciones */
 function dividirEnPaginas(contenido: string, palabrasPorPagina: number): string[] {
-  const palabras = contenido.split(/\s+/).filter(w => w.length > 0);
-  if (palabras.length <= palabrasPorPagina) return [contenido];
+  const parrafos = contenido.split('\n\n').filter(p => p.trim().length > 0);
 
   const paginas: string[] = [];
-  for (let i = 0; i < palabras.length; i += palabrasPorPagina) {
-    paginas.push(palabras.slice(i, i + palabrasPorPagina).join(' '));
+  let paginaActual: string[] = [];
+  let palabrasEnPagina = 0;
+
+  for (const parrafo of parrafos) {
+    const palabrasParrafo = parrafo.split(/\s+/).filter(w => w.length > 0).length;
+
+    // Si el parrafo cabe en la pagina actual, anadirlo
+    if (palabrasEnPagina > 0 && palabrasEnPagina + palabrasParrafo > palabrasPorPagina) {
+      // No cabe: cerrar pagina actual e iniciar nueva
+      paginas.push(paginaActual.join('\n\n'));
+      paginaActual = [];
+      palabrasEnPagina = 0;
+    }
+
+    // Si el parrafo solo excede el limite, partirlo
+    if (palabrasParrafo > palabrasPorPagina) {
+      // Intentar partir por oraciones
+      const oraciones = parrafo.split(/(?<=[.!?])\s+/);
+      for (const oracion of oraciones) {
+        const palabrasOracion = oracion.split(/\s+/).filter(w => w.length > 0).length;
+
+        if (palabrasEnPagina > 0 && palabrasEnPagina + palabrasOracion > palabrasPorPagina) {
+          paginas.push(paginaActual.join('\n\n'));
+          paginaActual = [];
+          palabrasEnPagina = 0;
+        }
+
+        // Si una sola oracion excede el limite, partir por palabras (fallback)
+        if (palabrasOracion > palabrasPorPagina && palabrasEnPagina === 0) {
+          const palabras = oracion.split(/\s+/).filter(w => w.length > 0);
+          for (let i = 0; i < palabras.length; i += palabrasPorPagina) {
+            const trozo = palabras.slice(i, i + palabrasPorPagina).join(' ');
+            if (i + palabrasPorPagina < palabras.length) {
+              paginas.push(trozo);
+            } else {
+              paginaActual.push(trozo);
+              palabrasEnPagina = palabras.length - i;
+            }
+          }
+        } else {
+          if (paginaActual.length > 0) {
+            // Append to last element (same paragraph)
+            paginaActual[paginaActual.length - 1] += ' ' + oracion;
+          } else {
+            paginaActual.push(oracion);
+          }
+          palabrasEnPagina += palabrasOracion;
+        }
+      }
+    } else {
+      paginaActual.push(parrafo);
+      palabrasEnPagina += palabrasParrafo;
+    }
   }
-  return paginas;
+
+  // Flush remaining
+  if (paginaActual.length > 0) {
+    paginas.push(paginaActual.join('\n\n'));
+  }
+
+  return paginas.length > 0 ? paginas : [contenido];
 }
 
 /** Cuenta palabras de un texto */
 function contarPalabras(texto: string): number {
   return texto.split(/\s+/).filter(w => w.length > 0).length;
-}
-
-/**
- * Calcula el tiempo minimo antes de mostrar el boton de avance.
- * Basado en ~30 palabras/minuto como velocidad minima realista.
- * Minimo: 5s, Maximo: 30s (por pagina).
- */
-function calcularTiempoMinimoPagina(textoPagina: string): number {
-  const palabras = contarPalabras(textoPagina);
-  const segundos = (palabras / 30) * 60;
-  return Math.max(5, Math.min(30, Math.round(segundos * 0.3))) * 1000;
 }
 
 export default function PantallaLectura({
@@ -78,37 +130,34 @@ export default function PantallaLectura({
   reescribiendo = false,
   ajusteUsado = false,
   rewriteCount = 0,
+  fromCache = false,
+  onRegenerar,
 }: PantallaLecturaProps) {
   const palabrasPorPagina = getPalabrasPorPagina(nivel);
   const paginas = dividirEnPaginas(contenido, palabrasPorPagina);
   const totalPaginas = paginas.length;
+  const fontSize = getFontSizePx(nivel);
 
   const [paginaActual, setPaginaActual] = useState(0);
-  const [botonVisible, setBotonVisible] = useState(false);
   const [botonesAjusteVisibles, setBotonesAjusteVisibles] = useState(false);
   const [mostrarToast, setMostrarToast] = useState(false);
   const [fading, setFading] = useState(false);
   const prevRewriteCountRef = useRef(rewriteCount);
 
   // Timestamps: uno por cada transicion de pagina + inicio
-  const timestampsRef = useRef<number[]>([Date.now()]);
-  const inicioTotalRef = useRef(Date.now());
+  // Track max page reached to only count forward transitions for WPM
+  const timestampsRef = useRef<number[]>([0]);
+  const inicioTotalRef = useRef(0);
+  const maxPaginaRef = useRef(0);
 
   // Reset cuando cambia el contenido (reescritura)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- valid: resetting state when prop changes
     setPaginaActual(0);
-    setBotonVisible(false);
     timestampsRef.current = [Date.now()];
     inicioTotalRef.current = Date.now();
+    maxPaginaRef.current = 0;
   }, [contenido]);
-
-  // Mostrar boton despues de un tiempo minimo por pagina
-  useEffect(() => {
-    setBotonVisible(false);
-    const delay = calcularTiempoMinimoPagina(paginas[paginaActual] ?? '');
-    const timer = setTimeout(() => setBotonVisible(true), delay);
-    return () => clearTimeout(timer);
-  }, [paginaActual, paginas]);
 
   // Mostrar botones de ajuste despues de 10 segundos (solo en pagina 1)
   useEffect(() => {
@@ -138,16 +187,30 @@ export default function PantallaLectura({
   }, [rewriteCount]);
 
   const handleSiguientePagina = useCallback(() => {
-    timestampsRef.current.push(Date.now());
-    setPaginaActual(p => p + 1);
+    setPaginaActual(p => {
+      const next = p + 1;
+      if (next > maxPaginaRef.current) {
+        // Forward transition: record timestamp
+        timestampsRef.current.push(Date.now());
+        maxPaginaRef.current = next;
+      }
+      return next;
+    });
+  }, []);
+
+  const handlePaginaAnterior = useCallback(() => {
+    setPaginaActual(p => Math.max(0, p - 1));
   }, []);
 
   const handleTerminar = useCallback(() => {
     const ahora = Date.now();
-    timestampsRef.current.push(ahora);
+    // Only push final timestamp if we haven't already recorded it
+    if (timestampsRef.current.length <= totalPaginas) {
+      timestampsRef.current.push(ahora);
+    }
     const tiempoTotalMs = ahora - inicioTotalRef.current;
 
-    // Calcular WPM por pagina
+    // Calcular WPM por pagina (only forward transitions)
     const wpmPorPagina: Array<{ pagina: number; wpm: number }> = [];
     for (let i = 0; i < totalPaginas; i++) {
       const inicio = timestampsRef.current[i];
@@ -163,10 +226,14 @@ export default function PantallaLectura({
     const paginasParaPromedio = wpmPorPagina.filter(p => p.pagina > 1);
     const wpmPromedio = paginasParaPromedio.length > 0
       ? Math.round(paginasParaPromedio.reduce((sum, p) => sum + p.wpm, 0) / paginasParaPromedio.length)
-      : wpmPorPagina[0]?.wpm ?? 0; // Si solo hay 1 pagina, usar esa
+      : wpmPorPagina[0]?.wpm ?? 0;
 
     onTerminar(tiempoTotalMs, { wpmPromedio, wpmPorPagina, totalPaginas });
   }, [onTerminar, totalPaginas, paginas]);
+
+  const handlePrint = useCallback(() => {
+    window.print();
+  }, []);
 
   const handleAjuste = useCallback((direccion: 'mas_facil' | 'mas_desafiante') => {
     if (!onAjusteManual || ajusteUsado || reescribiendo) return;
@@ -175,6 +242,7 @@ export default function PantallaLectura({
   }, [onAjusteManual, ajusteUsado, reescribiendo]);
 
   const esUltimaPagina = paginaActual >= totalPaginas - 1;
+  const esPrimeraPagina = paginaActual === 0;
   const textoPaginaActual = paginas[paginaActual] ?? '';
   const parrafos = textoPaginaActual.split('\n\n').filter(p => p.trim().length > 0);
 
@@ -186,17 +254,6 @@ export default function PantallaLectura({
 
   return (
     <div className="animate-fade-in w-full max-w-lg mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 px-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">{topicEmoji}</span>
-          <span className="text-xs text-texto-suave">{topicNombre}</span>
-        </div>
-        <div className="bg-turquesa/10 rounded-full px-3 py-1">
-          <span className="text-xs text-turquesa font-medium">Nivel {nivel}</span>
-        </div>
-      </div>
-
       {/* Toast de notificacion */}
       {mostrarToast && (
         <div className="mb-4 animate-fade-in">
@@ -215,14 +272,30 @@ export default function PantallaLectura({
         </h1>
       )}
 
-      {/* Indicador de pagina */}
-      {totalPaginas > 1 && (
-        <div className="flex justify-center mb-3">
+      {/* Indicador de pagina + imprimir */}
+      <div className="flex justify-center items-center gap-2 mb-3 no-print">
+        {totalPaginas > 1 && (
           <span className="text-xs text-texto-suave bg-superficie px-3 py-1 rounded-full border border-neutro/10">
-            Pagina {paginaActual + 1} de {totalPaginas}
+            {paginaActual + 1} / {totalPaginas}
           </span>
-        </div>
-      )}
+        )}
+        {!reescribiendo && (
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="
+              text-xs text-texto-suave bg-superficie px-2.5 py-1 rounded-full border border-neutro/10
+              hover:border-turquesa/40 hover:text-turquesa
+              active:scale-95 transition-all duration-150
+              touch-manipulation min-h-0 min-w-0
+            "
+            aria-label="Imprimir historia completa"
+            title="Imprimir"
+          >
+            <span role="presentation">🖨️</span>
+          </button>
+        )}
+      </div>
 
       {/* Contenido de la pagina */}
       <div className={`bg-superficie rounded-3xl p-6 shadow-sm border border-neutro/10 mb-6 ${contentOpacity}`}>
@@ -236,8 +309,8 @@ export default function PantallaLectura({
             {parrafos.map((parrafo, i) => (
               <p
                 key={i}
-                className="text-lg leading-relaxed text-texto"
-                style={{ fontFamily: 'var(--font-principal)' }}
+                className="leading-relaxed text-texto"
+                style={{ fontFamily: 'var(--font-principal)', fontSize: `${fontSize}px` }}
               >
                 {parrafo}
               </p>
@@ -296,37 +369,120 @@ export default function PantallaLectura({
         </div>
       )}
 
-      {/* Boton de accion */}
-      <div className="text-center pb-8">
-        {botonVisible ? (
-          <div className="animate-fade-in">
-            {esUltimaPagina ? (
-              <BotonGrande
-                variante="primario"
-                icono="✅"
-                texto="He terminado de leer"
-                tamano="grande"
-                deshabilitado={reescribiendo}
-                onClick={handleTerminar}
-                ariaLabel="He terminado de leer"
-              />
-            ) : (
-              <BotonGrande
-                variante="primario"
-                icono="➡️"
-                texto="Siguiente pagina"
-                tamano="grande"
-                deshabilitado={reescribiendo}
-                onClick={handleSiguientePagina}
-                ariaLabel="Ir a la siguiente pagina"
-              />
-            )}
-          </div>
+      {/* Boton regenerar (solo si historia viene de cache, pagina 1) */}
+      {fromCache && onRegenerar && paginaActual === 0 && !reescribiendo && (
+        <div className="flex justify-center mb-4 no-print animate-fade-in">
+          <button
+            type="button"
+            onClick={onRegenerar}
+            className="
+              flex items-center gap-1.5
+              px-4 py-2 rounded-2xl
+              text-xs font-medium text-texto-suave
+              bg-superficie border border-neutro/10
+              hover:border-turquesa/40 hover:text-turquesa
+              active:scale-95 transition-all duration-150
+              touch-manipulation
+            "
+          >
+            <span role="presentation">🔄</span>
+            <span>Quiero otra historia</span>
+          </button>
+        </div>
+      )}
+
+      {/* Barra de navegacion fija */}
+      <div className="flex items-center justify-between pb-8 px-2 no-print">
+        {/* Boton Anterior */}
+        <button
+          type="button"
+          onClick={handlePaginaAnterior}
+          disabled={esPrimeraPagina || reescribiendo}
+          className={`
+            flex items-center gap-1.5
+            px-4 py-3 rounded-2xl
+            text-sm font-semibold
+            transition-all duration-150
+            touch-manipulation
+            ${esPrimeraPagina
+              ? 'text-neutro/30 cursor-not-allowed'
+              : 'text-turquesa bg-turquesa/10 hover:bg-turquesa/20 active:scale-95'
+            }
+          `}
+          aria-label="Pagina anterior"
+        >
+          <span>←</span>
+          <span>Anterior</span>
+        </button>
+
+        {/* Indicador central */}
+        <span className="text-sm font-medium text-texto-suave tabular-nums">
+          {paginaActual + 1} / {totalPaginas}
+        </span>
+
+        {/* Boton Siguiente / Terminar */}
+        {esUltimaPagina ? (
+          <button
+            type="button"
+            onClick={handleTerminar}
+            disabled={reescribiendo}
+            className="
+              flex items-center gap-1.5
+              px-4 py-3 rounded-2xl
+              text-sm font-semibold
+              bg-bosque text-white
+              hover:bg-bosque/90 active:scale-95
+              transition-all duration-150
+              touch-manipulation
+              disabled:opacity-50
+            "
+            aria-label="Terminar lectura"
+          >
+            <span>Terminar</span>
+            <span>✓</span>
+          </button>
         ) : (
-          <p className="text-sm text-texto-suave animate-pulse-brillo">
-            Tomate tu tiempo para leer...
-          </p>
+          <button
+            type="button"
+            onClick={handleSiguientePagina}
+            disabled={reescribiendo}
+            className="
+              flex items-center gap-1.5
+              px-4 py-3 rounded-2xl
+              text-sm font-semibold
+              text-turquesa bg-turquesa/10
+              hover:bg-turquesa/20 active:scale-95
+              transition-all duration-150
+              touch-manipulation
+              disabled:opacity-50
+            "
+            aria-label="Siguiente pagina"
+          >
+            <span>Siguiente</span>
+            <span>→</span>
+          </button>
         )}
+      </div>
+
+      {/* Historia completa para impresion (oculta en pantalla) */}
+      <div className="print-story hidden print:block">
+        <h1
+          className="text-2xl font-bold mb-6"
+          style={{ fontFamily: 'var(--font-principal)' }}
+        >
+          {titulo}
+        </h1>
+        <div className="space-y-4">
+          {contenido.split('\n\n').filter(p => p.trim().length > 0).map((parrafo, i) => (
+            <p
+              key={i}
+              className="leading-relaxed"
+              style={{ fontFamily: 'var(--font-principal)', fontSize: `${Math.max(fontSize, 14)}px` }}
+            >
+              {parrafo}
+            </p>
+          ))}
+        </div>
       </div>
     </div>
   );

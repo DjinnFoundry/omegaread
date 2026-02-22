@@ -11,8 +11,9 @@ import {
   difficultyAdjustments,
   generatedStories,
   topics,
+  eloSnapshots,
 } from '@omegaread/db';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray } from 'drizzle-orm';
 import { requireStudentOwnership } from '../auth';
 import {
   calcularProgresoNivel,
@@ -76,7 +77,7 @@ export interface DashboardPadreData {
     razon: string;
   }>;
   /** Desglose por tipo de pregunta */
-  desgloseTipos: Record<string, { total: number; aciertos: number; porcentaje: number }>;
+  desgloseTipos: Record<string, { total: number; aciertos: number; porcentaje: number; elo: number }>;
   /** Comparativa por topics */
   comparativaTopics: Array<{
     topicSlug: string;
@@ -118,6 +119,31 @@ export interface DashboardPadreData {
   nivelActual: number;
   /** Nombre del estudiante */
   nombreEstudiante: string;
+  /** Elo ratings actuales */
+  eloActual: {
+    global: number;
+    literal: number;
+    inferencia: number;
+    vocabulario: number;
+    resumen: number;
+    rd: number;
+  };
+  /** Evolucion Elo por sesion (ultimos 30 snapshots) */
+  eloEvolucion: Array<{
+    fecha: string;
+    sessionId: string;
+    global: number;
+    literal: number;
+    inferencia: number;
+    vocabulario: number;
+    resumen: number;
+    rd: number;
+  }>;
+  /** Evolucion WPM */
+  wpmEvolucion: Array<{
+    fecha: string;
+    wpm: number;
+  }>;
 }
 
 // ─────────────────────────────────────────────
@@ -324,16 +350,72 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
       };
     });
 
+  // ─── Elo actual del estudiante ───
+  const eloActual = {
+    global: estudiante.eloGlobal,
+    literal: estudiante.eloLiteral,
+    inferencia: estudiante.eloInferencia,
+    vocabulario: estudiante.eloVocabulario,
+    resumen: estudiante.eloResumen,
+    rd: estudiante.eloRd,
+  };
+
+  // ─── Evolucion Elo (ultimos 30 snapshots) ───
+  const snapshots = await db.query.eloSnapshots.findMany({
+    where: eq(eloSnapshots.studentId, estudianteId),
+    orderBy: [asc(eloSnapshots.creadoEn)],
+    limit: 30,
+  });
+
+  const eloEvolucion = snapshots.map(s => ({
+    fecha: s.creadoEn.toISOString().split('T')[0],
+    sessionId: s.sessionId,
+    global: s.eloGlobal,
+    literal: s.eloLiteral,
+    inferencia: s.eloInferencia,
+    vocabulario: s.eloVocabulario,
+    resumen: s.eloResumen,
+    rd: s.rdGlobal,
+  }));
+
+  // ─── Evolucion WPM ───
+  const wpmEvolucion = todasSesiones
+    .filter(s => s.wpmPromedio != null && s.wpmPromedio > 0)
+    .slice(0, 30)
+    .reverse()
+    .map(s => ({
+      fecha: s.iniciadaEn.toISOString().split('T')[0],
+      wpm: Math.round(s.wpmPromedio!),
+    }));
+
+  // ─── Desglose por tipo con Elo ───
+  const desgloseTiposConElo: Record<string, { total: number; aciertos: number; porcentaje: number; elo: number }> = {};
+  const eloTipoMap: Record<string, number> = {
+    literal: eloActual.literal,
+    inferencia: eloActual.inferencia,
+    vocabulario: eloActual.vocabulario,
+    resumen: eloActual.resumen,
+  };
+  for (const [tipo, datos] of Object.entries(desgloseTipos)) {
+    desgloseTiposConElo[tipo] = {
+      ...datos,
+      elo: eloTipoMap[tipo] ?? 1000,
+    };
+  }
+
   return {
     evolucionSemanal,
     evolucionDificultad,
-    desgloseTipos,
+    desgloseTipos: desgloseTiposConElo,
     comparativaTopics,
     historialSesiones,
     recomendaciones,
     timelineCambiosNivel,
     nivelActual: estudiante.nivelLectura ?? 1,
     nombreEstudiante: estudiante.nombre,
+    eloActual,
+    eloEvolucion,
+    wpmEvolucion,
   };
 }
 

@@ -200,6 +200,8 @@ export const registrarRespuestaComprensionSchema = z.object({
 export const generarHistoriaSchema = z.object({
   studentId: uuid,
   topicSlug: z.string().min(1).max(50).optional(),
+  /** Forzar regeneracion aunque exista historia cacheada */
+  forceRegenerate: z.boolean().optional(),
 });
 
 /** Schema: finalizarSesionLectura */

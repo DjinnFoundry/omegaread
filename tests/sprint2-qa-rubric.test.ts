@@ -170,6 +170,51 @@ describe('evaluarHistoria', () => {
       expect(result.aprobada).toBe(false);
     }
   });
+
+  it('rechaza apertura plana tipo texto escolar', () => {
+    const historia = crearHistoriaValida({
+      contenido:
+        'En este texto aprenderemos como funciona el viento en la ciudad. ' +
+        'Despues veremos ejemplos de como se mueve el aire entre edificios. ' +
+        'Al final sabremos por que los objetos vuelan cuando hay tormenta.',
+    });
+    const result = evaluarHistoria(historia, 1);
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo?.toLowerCase()).toContain('apertura plana');
+  });
+
+  it('rechaza cuando no hay conectores narrativos', () => {
+    const historia = crearHistoriaValida({
+      contenido:
+        'Los cohetes son maquinas. Los cohetes tienen motor. Los cohetes usan combustible. ' +
+        'Los cohetes salen de la Tierra. Los cohetes llegan al espacio.',
+    });
+    const result = evaluarHistoria(historia, 1);
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo?.toLowerCase()).toContain('plana');
+  });
+
+  it('rechaza opciones ambiguas por duplicado', () => {
+    const historia = crearHistoriaValida();
+    historia.preguntas[0].opciones = [
+      'En una ciudad',
+      'En una ciudad',
+      'En el bosque',
+      'En la playa',
+    ];
+    const result = evaluarHistoria(historia, 1);
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo?.toLowerCase()).toContain('ambiguas');
+  });
+
+  it('rechaza titulo repetido contra historial reciente', () => {
+    const historia = crearHistoriaValida({ titulo: 'El viaje de Luna' });
+    const result = evaluarHistoria(historia, 1, {
+      historiasAnteriores: ['El viaje de Luna', 'Otro titulo'],
+    });
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo?.toLowerCase()).toContain('repetido');
+  });
 });
 
 // ─── Tests: calcularMetadataHistoria ───

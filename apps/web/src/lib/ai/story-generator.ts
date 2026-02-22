@@ -41,6 +41,7 @@ export interface GeneratedStory {
     opciones: string[];
     respuestaCorrecta: number;
     explicacion: string;
+    dificultadPregunta: number;
   }>;
   modelo: string;
   aprobadaQA: boolean;
@@ -66,11 +67,15 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
   }
 
   const systemPrompt = buildSystemPrompt();
-  const userPrompt = buildUserPrompt(input);
 
   let lastError = '';
 
   for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
+    const userPrompt = buildUserPrompt(input, {
+      retryHint: intento > 0 ? lastError : undefined,
+      intento: intento + 1,
+    });
+
     try {
       const completion = await client.chat.completions.create({
         model: getModelo(),
@@ -103,7 +108,9 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
       }
 
       const storyOutput = parsed as StoryLLMOutput;
-      const qa: QAResult = evaluarHistoria(storyOutput, input.nivel);
+      const qa: QAResult = evaluarHistoria(storyOutput, input.nivel, {
+        historiasAnteriores: input.historiasAnteriores,
+      });
 
       const metadataCalc = calcularMetadataHistoria(
         storyOutput.contenido,
@@ -122,6 +129,7 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
         preguntas: storyOutput.preguntas.map(p => ({
           ...p,
           tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+          dificultadPregunta: p.dificultadPregunta ?? 3,
         })),
         modelo: getModelo(),
         aprobadaQA: qa.aprobada,
@@ -223,6 +231,7 @@ export async function rewriteStory(input: RewritePromptInput): Promise<StoryGene
         preguntas: storyOutput.preguntas.map(p => ({
           ...p,
           tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+          dificultadPregunta: p.dificultadPregunta ?? 3,
         })),
         modelo: getModelo(),
         aprobadaQA: qa.aprobada,

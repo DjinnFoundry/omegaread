@@ -79,7 +79,7 @@ export function generarMensajeMotivacional(
   return 'Sigue practicando, cada historia cuenta. Tu puedes!';
 }
 
-/** Desglose por tipo de pregunta */
+/** Desglose por tipo de pregunta (sin elo, se agrega en dashboard-actions) */
 export function calcularDesgloseTipos(respuestas: ResponseRow[]) {
   const tipos: Record<string, { total: number; aciertos: number; porcentaje: number }> = {
     literal: { total: 0, aciertos: 0, porcentaje: 0 },

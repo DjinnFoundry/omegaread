@@ -6,7 +6,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { crearEstudiante } from '@/server/actions/student-actions';
-import Link from 'next/link';
 
 export default function NuevoHijoPage() {
   const [error, setError] = useState('');
@@ -21,8 +20,12 @@ export default function NuevoHijoPage() {
     const formData = new FormData(e.currentTarget);
 
     const result = await crearEstudiante(formData);
-    if (result.ok) {
-      router.push('/padre/dashboard');
+    if (result.ok && result.estudiante) {
+      sessionStorage.setItem(
+        'estudianteActivo',
+        JSON.stringify({ id: result.estudiante.id, nombre: result.estudiante.nombre }),
+      );
+      router.push('/jugar/lectura');
     } else {
       setError(result.error ?? 'Error al crear el perfil');
       setLoading(false);
@@ -87,12 +90,6 @@ export default function NuevoHijoPage() {
           </button>
         </form>
 
-        <Link
-          href="/padre/dashboard"
-          className="mt-6 block text-center text-sm text-texto-suave hover:text-texto"
-        >
-          ← Volver al dashboard
-        </Link>
       </div>
     </main>
   );

@@ -79,6 +79,18 @@ export const students = pgTable('students', {
   baselineCompletado: boolean('baseline_completado').notNull().default(false),
   /** Si el padre completo el perfil con contexto e intereses */
   perfilCompleto: boolean('perfil_completo').notNull().default(false),
+  /** Elo global de comprension lectora */
+  eloGlobal: real('elo_global').notNull().default(1000),
+  /** Elo por tipo: literal */
+  eloLiteral: real('elo_literal').notNull().default(1000),
+  /** Elo por tipo: inferencia */
+  eloInferencia: real('elo_inferencia').notNull().default(1000),
+  /** Elo por tipo: vocabulario */
+  eloVocabulario: real('elo_vocabulario').notNull().default(1000),
+  /** Elo por tipo: resumen */
+  eloResumen: real('elo_resumen').notNull().default(1000),
+  /** Rating Deviation (Glicko): incertidumbre del rating. Empieza alta (350), baja con cada respuesta */
+  eloRd: real('elo_rd').notNull().default(350),
   /** Configuracion de accesibilidad */
   accesibilidad: jsonb('accesibilidad').$type<AccesibilidadConfig>().default({}),
   creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
@@ -96,6 +108,7 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
   skillProgress: many(skillProgress),
   baselineAssessments: many(baselineAssessments),
   manualAdjustments: many(manualAdjustments),
+  eloSnapshots: many(eloSnapshots),
 }));
 
 // ─────────────────────────────────────────────
@@ -274,11 +287,14 @@ export const generatedStories = pgTable(
     promptVersion: varchar('prompt_version', { length: 20 }).notNull().default('v1'),
     aprobadaQA: boolean('aprobada_qa').notNull().default(false),
     motivoRechazo: text('motivo_rechazo'),
+    /** Si la historia puede reutilizarse como cache (false para reescrituras manuales) */
+    reutilizable: boolean('reutilizable').notNull().default(true),
     creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('stories_student_idx').on(table.studentId),
     index('stories_topic_idx').on(table.topicSlug),
+    index('stories_cache_idx').on(table.studentId, table.topicSlug, table.nivel, table.reutilizable),
   ]
 );
 
@@ -306,6 +322,8 @@ export const storyQuestions = pgTable(
     opciones: jsonb('opciones').$type<string[]>().notNull(),
     respuestaCorrecta: integer('respuesta_correcta').notNull(),
     explicacion: text('explicacion').notNull(),
+    /** Dificultad intrinseca de la pregunta (1-5) */
+    dificultad: integer('dificultad').notNull().default(3),
     orden: integer('orden').notNull().default(0),
     creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -475,6 +493,48 @@ export const skillProgressRelations = relations(skillProgress, ({ one }) => ({
   student: one(students, {
     fields: [skillProgress.studentId],
     references: [students.id],
+  }),
+}));
+
+// ─────────────────────────────────────────────
+// ELO SNAPSHOTS (evolucion por sesion)
+// ─────────────────────────────────────────────
+
+export const eloSnapshots = pgTable(
+  'elo_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    studentId: uuid('student_id')
+      .notNull()
+      .references(() => students.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    eloGlobal: real('elo_global').notNull(),
+    eloLiteral: real('elo_literal').notNull(),
+    eloInferencia: real('elo_inferencia').notNull(),
+    eloVocabulario: real('elo_vocabulario').notNull(),
+    eloResumen: real('elo_resumen').notNull(),
+    /** Rating Deviation (incertidumbre) */
+    rdGlobal: real('rd_global').notNull().default(350),
+    /** WPM promedio de la sesion */
+    wpmPromedio: real('wpm_promedio'),
+    creadoEn: timestamp('creado_en', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('elo_snapshots_student_idx').on(table.studentId),
+    index('elo_snapshots_created_idx').on(table.creadoEn),
+  ]
+);
+
+export const eloSnapshotsRelations = relations(eloSnapshots, ({ one }) => ({
+  student: one(students, {
+    fields: [eloSnapshots.studentId],
+    references: [students.id],
+  }),
+  session: one(sessions, {
+    fields: [eloSnapshots.sessionId],
+    references: [sessions.id],
   }),
 }));
 

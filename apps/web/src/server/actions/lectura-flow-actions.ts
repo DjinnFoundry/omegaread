@@ -2,7 +2,7 @@
 
 /**
  * Server Actions para el flujo de /jugar/lectura.
- * Determina en que paso esta el estudiante: perfil, intereses, baseline, o listo.
+ * Determina en que paso esta el estudiante: intereses, contexto, o listo.
  */
 import { db, students } from '@omegaread/db';
 import { eq, and } from 'drizzle-orm';
@@ -10,10 +10,8 @@ import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
 
 export type EstadoFlujoLectura =
-  | { paso: 'perfil-incompleto' }
   | { paso: 'sin-intereses' }
   | { paso: 'sin-contexto' }
-  | { paso: 'sin-baseline' }
   | { paso: 'listo'; nivelLectura: number; confianza: string };
 
 export interface DatosEstudianteLectura {
@@ -58,15 +56,14 @@ export async function obtenerEstadoLectura(studentId: string): Promise<{
 
   let estado: EstadoFlujoLectura;
 
-  if (!estudiante.perfilCompleto) {
-    estado = { paso: 'perfil-incompleto' };
-  } else if (!estudiante.intereses || estudiante.intereses.length === 0) {
+  // Paso "perfil-incompleto" eliminado: la fecha de nacimiento ya da
+  // suficiente contexto para empezar. El perfil enriquecido se puede
+  // pedir mas adelante cuando aporte valor real.
+  if (!estudiante.intereses || estudiante.intereses.length === 0) {
     estado = { paso: 'sin-intereses' };
   } else if (estudiante.contextoPersonal === null) {
     // contextoPersonal null = nunca se presento el paso (distinto de '' = se salto)
     estado = { paso: 'sin-contexto' };
-  } else if (!estudiante.baselineCompletado) {
-    estado = { paso: 'sin-baseline' };
   } else {
     estado = {
       paso: 'listo',

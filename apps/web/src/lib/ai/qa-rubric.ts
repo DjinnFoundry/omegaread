@@ -20,12 +20,17 @@ export interface StoryLLMOutput {
     opciones: string[];
     respuestaCorrecta: number;
     explicacion: string;
+    dificultadPregunta?: number;
   }>;
 }
 
 export interface QAResult {
   aprobada: boolean;
   motivo?: string;
+}
+
+export interface QAContext {
+  historiasAnteriores?: string[];
 }
 
 const PALABRAS_PROHIBIDAS = [
@@ -38,6 +43,93 @@ const PALABRAS_PROHIBIDAS = [
 ];
 
 const TIPOS_REQUERIDOS: TipoPregunta[] = ['literal', 'inferencia', 'vocabulario', 'resumen'];
+const APERTURAS_PLANAS = [
+  'en este texto',
+  'en esta lectura',
+  'hoy aprenderemos',
+  'a continuacion',
+  'vamos a aprender',
+  'este texto trata',
+];
+const CONECTORES_NARRATIVOS = [
+  'un dia',
+  'de pronto',
+  'entonces',
+  'pero',
+  'cuando',
+  'mientras',
+  'al final',
+  'despues',
+  'por eso',
+];
+
+function normalizarTexto(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokens(value: string): Set<string> {
+  return new Set(
+    normalizarTexto(value)
+      .split(' ')
+      .filter(t => t.length >= 2),
+  );
+}
+
+function similitudTexto(a: string, b: string): number {
+  const ta = tokens(a);
+  const tb = tokens(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+
+  let inter = 0;
+  for (const token of ta) {
+    if (tb.has(token)) inter++;
+  }
+
+  return (2 * inter) / (ta.size + tb.size);
+}
+
+function tieneAperturaPlana(contenido: string): boolean {
+  const inicio = normalizarTexto(contenido).slice(0, 80);
+  return APERTURAS_PLANAS.some(apertura => inicio.startsWith(apertura));
+}
+
+function tieneConectoresNarrativos(contenido: string): boolean {
+  const texto = normalizarTexto(contenido);
+  return CONECTORES_NARRATIVOS.some(conn => texto.includes(conn));
+}
+
+function opcionesAmbiguas(
+  opciones: string[],
+  respuestaCorrecta: number,
+): string | null {
+  const normalizadas = opciones.map(o => normalizarTexto(o));
+
+  // Opciones duplicadas o casi vacias
+  const set = new Set(normalizadas);
+  if (set.size !== normalizadas.length) {
+    return 'opciones duplicadas';
+  }
+
+  const correcta = opciones[respuestaCorrecta] ?? '';
+  if (!correcta.trim()) return 'respuesta correcta vacia';
+
+  for (let i = 0; i < opciones.length; i++) {
+    if (i === respuestaCorrecta) continue;
+    const similitud = similitudTexto(correcta, opciones[i]);
+    // Muy parecida a la correcta => ambiguedad
+    if (similitud >= 0.85) {
+      return `opcion ${i + 1} demasiado parecida a la correcta`;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Valida la estructura basica del output del LLM.
@@ -60,6 +152,12 @@ export function validarEstructura(data: unknown): data is StoryLLMOutput {
     if (typeof q.respuestaCorrecta !== 'number') return false;
     if (q.respuestaCorrecta < 0 || q.respuestaCorrecta > 3) return false;
     if (typeof q.explicacion !== 'string') return false;
+    // dificultadPregunta es opcional (backward compat), pero si existe debe ser 1-5
+    if (q.dificultadPregunta !== undefined) {
+      if (typeof q.dificultadPregunta !== 'number') return false;
+      if (q.dificultadPregunta < 1 || q.dificultadPregunta > 5) return false;
+      if (!Number.isInteger(q.dificultadPregunta)) return false;
+    }
   }
 
   return true;
@@ -68,7 +166,11 @@ export function validarEstructura(data: unknown): data is StoryLLMOutput {
 /**
  * Ejecuta la rubrica QA completa sobre la historia generada.
  */
-export function evaluarHistoria(story: StoryLLMOutput, nivel: number): QAResult {
+export function evaluarHistoria(
+  story: StoryLLMOutput,
+  nivel: number,
+  context?: QAContext,
+): QAResult {
   // 1. Validar contenido seguro
   const textoCompleto = `${story.titulo} ${story.contenido}`.toLowerCase();
   for (const palabra of PALABRAS_PROHIBIDAS) {
@@ -112,11 +214,48 @@ export function evaluarHistoria(story: StoryLLMOutput, nivel: number): QAResult 
     if (pregunta.respuestaCorrecta < 0 || pregunta.respuestaCorrecta > 3) {
       return { aprobada: false, motivo: `Pregunta "${pregunta.tipo}" tiene indice de respuesta invalido` };
     }
+    const motivoAmbigua = opcionesAmbiguas(pregunta.opciones, pregunta.respuestaCorrecta);
+    if (motivoAmbigua) {
+      return {
+        aprobada: false,
+        motivo: `Pregunta "${pregunta.tipo}" con opciones ambiguas: ${motivoAmbigua}`,
+      };
+    }
   }
 
   // 5. Validar que el titulo no este vacio ni sea generico
   if (story.titulo.length < 3) {
     return { aprobada: false, motivo: 'Titulo demasiado corto' };
+  }
+
+  // 6. Evitar titulos repetidos en historial reciente
+  if (context?.historiasAnteriores && context.historiasAnteriores.length > 0) {
+    const tituloActual = normalizarTexto(story.titulo);
+    for (const tituloAnterior of context.historiasAnteriores) {
+      const tituloPrevio = normalizarTexto(tituloAnterior);
+      if (!tituloPrevio) continue;
+      if (tituloActual === tituloPrevio || similitudTexto(tituloActual, tituloPrevio) >= 0.9) {
+        return {
+          aprobada: false,
+          motivo: 'Titulo repetido o muy similar a una historia reciente',
+        };
+      }
+    }
+  }
+
+  // 7. Detectar historias planas/poco engaging
+  if (tieneAperturaPlana(story.contenido)) {
+    return {
+      aprobada: false,
+      motivo: 'Inicio poco engaging: apertura plana tipo texto escolar',
+    };
+  }
+
+  if (!tieneConectoresNarrativos(story.contenido)) {
+    return {
+      aprobada: false,
+      motivo: 'Historia plana: faltan conectores narrativos que creen progresion',
+    };
   }
 
   return { aprobada: true };

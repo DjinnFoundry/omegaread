@@ -24,6 +24,7 @@ import {
   determinarAjuste,
   type DireccionAjuste,
 } from '@/lib/types/reading';
+import { getNivelConfig } from '@/lib/ai/prompts';
 
 /**
  * Crear una sesion de lectura adaptativa.
@@ -258,7 +259,7 @@ export async function calcularAjusteDificultad(datos: {
       razon: razonFinal,
       evidencia: {
         comprensionScore: datos.comprensionScore,
-        ritmoNormalizado: Math.round(ritmoNormalizado * 100) / 100,
+        ritmoNormalizado: Math.round(ritmoMejora * 100) / 100,
         estabilidad: Math.round(estabilidad * 100) / 100,
         sessionScore,
         ajusteManual: ajusteManualTipo,

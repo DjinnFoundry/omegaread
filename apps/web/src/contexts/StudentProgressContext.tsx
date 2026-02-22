@@ -34,6 +34,7 @@ export interface StudentProgress {
 
 export interface StudentProgressContextType {
   estudiante: EstudianteActivo | null;
+  autoSelecting: boolean;
   progress: StudentProgress;
   setEstudiante: (est: EstudianteActivo) => void;
   recargarProgreso: () => Promise<void>;
@@ -81,10 +82,41 @@ export function useStudentProgress(): StudentProgressContextType {
 // ─────────────────────────────────────────────
 
 export function StudentProgressProvider({ children }: { children: ReactNode }) {
-  const [estudiante, setEstudianteState] = useState<EstudianteActivo | null>(
-    () => leerEstudianteDesdeStorage(),
-  );
+  // Always start null to avoid hydration mismatch (server has no sessionStorage)
+  const [estudiante, setEstudianteState] = useState<EstudianteActivo | null>(null);
+  const [autoSelecting, setAutoSelecting] = useState(true);
   const [progress, setProgress] = useState<StudentProgress>(DEFAULT_PROGRESS);
+
+  // On mount: restore from sessionStorage or auto-select first child
+  useEffect(() => {
+    const saved = leerEstudianteDesdeStorage();
+    if (saved) {
+      setEstudianteState(saved);
+      setAutoSelecting(false);
+      return;
+    }
+
+    let cancelled = false;
+    fetch('/api/estudiantes')
+      .then((r) => {
+        if (!r.ok) throw new Error('auth');
+        return r.json();
+      })
+      .then((hijos: EstudianteActivo[]) => {
+        if (cancelled) return;
+        if (hijos.length > 0) {
+          const primero = hijos[0];
+          sessionStorage.setItem('estudianteActivo', JSON.stringify(primero));
+          setEstudianteState(primero);
+        }
+        setAutoSelecting(false);
+      })
+      .catch(() => {
+        if (!cancelled) setAutoSelecting(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
 
   const recargarProgreso = useCallback(async () => {
     if (!estudiante) return;
@@ -114,6 +146,7 @@ export function StudentProgressProvider({ children }: { children: ReactNode }) {
   const setEstudiante = useCallback((est: EstudianteActivo) => {
     sessionStorage.setItem('estudianteActivo', JSON.stringify(est));
     setEstudianteState(est);
+    setAutoSelecting(false);
     setProgress(DEFAULT_PROGRESS);
   }, []);
 
@@ -126,6 +159,7 @@ export function StudentProgressProvider({ children }: { children: ReactNode }) {
 
   const value: StudentProgressContextType = {
     estudiante,
+    autoSelecting,
     progress,
     setEstudiante,
     recargarProgreso,

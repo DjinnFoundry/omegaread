@@ -9,6 +9,15 @@ import { eq, desc, and } from 'drizzle-orm';
 import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
 
+function nivelPorEdad(edad: number): number {
+  if (edad <= 4) return 1.0;
+  if (edad <= 5) return 1.4;
+  if (edad <= 6) return 2.0;
+  if (edad <= 7) return 2.6;
+  if (edad <= 8) return 3.2;
+  return 3.6;
+}
+
 /** Crear perfil de nino */
 export async function crearEstudiante(formData: FormData) {
   const padre = await requireAuth();
@@ -32,6 +41,9 @@ export async function crearEstudiante(formData: FormData) {
       parentId: padre.id,
       nombre: nombre.trim(),
       fechaNacimiento: fechaNac,
+      nivelLectura: nivelPorEdad(edad),
+      baselineCompletado: true,
+      baselineConfianza: 'bajo',
     })
     .returning();
 
@@ -94,20 +106,14 @@ export async function obtenerResumenProgreso(studentId: string) {
 
   const racha = calcularRacha(todasSesiones);
 
-  // Dias de uso esta semana (L-D)
-  const inicioSemana = new Date();
-  const diaSemana = inicioSemana.getDay();
-  const diasDesdelunes = diaSemana === 0 ? 6 : diaSemana - 1;
-  inicioSemana.setDate(inicioSemana.getDate() - diasDesdelunes);
-  inicioSemana.setHours(0, 0, 0, 0);
-
-  const diasUsoSemana: boolean[] = Array(7).fill(false);
+  // Actividad del mes actual (dia -> num sesiones) para heatmap tipo GitHub
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const actividadMes: Record<string, number> = {};
   for (const s of todasSesiones) {
     const fechaSesion = new Date(s.iniciadaEn);
-    if (fechaSesion >= inicioSemana) {
-      const dia = fechaSesion.getDay();
-      const idx = dia === 0 ? 6 : dia - 1;
-      diasUsoSemana[idx] = true;
+    if (fechaSesion >= inicioMes) {
+      const key = fechaSesion.toISOString().slice(0, 10);
+      actividadMes[key] = (actividadMes[key] ?? 0) + 1;
     }
   }
 
@@ -134,7 +140,7 @@ export async function obtenerResumenProgreso(studentId: string) {
     stickers: logros.filter((l) => l.tipo === 'sticker'),
     racha,
     sesionesRecientes: todasSesiones.slice(0, 10),
-    diasUsoSemana,
+    actividadMes,
     sugerenciaOffline,
     totalSesiones: todasSesiones.length,
   };

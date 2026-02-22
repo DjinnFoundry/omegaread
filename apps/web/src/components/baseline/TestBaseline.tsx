@@ -78,7 +78,7 @@ export default function TestBaseline({ studentId, studentNombre, onComplete }: P
     setMostrandoFeedback(true);
 
     const correcta = idx === preguntaActual.respuestaCorrecta;
-    const tiempoMs = timestamp() - tiempoInicioPregunta.current;
+    const tiempoMs = Math.round(timestamp() - tiempoInicioPregunta.current);
 
     const respuesta = {
       preguntaId: preguntaActual.id,
@@ -104,7 +104,7 @@ export default function TestBaseline({ studentId, studentNombre, onComplete }: P
       tiempoInicioPregunta.current = timestamp();
     } else {
       // Texto completado - guardar resultado
-      const tiempoLecturaMs = timestamp() - tiempoInicioLectura.current;
+      const tiempoLecturaMs = Math.round(timestamp() - tiempoInicioLectura.current);
       const aciertos = nuevasRespuestas.filter(r => r.correcta).length;
 
       const aciertosPorTipo: Record<string, number> = {};

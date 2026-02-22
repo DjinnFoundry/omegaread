@@ -10,6 +10,9 @@ import {
   storyQuestions,
   sessions,
   responses,
+  skillProgress,
+  students,
+  eloSnapshots,
   manualAdjustments,
 } from '@omegaread/db';
 import { eq, and, gte, desc, sql } from 'drizzle-orm';
@@ -24,14 +27,31 @@ import { hasOpenAIKey } from '@/lib/ai/openai';
 import {
   getNivelConfig,
   calcularNivelReescritura,
+  getModoFromCategoria,
+  inferirEstrategiaPedagogica,
   type PromptInput,
+  type TechTreeContext,
 } from '@/lib/ai/prompts';
-import { TOPICS_SEED, CATEGORIAS } from '@/lib/data/topics';
+import {
+  TOPICS_SEED,
+  CATEGORIAS,
+  getSkillBySlug,
+  getSkillsDeDominio,
+  getSkillsPorEdad,
+  DOMINIOS,
+  type SkillDef,
+} from '@/lib/data/skills';
 import { calcularEdad } from '@/lib/utils/fecha';
 import { calcularAjusteDificultad } from './reading-actions';
 import { actualizarProgresoInmediato } from './session-actions';
+import { procesarRespuestasElo, type EloRatings, type RespuestaElo } from '@/lib/elo';
+import type { TipoPregunta } from '@/lib/types/reading';
 
 const MAX_HISTORIAS_DIA = 20;
+const UMBRAL_SKILL_DOMINADA = 0.85;
+const INTENTOS_MIN_REFORZAR = 3;
+
+type SkillProgressRow = Awaited<ReturnType<typeof db.query.skillProgress.findMany>>[number];
 
 /**
  * Verifica cuantas historias ha generado un estudiante hoy.
@@ -53,6 +73,140 @@ async function contarHistoriasHoy(studentId: string): Promise<number> {
   return result[0]?.count ?? 0;
 }
 
+function normalizarSkillSlug(skillId: string): string | null {
+  return skillId.startsWith('topic-') ? skillId.slice('topic-'.length) : null;
+}
+
+function crearMapaProgresoSkill(rows: SkillProgressRow[]): Map<string, SkillProgressRow> {
+  const map = new Map<string, SkillProgressRow>();
+  for (const row of rows) {
+    const slug = normalizarSkillSlug(row.skillId);
+    if (!slug) continue;
+    map.set(slug, row);
+  }
+  return map;
+}
+
+function skillDominada(slug: string, map: Map<string, SkillProgressRow>): boolean {
+  const row = map.get(slug);
+  if (!row) return false;
+  return row.dominada || row.nivelMastery >= UMBRAL_SKILL_DOMINADA;
+}
+
+function skillDesbloqueada(skill: SkillDef, map: Map<string, SkillProgressRow>): boolean {
+  if (skill.prerequisitos.length === 0) return true;
+  return skill.prerequisitos.every(req => skillDominada(req, map));
+}
+
+function ordenarSkillsPorRuta(a: SkillDef, b: SkillDef): number {
+  if (a.nivel !== b.nivel) return a.nivel - b.nivel;
+  return a.orden - b.orden;
+}
+
+function elegirSiguienteSkillTechTree(params: {
+  edadAnos: number;
+  intereses: string[];
+  progresoMap: Map<string, SkillProgressRow>;
+}): SkillDef | undefined {
+  const { edadAnos, intereses, progresoMap } = params;
+  const skillsEdad = getSkillsPorEdad(edadAnos).sort(ordenarSkillsPorRuta);
+
+  const poolIntereses = skillsEdad.filter(s => intereses.includes(s.dominio));
+  const pools = poolIntereses.length > 0 ? [poolIntereses, skillsEdad] : [skillsEdad];
+
+  for (const pool of pools) {
+    const desbloqueadasPendientes = pool
+      .filter(skill => skillDesbloqueada(skill, progresoMap))
+      .filter(skill => !skillDominada(skill.slug, progresoMap))
+      .sort(ordenarSkillsPorRuta);
+
+    if (desbloqueadasPendientes.length > 0) {
+      return desbloqueadasPendientes[0];
+    }
+  }
+
+  return skillsEdad[0];
+}
+
+function construirObjetivoSesion(skill: SkillDef, row: SkillProgressRow | undefined): string {
+  if (!row || row.totalIntentos === 0) {
+    return `Introducir el concepto de "${skill.nombre}" con un caso divertido y facil de recordar.`;
+  }
+
+  if (row.dominada || row.nivelMastery >= UMBRAL_SKILL_DOMINADA) {
+    return `Consolidar "${skill.nombre}" con una aplicacion nueva para reforzar transferencia de aprendizaje.`;
+  }
+
+  if (row.totalIntentos >= INTENTOS_MIN_REFORZAR && row.nivelMastery < 0.6) {
+    return `Reforzar bases de "${skill.nombre}" con ejemplos muy concretos y lenguaje sencillo.`;
+  }
+
+  return `Avanzar en "${skill.nombre}" aumentando un poco la dificultad sin perder claridad.`;
+}
+
+function construirContextoTechTree(params: {
+  skill: SkillDef;
+  progresoMap: Map<string, SkillProgressRow>;
+  edadAnos: number;
+  nivel: number;
+}): TechTreeContext {
+  const { skill, progresoMap, edadAnos, nivel } = params;
+  const skillsDominio = getSkillsDeDominio(skill.dominio).sort(ordenarSkillsPorRuta);
+
+  const prerequisitosDominados = skill.prerequisitos
+    .filter(req => skillDominada(req, progresoMap))
+    .map(req => getSkillBySlug(req)?.nombre ?? req);
+
+  const prerequisitosPendientes = skill.prerequisitos
+    .filter(req => !skillDominada(req, progresoMap))
+    .map(req => getSkillBySlug(req)?.nombre ?? req);
+
+  const skillsDominadasRelacionadas = skillsDominio
+    .filter(s => s.slug !== skill.slug && skillDominada(s.slug, progresoMap))
+    .slice(0, 3)
+    .map(s => s.nombre);
+
+  const skillsEnProgresoRelacionadas = skillsDominio
+    .filter(s => s.slug !== skill.slug)
+    .filter(s => {
+      const row = progresoMap.get(s.slug);
+      return !!row && row.totalIntentos > 0 && !skillDominada(s.slug, progresoMap) && row.nivelMastery >= 0.6;
+    })
+    .slice(0, 3)
+    .map(s => s.nombre);
+
+  const skillsAReforzarRelacionadas = skillsDominio
+    .filter(s => s.slug !== skill.slug)
+    .filter(s => {
+      const row = progresoMap.get(s.slug);
+      return !!row && row.totalIntentos >= INTENTOS_MIN_REFORZAR && row.nivelMastery < 0.6;
+    })
+    .slice(0, 3)
+    .map(s => s.nombre);
+
+  const siguienteSkillSugerida = skillsDominio
+    .filter(s => s.slug !== skill.slug)
+    .filter(s => skillDesbloqueada(s, progresoMap))
+    .filter(s => !skillDominada(s.slug, progresoMap))
+    .sort(ordenarSkillsPorRuta)[0]?.nombre;
+
+  const rowActual = progresoMap.get(skill.slug);
+
+  return {
+    skillSlug: skill.slug,
+    skillNombre: skill.nombre,
+    skillNivel: skill.nivel,
+    objetivoSesion: construirObjetivoSesion(skill, rowActual),
+    estrategia: inferirEstrategiaPedagogica(edadAnos, nivel),
+    prerequisitosDominados,
+    prerequisitosPendientes,
+    skillsDominadasRelacionadas,
+    skillsEnProgresoRelacionadas,
+    skillsAReforzarRelacionadas,
+    siguienteSkillSugerida,
+  };
+}
+
 /**
  * Genera una historia personalizada con preguntas de comprension.
  * Crea la sesion de lectura y devuelve todo lo necesario para el UI.
@@ -60,6 +214,7 @@ async function contarHistoriasHoy(studentId: string): Promise<number> {
 export async function generarHistoria(datos: {
   studentId: string;
   topicSlug?: string;
+  forceRegenerate?: boolean;
 }) {
   const validado = generarHistoriaSchema.parse(datos);
   const { estudiante } = await requireStudentOwnership(validado.studentId);
@@ -87,27 +242,103 @@ export async function generarHistoria(datos: {
   const edadAnos = calcularEdad(estudiante.fechaNacimiento);
   const nivel = estudiante.nivelLectura ?? 1;
   const intereses = estudiante.intereses ?? [];
+  const progresoSkillsTopic = await db.query.skillProgress.findMany({
+    where: and(
+      eq(skillProgress.studentId, validado.studentId),
+      eq(skillProgress.categoria, 'topic'),
+    ),
+  });
+  const progresoMap = crearMapaProgresoSkill(progresoSkillsTopic);
 
   let topicSlug = validado.topicSlug;
   if (!topicSlug) {
-    // Elegir un topic aleatorio de las categorias de interes del nino
-    const topicsDeIntereses = TOPICS_SEED.filter(
-      t => intereses.includes(t.categoria) && edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
-    );
-    if (topicsDeIntereses.length > 0) {
-      topicSlug = topicsDeIntereses[Math.floor(Math.random() * topicsDeIntereses.length)].slug;
-    } else {
-      // Fallback: cualquier topic apropiado para la edad
-      const topicsPorEdad = TOPICS_SEED.filter(
-        t => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
-      );
-      topicSlug = topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ?? 'como-funciona-corazon';
+    // Elegir siguiente nodo del tech tree segun desbloqueo y progreso.
+    const skillSiguiente = elegirSiguienteSkillTechTree({
+      edadAnos,
+      intereses,
+      progresoMap,
+    });
+    if (skillSiguiente) {
+      topicSlug = skillSiguiente.slug;
     }
+  }
+
+  if (!topicSlug) {
+    // Fallback: topic apropiado para edad si no se pudo resolver por skill.
+    const topicsPorEdad = TOPICS_SEED.filter(
+      t => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
+    );
+    topicSlug = topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ?? 'como-funciona-corazon';
   }
 
   const topic = TOPICS_SEED.find(t => t.slug === topicSlug);
   if (!topic) {
     return { ok: false as const, error: 'Topic no encontrado', code: 'GENERATION_FAILED' as const };
+  }
+
+  // 3b. Buscar historia cacheada (misma combinacion student+topic+nivel)
+  if (!validado.forceRegenerate) {
+    const cached = await db.query.generatedStories.findFirst({
+      where: and(
+        eq(generatedStories.studentId, validado.studentId),
+        eq(generatedStories.topicSlug, topicSlug),
+        eq(generatedStories.nivel, nivel),
+        eq(generatedStories.reutilizable, true),
+        eq(generatedStories.aprobadaQA, true),
+      ),
+      orderBy: [desc(generatedStories.creadoEn)],
+      with: { questions: true },
+    });
+
+    if (cached && cached.questions.length > 0) {
+      // Crear sesion con la historia cacheada
+      const nivelConfig = getNivelConfig(nivel);
+      const [sesion] = await db
+        .insert(sessions)
+        .values({
+          studentId: validado.studentId,
+          tipoActividad: 'lectura',
+          modulo: 'lectura-adaptativa',
+          completada: false,
+          estrellasGanadas: 0,
+          storyId: cached.id,
+          metadata: {
+            textoId: cached.id,
+            nivelTexto: nivel,
+            topicSlug,
+            skillSlug: getSkillBySlug(topicSlug)?.slug ?? topicSlug,
+            tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
+            fromCache: true,
+          },
+        })
+        .returning();
+
+      return {
+        ok: true as const,
+        sessionId: sesion.id,
+        storyId: cached.id,
+        fromCache: true,
+        historia: {
+          titulo: cached.titulo,
+          contenido: cached.contenido,
+          nivel,
+          topicSlug,
+          topicEmoji: topic.emoji,
+          topicNombre: topic.nombre,
+          tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
+        },
+        preguntas: cached.questions
+          .sort((a, b) => a.orden - b.orden)
+          .map(p => ({
+            id: p.id,
+            tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+            pregunta: p.pregunta,
+            opciones: p.opciones,
+            respuestaCorrecta: p.respuestaCorrecta,
+            explicacion: p.explicacion,
+          })),
+      };
+    }
   }
 
   // 4. Consultar historial de historias previas para evitar repeticion
@@ -123,17 +354,33 @@ export async function generarHistoria(datos: {
   const titulosPrevios = historiasPrevias.map(h => h.titulo);
 
   // 5. Generar historia
+  const skill = getSkillBySlug(topicSlug);
+  const dominio = skill ? DOMINIOS.find(d => d.slug === skill.dominio) : undefined;
+  const techTreeContext = skill
+    ? construirContextoTechTree({
+      skill,
+      progresoMap,
+      edadAnos,
+      nivel,
+    })
+    : undefined;
+
   const promptInput: PromptInput = {
     edadAnos,
     nivel,
     topicNombre: topic.nombre,
     topicDescripcion: topic.descripcion,
+    conceptoNucleo: skill?.conceptoNucleo,
+    dominio: dominio?.nombre,
+    modo: getModoFromCategoria(topic.categoria),
     intereses: intereses
       .map(slug => CATEGORIAS.find(c => c.slug === slug)?.nombre)
-      .filter((n): n is string => !!n),
+      .filter((n): n is string => !!n)
+      .slice(0, 3),
     personajesFavoritos: estudiante.personajesFavoritos ?? undefined,
     contextoPersonal: estudiante.contextoPersonal || undefined,
     historiasAnteriores: titulosPrevios.length > 0 ? titulosPrevios : undefined,
+    techTreeContext,
   };
 
   const result = await generateStory(promptInput);
@@ -159,7 +406,7 @@ export async function generarHistoria(datos: {
       nivel,
       metadata: story.metadata,
       modeloGeneracion: story.modelo,
-      promptVersion: 'v1',
+      promptVersion: 'v2-tree',
       aprobadaQA: story.aprobadaQA,
       motivoRechazo: story.motivoRechazo ?? null,
     })
@@ -173,6 +420,7 @@ export async function generarHistoria(datos: {
     opciones: p.opciones,
     respuestaCorrecta: p.respuestaCorrecta,
     explicacion: p.explicacion,
+    dificultad: p.dificultadPregunta,
     orden: idx,
   }));
 
@@ -196,6 +444,9 @@ export async function generarHistoria(datos: {
         textoId: storyRow.id,
         nivelTexto: nivel,
         topicSlug,
+        skillSlug: skill?.slug ?? topicSlug,
+        objetivoSesion: techTreeContext?.objetivoSesion,
+        estrategiaPedagogica: techTreeContext?.estrategia,
         tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
       },
     })
@@ -205,6 +456,7 @@ export async function generarHistoria(datos: {
     ok: true as const,
     sessionId: sesion.id,
     storyId: storyRow.id,
+    fromCache: false,
     historia: {
       titulo: story.titulo,
       contenido: story.contenido,
@@ -355,6 +607,86 @@ export async function finalizarSesionLectura(datos: {
     })
     .where(eq(sessions.id, validado.sessionId));
 
+  // 5. Calcular y guardar Elo
+  let eloResult: { nuevoElo: EloRatings } | null = null;
+  try {
+    // Leer dificultad de las preguntas de la story
+    const storyId = sesion.storyId;
+    if (storyId) {
+      const preguntasDB = await db.query.storyQuestions.findMany({
+        where: eq(storyQuestions.storyId, storyId),
+      });
+      const preguntaMap = new Map(preguntasDB.map(p => [p.id, p]));
+
+      // Leer Elo actual del estudiante
+      const estudianteElo = await db.query.students.findFirst({
+        where: eq(students.id, validado.studentId),
+        columns: {
+          eloGlobal: true,
+          eloLiteral: true,
+          eloInferencia: true,
+          eloVocabulario: true,
+          eloResumen: true,
+          eloRd: true,
+        },
+      });
+
+      if (estudianteElo) {
+        const eloActual: EloRatings = {
+          global: estudianteElo.eloGlobal,
+          literal: estudianteElo.eloLiteral,
+          inferencia: estudianteElo.eloInferencia,
+          vocabulario: estudianteElo.eloVocabulario,
+          resumen: estudianteElo.eloResumen,
+          rd: estudianteElo.eloRd,
+        };
+
+        const nivelTexto = (sesion.metadata as Record<string, unknown>)?.nivelTexto as number ?? 2;
+
+        // Construir respuestas para el motor Elo
+        const respuestasElo: RespuestaElo[] = validado.respuestas.map(r => {
+          const preguntaDB = preguntaMap.get(r.preguntaId);
+          return {
+            tipo: r.tipo as TipoPregunta,
+            correcta: r.correcta,
+            dificultadPregunta: preguntaDB?.dificultad ?? 3,
+          };
+        });
+
+        eloResult = procesarRespuestasElo(eloActual, respuestasElo, nivelTexto);
+
+        // Actualizar Elo + RD en students
+        await db
+          .update(students)
+          .set({
+            eloGlobal: eloResult.nuevoElo.global,
+            eloLiteral: eloResult.nuevoElo.literal,
+            eloInferencia: eloResult.nuevoElo.inferencia,
+            eloVocabulario: eloResult.nuevoElo.vocabulario,
+            eloResumen: eloResult.nuevoElo.resumen,
+            eloRd: eloResult.nuevoElo.rd,
+          })
+          .where(eq(students.id, validado.studentId));
+
+        // Insertar snapshot con RD
+        await db.insert(eloSnapshots).values({
+          studentId: validado.studentId,
+          sessionId: validado.sessionId,
+          eloGlobal: eloResult.nuevoElo.global,
+          eloLiteral: eloResult.nuevoElo.literal,
+          eloInferencia: eloResult.nuevoElo.inferencia,
+          eloVocabulario: eloResult.nuevoElo.vocabulario,
+          eloResumen: eloResult.nuevoElo.resumen,
+          rdGlobal: eloResult.nuevoElo.rd,
+          wpmPromedio: validado.wpmPromedio ?? null,
+        });
+      }
+    }
+  } catch (eloError) {
+    // Elo es no-critico: si falla, la sesion sigue siendo valida
+    console.error('[Elo] Error al calcular/guardar Elo:', eloError);
+  }
+
   return {
     ok: true as const,
     resultado: {
@@ -367,6 +699,7 @@ export async function finalizarSesionLectura(datos: {
       nivelAnterior: ajuste.nivelAnterior,
       nivelNuevo: ajuste.nivelNuevo,
       razon: ajuste.razon,
+      eloGlobal: eloResult?.nuevoElo.global ?? null,
     },
   };
 }
@@ -443,7 +776,7 @@ export async function reescribirHistoria(datos: {
 
   const { story } = result;
 
-  // 6. Guardar historia reescrita en DB
+  // 6. Guardar historia reescrita en DB (no reutilizable: es un ajuste manual)
   const [storyRow] = await db
     .insert(generatedStories)
     .values({
@@ -457,6 +790,7 @@ export async function reescribirHistoria(datos: {
       promptVersion: 'v1-rewrite',
       aprobadaQA: story.aprobadaQA,
       motivoRechazo: story.motivoRechazo ?? null,
+      reutilizable: false,
     })
     .returning();
 
@@ -468,6 +802,7 @@ export async function reescribirHistoria(datos: {
     opciones: p.opciones,
     respuestaCorrecta: p.respuestaCorrecta,
     explicacion: p.explicacion,
+    dificultad: p.dificultadPregunta,
     orden: idx,
   }));
 

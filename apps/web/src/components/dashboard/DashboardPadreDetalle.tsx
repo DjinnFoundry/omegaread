@@ -2,25 +2,87 @@
 
 /**
  * Dashboard detallado del padre para un hijo especifico.
- * Sprint 5: graficos de evolucion, desglose, recomendaciones, timeline.
+ * Elo-centric: muestra rating global, evolucion, desglose por tipo, WPM, y dificultad.
  */
 import { useState, lazy, Suspense } from 'react';
-import { formatearDatosTipos } from '@/components/charts/RadarTipos';
 import type { DashboardPadreData } from '@/server/actions/dashboard-actions';
+import { clasificarElo } from '@/lib/elo';
 
 const LineaEvolucion = lazy(() =>
   import('@/components/charts/LineaEvolucion').then(m => ({ default: m.LineaEvolucion }))
-);
-const LineaNivel = lazy(() =>
-  import('@/components/charts/LineaNivel').then(m => ({ default: m.LineaNivel }))
-);
-const RadarTipos = lazy(() =>
-  import('@/components/charts/RadarTipos').then(m => ({ default: m.RadarTipos }))
 );
 
 function ChartFallback() {
   return <div className="h-32 rounded-xl bg-neutro/10 animate-pulse" />;
 }
+
+// ─────────────────────────────────────────────
+// CONSTANTES
+// ─────────────────────────────────────────────
+
+const TIPO_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+  literal: { label: 'Literal', icon: '📝', color: '#4ECDC4' },
+  inferencia: { label: 'Inferencia', icon: '🔍', color: '#A28BD4' },
+  vocabulario: { label: 'Vocabulario', icon: '📚', color: '#FFB347' },
+  resumen: { label: 'Idea principal', icon: '💡', color: '#64B5F6' },
+};
+
+const NIVEL_LABELS: Array<{ min: number; max: number; label: string }> = [
+  { min: 1.0, max: 2.0, label: 'Primeros pasos' },
+  { min: 2.0, max: 3.0, label: 'Lector emergente' },
+  { min: 3.0, max: 4.0, label: 'Lector fluido' },
+  { min: 4.0, max: 4.8, label: 'Lector avanzado' },
+];
+
+function getNivelLabel(nivel: number): string {
+  const entry = NIVEL_LABELS.find(n => nivel >= n.min && nivel < n.max);
+  return entry?.label ?? 'Lector avanzado';
+}
+
+function getEloColor(elo: number): string {
+  if (elo < 800) return '#FF6B6B';
+  if (elo < 1100) return '#FFE66D';
+  if (elo < 1400) return '#4ECDC4';
+  return '#7BC67E';
+}
+
+function getEloTendencia(eloEvolucion: DashboardPadreData['eloEvolucion'], currentElo: number): 'up' | 'down' | 'stable' {
+  if (eloEvolucion.length < 5) return 'stable';
+  const hace5 = eloEvolucion[Math.max(0, eloEvolucion.length - 6)]?.global ?? currentElo;
+  const diff = currentElo - hace5;
+  if (diff > 15) return 'up';
+  if (diff < -15) return 'down';
+  return 'stable';
+}
+
+/**
+ * Filters WPM data to remove outlier sessions where the child likely skipped
+ * without reading. Uses median-based detection: sessions with WPM > median * 3
+ * are considered fake fast and excluded. Returns null if fewer than 3 valid
+ * sessions remain (not enough data to show the section).
+ */
+function filtrarWpmValidos(
+  wpmEvolucion: DashboardPadreData['wpmEvolucion']
+): DashboardPadreData['wpmEvolucion'] | null {
+  if (wpmEvolucion.length === 0) return null;
+
+  const valores = wpmEvolucion.map(w => w.wpm).sort((a, b) => a - b);
+  const mid = Math.floor(valores.length / 2);
+  const mediana =
+    valores.length % 2 === 0
+      ? ((valores[mid - 1] ?? 0) + (valores[mid] ?? 0)) / 2
+      : (valores[mid] ?? 0);
+
+  const umbral = mediana * 3;
+  const validos = wpmEvolucion.filter(w => w.wpm <= umbral);
+
+  if (validos.length < 3) return null;
+  return validos;
+}
+
+// ─────────────────────────────────────────────
+// COMPONENTE PRINCIPAL
+// ─────────────────────────────────────────────
 
 interface Props {
   data: DashboardPadreData;
@@ -28,102 +90,176 @@ interface Props {
 
 export function DashboardPadreDetalle({ data }: Props) {
   const [historialExpandido, setHistorialExpandido] = useState<string | null>(null);
+  const [tipoExpandido, setTipoExpandido] = useState<string | null>(null);
+
+  const tendencia = getEloTendencia(data.eloEvolucion, data.eloActual.global);
+  const wpmValidos = filtrarWpmValidos(data.wpmEvolucion);
 
   return (
     <div className="space-y-6">
-      {/* Header con nivel actual */}
+      {/* ────── a) Header: Elo global ────── */}
       <div className="rounded-3xl bg-turquesa/10 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-turquesa">Nivel actual</p>
-            <p className="text-3xl font-extrabold text-turquesa">{data.nivelActual}</p>
+            <p className="text-xs font-semibold text-turquesa">Nivel de comprension</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-4xl font-extrabold" style={{ color: getEloColor(data.eloActual.global) }}>
+                {Math.round(data.eloActual.global)}
+              </p>
+              <span className="text-lg">
+                {tendencia === 'up' ? '↑' : tendencia === 'down' ? '↓' : ''}
+              </span>
+            </div>
+            <p className="text-xs text-texto-suave mt-0.5">
+              {clasificarElo(data.eloActual.global)}
+              {data.eloActual.rd > 150 && ' (calibrando...)'}
+            </p>
           </div>
-          <span className="text-4xl">📖</span>
         </div>
       </div>
 
-      {/* a) Evolucion semanal de comprension */}
-      <SeccionCard titulo="Evolucion semanal de comprension" emoji="📈">
-        <Suspense fallback={<ChartFallback />}>
-          <LineaEvolucion
-            datos={data.evolucionSemanal
-              .filter(s => s.totalSesiones > 0)
-              .map(s => ({
-                label: s.semana,
-                valor: s.scoreMedio,
-              }))}
-            color="#4ECDC4"
-            mostrarValores
-          />
-        </Suspense>
-        <p className="mt-1 text-[10px] text-texto-suave text-center">
-          Score medio de comprension por semana
-        </p>
+      {/* ────── b) Evolucion Elo ────── */}
+      <SeccionCard titulo="Evolucion de comprension" emoji="📈">
+        {data.eloEvolucion.length > 0 ? (
+          <>
+            {/* Bandas de rango */}
+            <div className="flex justify-center gap-3 mb-2 text-[10px] text-texto-suave">
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: '#FF6B6B' }} /> &lt;800
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: '#FFE66D' }} /> 800-1100
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: '#4ECDC4' }} /> 1100-1400
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: '#7BC67E' }} /> &gt;1400
+              </span>
+            </div>
+            <Suspense fallback={<ChartFallback />}>
+              <LineaEvolucion
+                datos={data.eloEvolucion.map((e, i) => ({
+                  label: i === 0 || i === data.eloEvolucion.length - 1
+                    ? e.fecha.slice(5)
+                    : '',
+                  valor: e.global,
+                  banda: e.rd,
+                }))}
+                color="#4ECDC4"
+                maxValor={Math.max(1600, ...data.eloEvolucion.map(e => e.global + e.rd + 50))}
+                minValor={Math.max(0, Math.min(...data.eloEvolucion.map(e => e.global - e.rd - 50)))}
+                mostrarValores={false}
+                sufijo=""
+              />
+            </Suspense>
+            <p className="mt-1 text-[10px] text-texto-suave text-center">
+              La banda se estrecha a medida que tenemos mas datos
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-texto-suave text-center py-4">
+            Sin sesiones completadas todavia
+          </p>
+        )}
       </SeccionCard>
 
-      {/* b) Evolucion de dificultad */}
-      <SeccionCard titulo="Evolucion de dificultad" emoji="📐">
-        <Suspense fallback={<ChartFallback />}>
-          <LineaNivel
-            datos={data.evolucionDificultad.map(e => ({
-              fecha: e.fecha,
-              nivel: e.nivelNuevo,
-              direccion: e.direccion,
-              razon: e.razon,
-            }))}
-          />
-        </Suspense>
-        <div className="mt-2 flex justify-center gap-4 text-[10px] text-texto-suave">
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-acierto" /> Subio
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-coral" /> Bajo
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-amarillo" /> Mantuvo
+      {/* ────── c) Elo por tipo de pregunta ────── */}
+      <SeccionCard titulo="Comprension por tipo" emoji="🎯">
+        <div className="space-y-2">
+          {Object.entries(TIPO_CONFIG).map(([tipo, config]) => {
+            const datos = data.desgloseTipos[tipo];
+            if (!datos) return null;
+            const elo = datos.elo;
+            const isExpanded = tipoExpandido === tipo;
+
+            return (
+              <div key={tipo}>
+                <button
+                  onClick={() => setTipoExpandido(isExpanded ? null : tipo)}
+                  className="w-full flex items-center gap-2.5 rounded-xl bg-fondo p-2.5 text-left active:scale-[0.99] transition-transform"
+                >
+                  <span className="text-lg">{config.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-texto">{config.label}</span>
+                      <span className="text-xs font-bold" style={{ color: getEloColor(elo) }}>
+                        {Math.round(elo)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-[9px] text-texto-suave">
+                        {datos.porcentaje}% acierto ({datos.total} preg.)
+                      </span>
+                      <span className="text-[9px] text-texto-suave">
+                        {clasificarElo(elo)}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs text-neutro">{isExpanded ? '▲' : '▼'}</span>
+                </button>
+
+                {/* Grafica expandida de evolucion Elo del tipo */}
+                {isExpanded && data.eloEvolucion.length > 1 && (
+                  <div className="mt-1 ml-8 mr-2 rounded-lg bg-superficie p-2 border border-neutro/10">
+                    <Suspense fallback={<ChartFallback />}>
+                      <LineaEvolucion
+                        datos={data.eloEvolucion.map((e, i) => ({
+                          label: i === 0 || i === data.eloEvolucion.length - 1
+                            ? e.fecha.slice(5)
+                            : '',
+                          valor: e[tipo as keyof typeof e] as number,
+                        }))}
+                        color={config.color}
+                        maxValor={Math.max(1600, ...data.eloEvolucion.map(e => (e[tipo as keyof typeof e] as number) + 100))}
+                      />
+                    </Suspense>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </SeccionCard>
+
+      {/* ────── d) Velocidad de lectura (WPM) ────── */}
+      {wpmValidos !== null && (
+        <SeccionCard titulo="Velocidad de lectura" emoji="⚡">
+          <div className="flex items-baseline gap-2 mb-2">
+            <span className="text-2xl font-extrabold text-texto">
+              {wpmValidos[wpmValidos.length - 1]?.wpm ?? 0}
+            </span>
+            <span className="text-xs text-texto-suave">palabras/min</span>
+          </div>
+          <Suspense fallback={<ChartFallback />}>
+            <LineaEvolucion
+              datos={wpmValidos.map((w, i) => ({
+                label: i === 0 || i === wpmValidos.length - 1
+                  ? w.fecha.slice(5)
+                  : '',
+                valor: w.wpm,
+              }))}
+              color="#A28BD4"
+              maxValor={Math.max(200, ...wpmValidos.map(w => w.wpm + 20))}
+            />
+          </Suspense>
+          <p className="mt-1 text-[10px] text-texto-suave text-center">
+            Evolucion de palabras por minuto
+          </p>
+        </SeccionCard>
+      )}
+
+      {/* ────── e) Nivel de dificultad actual ────── */}
+      <SeccionCard titulo="Nivel de dificultad" emoji="📐">
+        <div className="flex items-baseline gap-3">
+          <span className="text-4xl font-extrabold text-turquesa">{data.nivelActual}</span>
+          <span className="text-sm font-semibold text-texto-suave">
+            {getNivelLabel(Number(data.nivelActual))}
           </span>
         </div>
       </SeccionCard>
 
-      {/* c) Desglose por tipo de pregunta */}
-      <SeccionCard titulo="Fortalezas por tipo de pregunta" emoji="🎯">
-        <Suspense fallback={<ChartFallback />}>
-          <RadarTipos datos={formatearDatosTipos(data.desgloseTipos)} />
-        </Suspense>
-      </SeccionCard>
-
-      {/* d) Comparativa por topics */}
-      {data.comparativaTopics.length > 0 && (
-        <SeccionCard titulo="Comprension por tema" emoji="📚">
-          <div className="space-y-2">
-            {data.comparativaTopics.map(t => (
-              <div key={t.topicSlug} className="flex items-center gap-3">
-                <span className="text-xl">{t.emoji}</span>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-xs font-semibold text-texto">{t.nombre}</span>
-                    <span className="text-xs text-texto-suave">
-                      {t.scoreMedio}% ({t.totalSesiones} ses.)
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-neutro/20 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${t.scoreMedio}%`,
-                        backgroundColor: t.scoreMedio >= 80 ? '#7BC67E' : t.scoreMedio >= 60 ? '#FFE66D' : '#FF6B6B',
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </SeccionCard>
-      )}
-
-      {/* e) Historial de sesiones */}
+      {/* ────── f) Historial de sesiones ────── */}
       <SeccionCard titulo="Historial de sesiones" emoji="📋">
         {data.historialSesiones.length === 0 ? (
           <p className="text-sm text-texto-suave text-center py-2">Sin sesiones aun</p>
@@ -182,7 +318,7 @@ export function DashboardPadreDetalle({ data }: Props) {
         )}
       </SeccionCard>
 
-      {/* f) Recomendaciones offline */}
+      {/* ────── g) Recomendaciones offline ────── */}
       {data.recomendaciones.length > 0 && (
         <SeccionCard titulo="Recomendaciones para casa" emoji="💡">
           <div className="space-y-3">
@@ -194,36 +330,6 @@ export function DashboardPadreDetalle({ data }: Props) {
                 </p>
               </div>
             ))}
-          </div>
-        </SeccionCard>
-      )}
-
-      {/* g) Explicador de cambios de nivel */}
-      {data.timelineCambiosNivel.length > 0 && (
-        <SeccionCard titulo="Historial de cambios de nivel" emoji="🔄">
-          <div className="relative pl-4 border-l-2 border-neutro/20 space-y-3">
-            {data.timelineCambiosNivel.map((cambio, i) => {
-              const subio = cambio.nivelNuevo > cambio.nivelAnterior;
-              return (
-                <div key={i} className="relative">
-                  {/* Punto en la linea */}
-                  <div className={`absolute -left-[21px] top-1 h-3 w-3 rounded-full border-2 border-white ${
-                    subio ? 'bg-acierto' : 'bg-coral'
-                  }`} />
-                  <div className="rounded-xl bg-fondo p-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-texto">
-                        Nivel {cambio.nivelAnterior} → {cambio.nivelNuevo}
-                      </span>
-                      <span className="text-[10px] text-texto-suave">{cambio.fecha}</span>
-                    </div>
-                    <p className="mt-0.5 text-[11px] text-texto-suave leading-relaxed">
-                      {cambio.razon}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </SeccionCard>
       )}

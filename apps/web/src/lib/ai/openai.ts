@@ -20,7 +20,7 @@ function getLLMConfig() {
     return {
       apiKey: process.env.LLM_API_KEY,
       baseURL: process.env.LLM_BASE_URL,
-      model: process.env.LLM_MODEL || 'glm-4-flash',
+      model: process.env.LLM_MODEL || 'glm-5',
     };
   }
   // OpenAI fallback
