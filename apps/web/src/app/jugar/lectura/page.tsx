@@ -81,6 +81,7 @@ export default function LecturaPage() {
   const [wpmData, setWpmData] = useState<WpmData | null>(null);
   const [resultadoSesion, setResultadoSesion] = useState<ResultadoSesionData | null>(null);
   const [errorGeneracion, setErrorGeneracion] = useState<string | null>(null);
+  const [ultimoTopicIntentado, setUltimoTopicIntentado] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
 
   // Estado de generacion de preguntas en background (por sesion)
@@ -156,6 +157,7 @@ export default function LecturaPage() {
   const handleStartReading = useCallback(
     async (topicSlug: string, forceRegenerate?: boolean) => {
       if (!estudiante || generando) return;
+      setUltimoTopicIntentado(topicSlug);
       setGenerando(true);
       setErrorGeneracion(null);
       setPasoSesion('generando');
@@ -348,6 +350,7 @@ export default function LecturaPage() {
     setTiempoLectura(0);
     setWpmData(null);
     setErrorGeneracion(null);
+    setUltimoTopicIntentado(null);
     setAjusteUsado(false);
     setReescribiendo(false);
     setRewriteCount(0);
@@ -581,9 +584,16 @@ export default function LecturaPage() {
       {errorGeneracion && (
         <div className="w-full max-w-md mb-4 p-4 rounded-2xl bg-error-suave border border-coral/20 text-sm text-texto">
           <p className="font-semibold mb-1">Ups! Algo salio mal</p>
-          <p className="text-texto-suave">
-            No pudimos crear tu historia. Intentalo de nuevo o prueba con otro tema.
-          </p>
+          <p className="text-texto-suave">{errorGeneracion}</p>
+          {ultimoTopicIntentado && (
+            <button
+              type="button"
+              onClick={() => void handleStartReading(ultimoTopicIntentado)}
+              className="mt-3 rounded-2xl bg-coral px-5 py-2.5 text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
+            >
+              Hubo un error, reintentar
+            </button>
+          )}
         </div>
       )}
 

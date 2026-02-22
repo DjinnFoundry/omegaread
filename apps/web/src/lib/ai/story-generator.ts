@@ -30,7 +30,9 @@ import {
 } from './qa-rubric';
 
 import { getLLMModel } from './openai';
-const MAX_REINTENTOS = 2;
+// Reintentos automaticos desactivados por UX/latencia.
+// 0 = una sola llamada al LLM y, si falla, el reintento queda en manos del usuario.
+const MAX_REINTENTOS = 0;
 
 export interface GeneratedStory {
   titulo: string;
