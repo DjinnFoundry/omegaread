@@ -876,6 +876,14 @@ export async function generarPreguntasSesion(datos: {
     storyContenido: historia.contenido,
     nivel: historia.nivel,
     edadAnos,
+    elo: {
+      global: estudiante.eloGlobal ?? 1000,
+      literal: estudiante.eloLiteral ?? 1000,
+      inferencia: estudiante.eloInferencia ?? 1000,
+      vocabulario: estudiante.eloVocabulario ?? 1000,
+      resumen: estudiante.eloResumen ?? 1000,
+      rd: estudiante.eloRd ?? 350,
+    },
   });
 
   if (!result.ok) {

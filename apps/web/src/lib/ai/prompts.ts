@@ -988,6 +988,21 @@ export interface QuestionsPromptInput {
   storyContenido: string;
   nivel: number;
   edadAnos: number;
+  elo?: {
+    global: number;
+    literal: number;
+    inferencia: number;
+    vocabulario: number;
+    resumen: number;
+    rd: number;
+  };
+}
+
+function rangoDificultadPorElo(elo: number): string {
+  if (elo < 900) return '1-2';
+  if (elo < 1100) return '2-3';
+  if (elo < 1300) return '3-4';
+  return '4-5';
 }
 
 /**
@@ -995,11 +1010,29 @@ export interface QuestionsPromptInput {
  */
 export function buildQuestionsUserPrompt(input: QuestionsPromptInput): string {
   const config = getNivelConfig(input.nivel);
+  const elo = input.elo;
+
+  const bloqueElo = elo
+    ? `
+PERFIL ELO DEL NINO (usar para calibrar dificultad por tipo):
+- Elo global: ${Math.round(elo.global)}
+- Literal: ${Math.round(elo.literal)} (objetivo dificultad ${rangoDificultadPorElo(elo.literal)})
+- Inferencia: ${Math.round(elo.inferencia)} (objetivo dificultad ${rangoDificultadPorElo(elo.inferencia)})
+- Vocabulario: ${Math.round(elo.vocabulario)} (objetivo dificultad ${rangoDificultadPorElo(elo.vocabulario)})
+- Resumen: ${Math.round(elo.resumen)} (objetivo dificultad ${rangoDificultadPorElo(elo.resumen)})
+- Incertidumbre RD: ${Math.round(elo.rd)}
+
+Reglas de calibracion por Elo:
+- Si RD > 150, evita extremos (1 y 5) salvo evidencia textual muy clara.
+- Ajusta cada pregunta al Elo de su tipo, no solo al Elo global.
+- Mantener coherencia con el nivel de lectura ${input.nivel}/4.8 (no crear preguntas fuera del texto).`
+    : '';
 
   return `Genera 4 preguntas de comprension para esta historia.
 
 LECTOR: nino de ${input.edadAnos} anos, nivel de lectura ${input.nivel}/4.8.
 Complejidad lexica del nivel: ${config.complejidadLexica}
+${bloqueElo}
 
 HISTORIA - "${input.storyTitulo}":
 ${input.storyContenido}
