@@ -41,6 +41,12 @@ function getEloColor(elo: number): string {
   return '#7BC67E';
 }
 
+function estadoChipClass(necesitaApoyo: boolean): string {
+  return necesitaApoyo
+    ? 'bg-coral/15 text-coral'
+    : 'bg-acierto/15 text-acierto';
+}
+
 function getEloTendencia(eloEvolucion: DashboardPadreData['eloEvolucion'], currentElo: number): 'up' | 'down' | 'stable' {
   if (eloEvolucion.length < 5) return 'stable';
   const hace5 = eloEvolucion[Math.max(0, eloEvolucion.length - 6)]?.global ?? currentElo;
@@ -167,7 +173,86 @@ export function DashboardPadreDetalle({ data }: Props) {
         </p>
       </SeccionCard>
 
-      {/* ────── b) Elo por tipo de pregunta ────── */}
+      {/* ────── b) Tabla normativa (equivalencia + percentiles) ────── */}
+      <SeccionCard titulo="Normativa y catch-up" emoji="🧭">
+        <div className="rounded-2xl bg-amarillo/15 p-3">
+          <p className="text-xs text-texto">
+            Referencia actual por edad: <span className="font-bold">{data.normativa.referenciaEdad.cursoEsperado}</span>{' '}
+            ({data.normativa.referenciaEdad.edadAnos} anos)
+          </p>
+          <p className="mt-1 text-xs text-texto">
+            Equivalencia global estimada: <span className="font-bold">{data.normativa.equivalenciaGlobal.curso}</span>{' '}
+            (percentil {data.normativa.equivalenciaGlobal.percentil})
+          </p>
+          <p className={`mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${estadoChipClass(data.normativa.equivalenciaGlobal.necesitaApoyo)}`}>
+            {data.normativa.equivalenciaGlobal.estado}
+          </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-texto-suave">
+            {data.normativa.equivalenciaGlobal.recomendacion}
+          </p>
+        </div>
+
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-neutro/15 bg-fondo">
+          <table className="min-w-full text-left text-[11px]">
+            <thead className="bg-superficie">
+              <tr className="text-texto-suave">
+                <th className="px-2 py-2 font-semibold">Curso</th>
+                <th className="px-2 py-2 font-semibold">P10</th>
+                <th className="px-2 py-2 font-semibold">P25</th>
+                <th className="px-2 py-2 font-semibold">P50</th>
+                <th className="px-2 py-2 font-semibold">P75</th>
+                <th className="px-2 py-2 font-semibold">P90</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.normativa.tabla.map((fila) => (
+                <tr
+                  key={fila.curso}
+                  className={`border-t border-neutro/10 ${
+                    fila.curso === data.normativa.referenciaEdad.cursoEsperado ? 'bg-turquesa/10' : ''
+                  }`}
+                >
+                  <td className="px-2 py-2 font-semibold text-texto">{fila.curso}</td>
+                  <td className="px-2 py-2 text-texto-suave">{fila.p10}</td>
+                  <td className="px-2 py-2 text-texto-suave">{fila.p25}</td>
+                  <td className="px-2 py-2 text-texto-suave">{fila.p50}</td>
+                  <td className="px-2 py-2 text-texto-suave">{fila.p75}</td>
+                  <td className="px-2 py-2 text-texto-suave">{fila.p90}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-1 text-[10px] text-texto-suave">
+          Tabla orientativa para explicar progreso a familias. No sustituye evaluacion psicopedagogica formal.
+        </p>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {Object.entries(data.normativa.porTipo).map(([tipo, valor]) => {
+            const cfg = TIPO_CONFIG[tipo] ?? { label: tipo, icon: '📘', color: '#4ECDC4' };
+            return (
+              <div key={tipo} className="rounded-xl bg-fondo p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-texto">
+                    {cfg.icon} {cfg.label}
+                  </span>
+                  <span className="text-xs font-bold" style={{ color: cfg.color }}>
+                    P{valor.percentil}
+                  </span>
+                </div>
+                <p className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${estadoChipClass(valor.necesitaApoyo)}`}>
+                  {valor.estado}
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-texto-suave">
+                  {valor.recomendacion}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </SeccionCard>
+
+      {/* ────── c) Elo por tipo de pregunta ────── */}
       <SeccionCard titulo="Comprension por tipo" emoji="🎯">
         <div className="space-y-2">
           {Object.entries(TIPO_CONFIG).map(([tipo, config]) => {
@@ -225,7 +310,7 @@ export function DashboardPadreDetalle({ data }: Props) {
         </div>
       </SeccionCard>
 
-      {/* ────── c) Velocidad de lectura (WPM) ────── */}
+      {/* ────── d) Velocidad de lectura (WPM) ────── */}
       {wpmValidos !== null && (
         <SeccionCard titulo="Velocidad de lectura" emoji="⚡">
           <div className="flex items-baseline gap-2 mb-2">
@@ -252,7 +337,7 @@ export function DashboardPadreDetalle({ data }: Props) {
         </SeccionCard>
       )}
 
-      {/* ────── d) Historial de sesiones ────── */}
+      {/* ────── e) Historial de sesiones ────── */}
       <SeccionCard titulo="Historial de sesiones" emoji="📋">
         {data.historialSesiones.length === 0 ? (
           <p className="text-sm text-texto-suave text-center py-2">Sin sesiones aun</p>
@@ -311,7 +396,7 @@ export function DashboardPadreDetalle({ data }: Props) {
         )}
       </SeccionCard>
 
-      {/* ────── e) Recomendaciones offline ────── */}
+      {/* ────── f) Recomendaciones offline ────── */}
       {data.recomendaciones.length > 0 && (
         <SeccionCard titulo="Recomendaciones para casa" emoji="💡">
           <div className="space-y-3">

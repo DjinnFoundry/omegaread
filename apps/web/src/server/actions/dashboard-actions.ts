@@ -20,11 +20,13 @@ import {
   type InferSelectModel,
 } from '@omegaread/db';
 import { requireStudentOwnership } from '../auth';
+import { calcularEdad } from '@/lib/utils/fecha';
 import {
   calcularProgresoNivel,
   generarMensajeMotivacional,
   calcularDesgloseTipos,
   generarRecomendaciones,
+  construirNormativaLectura,
 } from './dashboard-utils';
 
 // ─────────────────────────────────────────────
@@ -149,6 +151,35 @@ export interface DashboardPadreData {
     fecha: string;
     wpm: number;
   }>;
+  /** Tabla normativa y equivalencias para interpretacion por familias */
+  normativa: {
+    referenciaEdad: {
+      edadAnos: number;
+      cursoEsperado: string;
+    };
+    equivalenciaGlobal: {
+      curso: string;
+      percentil: number;
+      estado: string;
+      necesitaApoyo: boolean;
+      recomendacion: string;
+    };
+    porTipo: Record<string, {
+      curso: string;
+      percentil: number;
+      estado: string;
+      necesitaApoyo: boolean;
+      recomendacion: string;
+    }>;
+    tabla: Array<{
+      curso: string;
+      p10: number;
+      p25: number;
+      p50: number;
+      p75: number;
+      p90: number;
+    }>;
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -251,6 +282,7 @@ export async function obtenerDashboardNino(estudianteId: string): Promise<Dashbo
 export async function obtenerDashboardPadre(estudianteId: string): Promise<DashboardPadreData> {
   const db = await getDb();
   const { estudiante } = await requireStudentOwnership(estudianteId);
+  const edadAnos = calcularEdad(estudiante.fechaNacimiento);
 
   // Sesiones completadas
   const todasSesiones = await db.query.sessions.findMany({
@@ -410,6 +442,12 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     };
   }
 
+  const normativa = construirNormativaLectura({
+    edadAnos,
+    eloGlobal: eloActual.global,
+    eloPorTipo: eloTipoMap,
+  });
+
   return {
     evolucionSemanal,
     evolucionDificultad,
@@ -423,6 +461,7 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     eloActual,
     eloEvolucion,
     wpmEvolucion,
+    normativa,
   };
 }
 

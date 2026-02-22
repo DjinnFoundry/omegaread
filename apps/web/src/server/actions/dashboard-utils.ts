@@ -172,3 +172,146 @@ export function generarRecomendaciones(
 
   return recs.slice(0, 3);
 }
+
+// ─────────────────────────────────────────────
+// NORMATIVA ELO (ESTIMADA)
+// ─────────────────────────────────────────────
+
+type NormaCurso = {
+  curso: string;
+  edadRef: number;
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+};
+
+const NORMAS_ELO: NormaCurso[] = [
+  { curso: 'Infantil 5', edadRef: 5, p10: 740, p25: 820, p50: 920, p75: 1000, p90: 1080 },
+  { curso: '1o Primaria', edadRef: 6, p10: 820, p25: 900, p50: 1000, p75: 1090, p90: 1180 },
+  { curso: '2o Primaria', edadRef: 7, p10: 900, p25: 980, p50: 1080, p75: 1170, p90: 1260 },
+  { curso: '3o Primaria', edadRef: 8, p10: 980, p25: 1060, p50: 1160, p75: 1250, p90: 1340 },
+  { curso: '4o Primaria', edadRef: 9, p10: 1060, p25: 1140, p50: 1240, p75: 1330, p90: 1420 },
+];
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function interpolarPercentil(elo: number, norma: NormaCurso): number {
+  const tramos = [
+    { eloA: norma.p10 - 120, pA: 1, eloB: norma.p10, pB: 10 },
+    { eloA: norma.p10, pA: 10, eloB: norma.p25, pB: 25 },
+    { eloA: norma.p25, pA: 25, eloB: norma.p50, pB: 50 },
+    { eloA: norma.p50, pA: 50, eloB: norma.p75, pB: 75 },
+    { eloA: norma.p75, pA: 75, eloB: norma.p90, pB: 90 },
+    { eloA: norma.p90, pA: 90, eloB: norma.p90 + 120, pB: 99 },
+  ];
+
+  for (const t of tramos) {
+    if (elo <= t.eloB) {
+      const ratio = (elo - t.eloA) / Math.max(1, (t.eloB - t.eloA));
+      const p = t.pA + (clamp(ratio, 0, 1) * (t.pB - t.pA));
+      return Math.round(clamp(p, 1, 99));
+    }
+  }
+  return 99;
+}
+
+function cursoEsperadoPorEdad(edadAnos: number): NormaCurso {
+  return NORMAS_ELO.reduce((best, current) => {
+    const diffBest = Math.abs(best.edadRef - edadAnos);
+    const diffCurrent = Math.abs(current.edadRef - edadAnos);
+    return diffCurrent < diffBest ? current : best;
+  });
+}
+
+function cursoEquivalentePorElo(elo: number): NormaCurso {
+  return NORMAS_ELO.reduce((best, current) => {
+    const diffBest = Math.abs(best.p50 - elo);
+    const diffCurrent = Math.abs(current.p50 - elo);
+    return diffCurrent < diffBest ? current : best;
+  });
+}
+
+function estadoDesdePercentil(percentil: number): {
+  estado: string;
+  necesitaApoyo: boolean;
+} {
+  if (percentil < 25) {
+    return { estado: 'Por debajo del rango esperado', necesitaApoyo: true };
+  }
+  if (percentil < 40) {
+    return { estado: 'Algo por debajo, requiere refuerzo', necesitaApoyo: true };
+  }
+  if (percentil <= 75) {
+    return { estado: 'En rango esperado', necesitaApoyo: false };
+  }
+  if (percentil <= 90) {
+    return { estado: 'Por encima del rango esperado', necesitaApoyo: false };
+  }
+  return { estado: 'Muy por encima del rango esperado', necesitaApoyo: false };
+}
+
+function recomendacionCatchup(tipo: string, percentil: number): string {
+  if (percentil >= 40) {
+    return 'Mantener rutina de lectura diaria y conversacion breve sobre lo leido.';
+  }
+
+  const recomendacionesTipo: Record<string, string> = {
+    literal: 'Hacer pausas cada parrafo y preguntar que paso exactamente, volviendo al texto si hace falta.',
+    inferencia: 'Practicar preguntas de por que/que pasara despues para entrenar deduccion con pistas del texto.',
+    vocabulario: 'Crear un mini-glosario semanal con 5 palabras nuevas y usar cada palabra en una frase.',
+    resumen: 'Al terminar, pedir un resumen en 3 pasos (inicio, nudo y final) con sus propias palabras.',
+  };
+
+  return recomendacionesTipo[tipo] ?? 'Refuerzo guiado 10-15 minutos al dia con relectura y preguntas cortas.';
+}
+
+export function construirNormativaLectura(params: {
+  edadAnos: number;
+  eloGlobal: number;
+  eloPorTipo: Record<string, number>;
+}): DashboardPadreData['normativa'] {
+  const cursoEsperado = cursoEsperadoPorEdad(params.edadAnos);
+  const cursoEqGlobal = cursoEquivalentePorElo(params.eloGlobal);
+  const percentilGlobal = interpolarPercentil(params.eloGlobal, cursoEsperado);
+  const estadoGlobal = estadoDesdePercentil(percentilGlobal);
+
+  const porTipo: DashboardPadreData['normativa']['porTipo'] = {};
+  for (const [tipo, elo] of Object.entries(params.eloPorTipo)) {
+    const percentil = interpolarPercentil(elo, cursoEsperado);
+    const estado = estadoDesdePercentil(percentil);
+    porTipo[tipo] = {
+      curso: cursoEsperado.curso,
+      percentil,
+      estado: estado.estado,
+      necesitaApoyo: estado.necesitaApoyo,
+      recomendacion: recomendacionCatchup(tipo, percentil),
+    };
+  }
+
+  return {
+    referenciaEdad: {
+      edadAnos: params.edadAnos,
+      cursoEsperado: cursoEsperado.curso,
+    },
+    equivalenciaGlobal: {
+      curso: cursoEqGlobal.curso,
+      percentil: percentilGlobal,
+      estado: estadoGlobal.estado,
+      necesitaApoyo: estadoGlobal.necesitaApoyo,
+      recomendacion: recomendacionCatchup('global', percentilGlobal),
+    },
+    porTipo,
+    tabla: NORMAS_ELO.map(n => ({
+      curso: n.curso,
+      p10: n.p10,
+      p25: n.p25,
+      p50: n.p50,
+      p75: n.p75,
+      p90: n.p90,
+    })),
+  };
+}
