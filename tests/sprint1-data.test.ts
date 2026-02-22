@@ -8,7 +8,7 @@
  * 4. Server actions: exports de nuevas acciones
  */
 import { describe, it, expect } from 'vitest';
-import { TOPICS_SEED } from '@/lib/data/topics';
+import { TOPICS_SEED } from '@/lib/data/skills';
 import { BASELINE_TEXTS } from '@/lib/data/baseline-texts';
 import { TIPOS_PREGUNTA } from '@/lib/types/reading';
 
@@ -22,7 +22,7 @@ describe('Topics seed data', () => {
   });
 
   it('todos los slugs son unicos', () => {
-    const slugs = TOPICS_SEED.map(t => t.slug);
+    const slugs = TOPICS_SEED.map((t) => t.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
   });
 
@@ -40,12 +40,12 @@ describe('Topics seed data', () => {
   });
 
   it('cubren el rango 5-9 anos (al menos 8 topics disponibles)', () => {
-    const para5a9 = TOPICS_SEED.filter(t => t.edadMinima <= 5 && t.edadMaxima >= 9);
+    const para5a9 = TOPICS_SEED.filter((t) => t.edadMinima <= 5 && t.edadMaxima >= 9);
     expect(para5a9.length).toBeGreaterThanOrEqual(8);
   });
 
   it('orden es secuencial sin huecos', () => {
-    const ordenes = TOPICS_SEED.map(t => t.orden).sort((a, b) => a - b);
+    const ordenes = TOPICS_SEED.map((t) => t.orden).sort((a, b) => a - b);
     for (let i = 0; i < ordenes.length; i++) {
       expect(ordenes[i]).toBe(i + 1);
     }
@@ -62,12 +62,12 @@ describe('Baseline texts', () => {
   });
 
   it('niveles van de 1 a 4 en orden', () => {
-    const niveles = BASELINE_TEXTS.map(t => t.nivel);
+    const niveles = BASELINE_TEXTS.map((t) => t.nivel);
     expect(niveles).toEqual([1, 2, 3, 4]);
   });
 
   it('cada texto tiene id unico', () => {
-    const ids = BASELINE_TEXTS.map(t => t.id);
+    const ids = BASELINE_TEXTS.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -80,7 +80,7 @@ describe('Baseline texts', () => {
   it('tiempoEsperadoMs crece con el nivel', () => {
     for (let i = 1; i < BASELINE_TEXTS.length; i++) {
       expect(BASELINE_TEXTS[i].tiempoEsperadoMs).toBeGreaterThan(
-        BASELINE_TEXTS[i - 1].tiempoEsperadoMs
+        BASELINE_TEXTS[i - 1].tiempoEsperadoMs,
       );
     }
   });
@@ -119,21 +119,21 @@ describe('Baseline texts', () => {
 
   it('cada pregunta tiene id unico dentro del texto', () => {
     for (const texto of BASELINE_TEXTS) {
-      const ids = texto.preguntas.map(p => p.id);
+      const ids = texto.preguntas.map((p) => p.id);
       expect(new Set(ids).size).toBe(ids.length);
     }
   });
 
   it('niveles 3 y 4 incluyen pregunta de resumen', () => {
-    for (const texto of BASELINE_TEXTS.filter(t => t.nivel >= 3)) {
-      const tieneResumen = texto.preguntas.some(p => p.tipo === 'resumen');
+    for (const texto of BASELINE_TEXTS.filter((t) => t.nivel >= 3)) {
+      const tieneResumen = texto.preguntas.some((p) => p.tipo === 'resumen');
       expect(tieneResumen).toBe(true);
     }
   });
 
   it('todos los textos tienen al menos literal, inferencia y vocabulario', () => {
     for (const texto of BASELINE_TEXTS) {
-      const tipos = new Set(texto.preguntas.map(p => p.tipo));
+      const tipos = new Set(texto.preguntas.map((p) => p.tipo));
       expect(tipos.has('literal')).toBe(true);
       expect(tipos.has('inferencia')).toBe(true);
       expect(tipos.has('vocabulario')).toBe(true);
