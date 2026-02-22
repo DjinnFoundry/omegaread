@@ -119,15 +119,6 @@ function opcionesAmbiguas(
   const correcta = opciones[respuestaCorrecta] ?? '';
   if (!correcta.trim()) return 'respuesta correcta vacia';
 
-  for (let i = 0; i < opciones.length; i++) {
-    if (i === respuestaCorrecta) continue;
-    const similitud = similitudTexto(correcta, opciones[i]);
-    // Muy parecida a la correcta => ambiguedad
-    if (similitud >= 0.85) {
-      return `opcion ${i + 1} demasiado parecida a la correcta`;
-    }
-  }
-
   return null;
 }
 

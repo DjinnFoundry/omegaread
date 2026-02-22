@@ -46,6 +46,40 @@ describe('NIVELES_CONFIG', () => {
       expect(NIVELES_CONFIG[nivel].complejidadLexica.length).toBeGreaterThan(10);
     }
   });
+
+  it('cada nivel tiene dialogoPorcentaje entre 0 y 50', () => {
+    for (const key of Object.keys(NIVELES_CONFIG)) {
+      const config = NIVELES_CONFIG[Number(key)];
+      expect(config.dialogoPorcentaje).toBeGreaterThanOrEqual(0);
+      expect(config.dialogoPorcentaje).toBeLessThanOrEqual(50);
+    }
+  });
+
+  it('cada nivel tiene estiloNarrativo no vacio', () => {
+    for (const key of Object.keys(NIVELES_CONFIG)) {
+      const config = NIVELES_CONFIG[Number(key)];
+      expect(config.estiloNarrativo.length).toBeGreaterThan(20);
+    }
+  });
+
+  it('cada nivel tiene al menos 2 tecnicasEngagement', () => {
+    for (const key of Object.keys(NIVELES_CONFIG)) {
+      const config = NIVELES_CONFIG[Number(key)];
+      expect(config.tecnicasEngagement.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('cada nivel tiene al menos 2 aperturasSugeridas', () => {
+    for (const key of Object.keys(NIVELES_CONFIG)) {
+      const config = NIVELES_CONFIG[Number(key)];
+      expect(config.aperturasSugeridas.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('dialogoPorcentaje crece entre bandas', () => {
+    expect(NIVELES_CONFIG[1.0].dialogoPorcentaje)
+      .toBeLessThanOrEqual(NIVELES_CONFIG[4.8].dialogoPorcentaje);
+  });
 });
 
 describe('getNivelConfig', () => {
@@ -91,6 +125,39 @@ describe('buildSystemPrompt', () => {
 
   it('menciona formato JSON', () => {
     expect(prompt).toContain('JSON');
+  });
+
+  it('define identidad como cuentacuentos', () => {
+    expect(prompt.toLowerCase()).toContain('cuentacuentos');
+  });
+
+  it('incluye seccion de anti-patrones', () => {
+    expect(prompt).toContain('ANTI-PATRONES');
+  });
+
+  it('incluye principio mostrar nunca decir', () => {
+    expect(prompt).toContain('MOSTRAR, NUNCA DECIR');
+  });
+
+  it('menciona dialogo como principio', () => {
+    expect(prompt).toContain('DIALOGO ES REY');
+  });
+
+  it('menciona humor como obligatorio', () => {
+    expect(prompt).toContain('HUMOR OBLIGATORIO');
+  });
+
+  it('menciona personaje primero', () => {
+    expect(prompt).toContain('PERSONAJE PRIMERO');
+  });
+
+  it('menciona educacion por descubrimiento', () => {
+    expect(prompt).toContain('EDUCACION POR DESCUBRIMIENTO');
+  });
+
+  it('incluye primera frase como hook obligatorio', () => {
+    expect(prompt).toContain('PRIMERA FRASE = HOOK');
+    expect(prompt).toContain('SHOCK');
   });
 });
 
@@ -177,5 +244,32 @@ describe('buildUserPrompt', () => {
     });
     expect(prompt).toContain('REINTENTO #2');
     expect(prompt).toContain('Historia muy corta');
+  });
+
+  it('incluye estilo narrativo del nivel', () => {
+    const prompt = buildUserPrompt(baseInput);
+    expect(prompt).toContain('ESTILO NARRATIVO');
+  });
+
+  it('incluye tecnicas de engagement', () => {
+    const prompt = buildUserPrompt(baseInput);
+    expect(prompt).toContain('TECNICAS DE ENGAGEMENT');
+  });
+
+  it('incluye porcentaje minimo de dialogo', () => {
+    const prompt = buildUserPrompt(baseInput);
+    expect(prompt).toContain('Dialogo minimo');
+    expect(prompt).toContain('% del texto debe ser dialogo directo');
+  });
+
+  it('incluye hooks de apertura', () => {
+    const prompt = buildUserPrompt(baseInput);
+    expect(prompt).toContain('HOOK DE APERTURA');
+  });
+
+  it('NO incluye texto de ejemplo estatico', () => {
+    const prompt = buildUserPrompt(baseInput);
+    expect(prompt).not.toContain('Ejemplo de texto de este nivel');
+    expect(prompt).not.toContain('imita estilo y complejidad');
   });
 });
