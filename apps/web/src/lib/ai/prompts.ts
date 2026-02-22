@@ -971,6 +971,7 @@ Genera exactamente 4 preguntas, una de cada tipo:
 
 ## REGLAS
 - "dificultadPregunta" (1-5): 1=obvia, 3=requiere comprension, 5=razonamiento complejo.
+- "respuestaCorrecta" debe ser un entero 0, 1, 2 o 3 (nunca letra ni texto).
 - Las 3 opciones incorrectas son plausibles pero claramente incorrectas (sin ambiguedad).
 - Las preguntas deben poder responderse SOLO con el texto (no con conocimiento externo).
 - La pregunta de vocabulario elige una palabra que el nino pueda inferir por contexto.
