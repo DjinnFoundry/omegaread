@@ -155,7 +155,7 @@ async function contarHistoriasHoy(studentId: string): Promise<number> {
   hoy.setHours(0, 0, 0, 0);
 
   const result = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(generatedStories)
     .where(
       and(
@@ -164,7 +164,7 @@ async function contarHistoriasHoy(studentId: string): Promise<number> {
       )
     );
 
-  return result[0]?.count ?? 0;
+  return Number(result[0]?.count ?? 0);
 }
 
 /**
@@ -185,14 +185,6 @@ export async function analizarLecturaAudio(datos: {
   const db = await getDb();
   const validado = analizarLecturaAudioSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
-
-  if (!hasOpenAIKey()) {
-    return {
-      ok: false as const,
-      error: 'No hay API key de LLM configurada para analisis de audio',
-      code: 'NO_API_KEY' as const,
-    };
-  }
 
   const sesion = await db.query.sessions.findFirst({
     where: and(
@@ -246,102 +238,148 @@ export async function analizarLecturaAudio(datos: {
     };
   }
 
+  const palabrasObjetivo = tokenizarTexto(sesion.story.contenido);
+  const totalPalabrasObjetivo = palabrasObjetivo.length;
+
   let transcripcionTexto = '';
   let palabrasConTiempo: PalabraTimestamp[] = [];
+  let errorTranscripcion: string | null = null;
   const transcribeModel = process.env.LLM_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
-  try {
-    const client = getOpenAIClient();
-    const mimeType = validado.mimeType || 'audio/webm';
-    const extension = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp4') ? 'mp4' : 'webm';
-    const file = new File([audioBuffer], `lectura.${extension}`, { type: mimeType });
-
+  if (hasOpenAIKey()) {
     try {
-      const verbose = await client.audio.transcriptions.create({
-        file,
-        model: transcribeModel,
-        language: 'es',
-        response_format: 'verbose_json',
-        timestamp_granularities: ['word'],
-      });
+      const client = getOpenAIClient();
+      const mimeType = validado.mimeType || 'audio/webm';
+      const extension = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const file = new File([audioBuffer], `lectura.${extension}`, { type: mimeType });
 
-      transcripcionTexto = String((verbose as { text?: string }).text ?? '').trim();
-      const words = (verbose as { words?: Array<{ word?: string; start?: number; end?: number }> }).words;
-      if (Array.isArray(words) && words.length > 0) {
-        palabrasConTiempo = words.map(w => ({
-          palabra: String(w.word ?? ''),
-          inicioSeg: typeof w.start === 'number' ? w.start : undefined,
-          finSeg: typeof w.end === 'number' ? w.end : undefined,
-        }));
+      try {
+        const verbose = await client.audio.transcriptions.create({
+          file,
+          model: transcribeModel,
+          language: 'es',
+          response_format: 'verbose_json',
+          timestamp_granularities: ['word'],
+        });
+
+        transcripcionTexto = String((verbose as { text?: string }).text ?? '').trim();
+        const words = (verbose as { words?: Array<{ word?: string; start?: number; end?: number }> }).words;
+        if (Array.isArray(words) && words.length > 0) {
+          palabrasConTiempo = words.map(w => ({
+            palabra: String(w.word ?? ''),
+            inicioSeg: typeof w.start === 'number' ? w.start : undefined,
+            finSeg: typeof w.end === 'number' ? w.end : undefined,
+          }));
+        }
+      } catch {
+        // Fallback cuando el proveedor no soporta verbose_json/timestamps.
+        const simple = await client.audio.transcriptions.create({
+          file,
+          model: transcribeModel,
+          language: 'es',
+        });
+        transcripcionTexto = String((simple as { text?: string }).text ?? '').trim();
       }
-    } catch {
-      // Fallback cuando el proveedor no soporta verbose_json/timestamps.
-      const simple = await client.audio.transcriptions.create({
-        file,
-        model: transcribeModel,
-        language: 'es',
-      });
-      transcripcionTexto = String((simple as { text?: string }).text ?? '').trim();
+    } catch (error) {
+      if (error instanceof OpenAIKeyMissingError) {
+        errorTranscripcion = error.message;
+      } else {
+        const msg = error instanceof Error ? error.message : 'Error desconocido';
+        errorTranscripcion = `Fallo al transcribir audio: ${msg}`;
+      }
     }
-  } catch (error) {
-    if (error instanceof OpenAIKeyMissingError) {
-      return {
-        ok: false as const,
-        error: error.message,
-        code: 'NO_API_KEY' as const,
-      };
-    }
-    const msg = error instanceof Error ? error.message : 'Error desconocido';
-    return {
-      ok: false as const,
-      error: `Fallo al transcribir audio: ${msg}`,
-      code: 'GENERATION_FAILED' as const,
-    };
+  } else {
+    errorTranscripcion = 'Sin API key de transcripcion; usando analisis de senal.';
   }
 
   const palabrasTranscritas = palabrasConTiempo.length > 0
     ? palabrasConTiempo.map(p => p.palabra)
     : tokenizarTexto(transcripcionTexto);
 
-  const alineacion = alinearPalabrasAlTexto({
-    textoObjetivo: sesion.story.contenido,
-    palabrasTranscritas,
-  });
-
   const minutosVozActiva = validado.tiempoVozActivaMs / 60_000;
-  const wpmUtil = minutosVozActiva > 0
-    ? Math.round((alineacion.totalUnicasAlineadas / minutosVozActiva) * 10) / 10
-    : 0;
   const pauseRatio = clamp01(
     (validado.tiempoTotalMs - validado.tiempoVozActivaMs) / validado.tiempoTotalMs,
   );
 
-  const scoreVoz = clamp01(validado.tiempoVozActivaMs / 25_000);
-  const scorePrecision = clamp01(alineacion.precisionLectura / 0.75);
-  const scoreCobertura = clamp01(alineacion.coberturaTexto / 0.65);
-  const qualityScore = Math.round((scoreVoz * 0.35 + scorePrecision * 0.4 + scoreCobertura * 0.25) * 100) / 100;
+  let analisis: AudioAnalisisLectura;
 
-  const motivos: string[] = [];
-  if (validado.tiempoVozActivaMs < 20_000) motivos.push('poca voz activa');
-  if (alineacion.totalHabladas < 25) motivos.push('muy pocas palabras transcritas');
-  if (alineacion.precisionLectura < 0.35) motivos.push('baja precision de alineacion');
-  if (alineacion.coberturaTexto < 0.2) motivos.push('cobertura de texto baja');
+  if (palabrasTranscritas.length >= 12) {
+    const alineacion = alinearPalabrasAlTexto({
+      textoObjetivo: sesion.story.contenido,
+      palabrasTranscritas,
+    });
+    const wpmUtil = minutosVozActiva > 0
+      ? Math.round((alineacion.totalUnicasAlineadas / minutosVozActiva) * 10) / 10
+      : 0;
+    const scoreVoz = clamp01(validado.tiempoVozActivaMs / 25_000);
+    const scorePrecision = clamp01(alineacion.precisionLectura / 0.75);
+    const scoreCobertura = clamp01(alineacion.coberturaTexto / 0.65);
+    const qualityScore = Math.round((scoreVoz * 0.35 + scorePrecision * 0.4 + scoreCobertura * 0.25) * 100) / 100;
 
-  const confiable = qualityScore >= 0.55 && motivos.length === 0;
+    const motivos: string[] = [];
+    if (validado.tiempoVozActivaMs < 20_000) motivos.push('poca voz activa');
+    if (alineacion.totalHabladas < 25) motivos.push('muy pocas palabras transcritas');
+    if (alineacion.precisionLectura < 0.35) motivos.push('baja precision de alineacion');
+    if (alineacion.coberturaTexto < 0.2) motivos.push('cobertura de texto baja');
+    if (errorTranscripcion) motivos.push('transcripcion parcial');
 
-  const analisis: AudioAnalisisLectura = {
-    wpmUtil,
-    precisionLectura: Math.round(alineacion.precisionLectura * 1000) / 1000,
-    coberturaTexto: Math.round(alineacion.coberturaTexto * 1000) / 1000,
-    pauseRatio: Math.round(pauseRatio * 1000) / 1000,
-    tiempoVozActivaMs: validado.tiempoVozActivaMs,
-    totalPalabrasTranscritas: alineacion.totalHabladas,
-    totalPalabrasAlineadas: alineacion.totalAlineadas,
-    qualityScore,
-    confiable,
-    motivoNoConfiable: confiable ? null : motivos.join(', '),
-    motor: transcribeModel,
-  };
+    const confiable = qualityScore >= 0.55 && motivos.filter(m => m !== 'transcripcion parcial').length === 0;
+
+    analisis = {
+      wpmUtil,
+      precisionLectura: Math.round(alineacion.precisionLectura * 1000) / 1000,
+      coberturaTexto: Math.round(alineacion.coberturaTexto * 1000) / 1000,
+      pauseRatio: Math.round(pauseRatio * 1000) / 1000,
+      tiempoVozActivaMs: validado.tiempoVozActivaMs,
+      totalPalabrasTranscritas: alineacion.totalHabladas,
+      totalPalabrasAlineadas: alineacion.totalAlineadas,
+      qualityScore,
+      confiable,
+      motivoNoConfiable: confiable ? null : motivos.join(', '),
+      motor: transcribeModel,
+    };
+  } else {
+    // Fallback puro por senal de audio (sin transcripcion util).
+    const wpmEstimadoPorSenal = minutosVozActiva > 0 && totalPalabrasObjetivo > 0
+      ? Math.round((totalPalabrasObjetivo / minutosVozActiva) * 10) / 10
+      : 0;
+    const duracionEsperadaMs = totalPalabrasObjetivo > 0
+      ? (totalPalabrasObjetivo / 85) * 60_000
+      : 0;
+    const coberturaProxy = duracionEsperadaMs > 0
+      ? clamp01(validado.tiempoVozActivaMs / duracionEsperadaMs)
+      : 0;
+    const precisionProxy = wpmEstimadoPorSenal >= 35 && wpmEstimadoPorSenal <= 220 ? 0.6 : 0.35;
+    const scoreVoz = clamp01(validado.tiempoVozActivaMs / 20_000);
+    const scoreCobertura = clamp01(coberturaProxy / 0.6);
+    const scoreRitmo = wpmEstimadoPorSenal > 0
+      ? clamp01(1 - Math.abs(wpmEstimadoPorSenal - 95) / 120)
+      : 0;
+    const qualityScore = Math.round((scoreVoz * 0.35 + scoreCobertura * 0.35 + scoreRitmo * 0.30) * 100) / 100;
+
+    const motivos: string[] = [];
+    if (validado.tiempoVozActivaMs < 15_000) motivos.push('poca voz activa');
+    if (wpmEstimadoPorSenal > 0 && (wpmEstimadoPorSenal < 25 || wpmEstimadoPorSenal > 260)) motivos.push('ritmo fuera de rango');
+    if (coberturaProxy < 0.25) motivos.push('voz activa insuficiente para el texto');
+    if (pauseRatio > 0.85) motivos.push('muchas pausas');
+    if (errorTranscripcion) motivos.push('sin transcripcion util');
+
+    const confiable = qualityScore >= 0.55 && motivos.filter(m => m !== 'sin transcripcion util').length === 0;
+
+    analisis = {
+      wpmUtil: wpmEstimadoPorSenal,
+      precisionLectura: Math.round(precisionProxy * 1000) / 1000,
+      coberturaTexto: Math.round(coberturaProxy * 1000) / 1000,
+      pauseRatio: Math.round(pauseRatio * 1000) / 1000,
+      tiempoVozActivaMs: validado.tiempoVozActivaMs,
+      totalPalabrasTranscritas: palabrasTranscritas.length,
+      totalPalabrasAlineadas: 0,
+      qualityScore,
+      confiable,
+      motivoNoConfiable: confiable ? null : motivos.join(', '),
+      motor: 'signal-only',
+    };
+  }
 
   return {
     ok: true as const,
@@ -554,8 +592,10 @@ export async function generarHistoria(datos: {
     return { ok: false as const, error: 'Topic no encontrado', code: 'GENERATION_FAILED' as const };
   }
 
-  // 3b. Buscar historia cacheada (misma combinacion student+topic+nivel)
+  // 3b. Buscar historia cacheada (misma combinacion student+topic+nivel, con TTL)
   if (!validado.forceRegenerate) {
+    const ttlDate = new Date();
+    ttlDate.setDate(ttlDate.getDate() - 7);
     const cached = await db.query.generatedStories.findFirst({
       where: and(
         eq(generatedStories.studentId, validado.studentId),
@@ -563,6 +603,7 @@ export async function generarHistoria(datos: {
         eq(generatedStories.nivel, nivel),
         eq(generatedStories.reutilizable, true),
         eq(generatedStories.aprobadaQA, true),
+        gte(generatedStories.creadoEn, ttlDate),
       ),
       orderBy: [desc(generatedStories.creadoEn)],
       with: { questions: true },
@@ -885,17 +926,41 @@ export async function finalizarSesionLectura(datos: {
     (sesion.metadata as Record<string, unknown>)?.tiempoEsperadoMs as number
     ?? getNivelConfig((sesion.metadata as Record<string, unknown>)?.nivelTexto as number ?? 2).tiempoEsperadoMs;
 
-  const ajuste = await calcularAjusteDificultad({
-    studentId: validado.studentId,
-    sessionId: validado.sessionId,
-    comprensionScore,
-    tiempoLecturaMs: validado.tiempoLecturaMs,
-    tiempoEsperadoMs,
-    wpmPromedio: wpmPromedioFinal ?? undefined,
-  });
+  let ajuste: {
+    sessionScore: number;
+    direccion: 'subir' | 'mantener' | 'bajar';
+    nivelAnterior: number;
+    nivelNuevo: number;
+    razon: string;
+  };
+  try {
+    ajuste = await calcularAjusteDificultad({
+      studentId: validado.studentId,
+      sessionId: validado.sessionId,
+      comprensionScore,
+      tiempoLecturaMs: validado.tiempoLecturaMs,
+      tiempoEsperadoMs,
+      wpmPromedio: wpmPromedioFinal ?? undefined,
+    });
+  } catch (ajusteError) {
+    // En D1 local puede fallar por soporte parcial de transacciones.
+    // Fallback no bloqueante: mantener nivel y usar comprension como score de sesion.
+    console.error('[AjusteDificultad] Fallback por error:', ajusteError);
+    const nivelMetadata = (sesion.metadata as Record<string, unknown>)?.nivelTexto;
+    const nivelAnterior = Math.max(
+      1.0,
+      Math.min(4.8, typeof nivelMetadata === 'number' ? nivelMetadata : 1.0),
+    );
+    ajuste = {
+      sessionScore: Math.round(comprensionScore * 100) / 100,
+      direccion: 'mantener',
+      nivelAnterior,
+      nivelNuevo: nivelAnterior,
+      razon: 'Ajuste de dificultad no disponible temporalmente; se mantiene nivel.',
+    };
+  }
 
-  // Guardar sessionScore compuesto en metadata para que futuras sesiones lo usen
-  // en la logica de sesiones consecutivas (en vez de usar comprensionScore como proxy)
+  // Guardar sessionScore compuesto en metadata para futuras sesiones.
   const metadataActual = (await db.query.sessions.findFirst({
     where: eq(sessions.id, validado.sessionId),
     columns: { metadata: true },

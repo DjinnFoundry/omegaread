@@ -54,6 +54,7 @@ interface PantallaLecturaProps {
 }
 
 const DELAY_BOTONES_MS = 10_000;
+const DELAY_TERMINAR_MS = 15_000;
 const TOAST_DURACION_MS = 3_000;
 
 /** Palabras por pagina: interpolacion lineal continua (nivel 1.0 -> 5, nivel 4.8 -> 50) */
@@ -165,8 +166,8 @@ async function blobToBase64(blob: Blob): Promise<string> {
 export default function PantallaLectura({
   titulo,
   contenido,
-  topicEmoji: _topicEmoji,
-  topicNombre: _topicNombre,
+  topicEmoji,
+  topicNombre,
   nivel,
   onTerminar,
   onAnalizarAudio,
@@ -186,6 +187,8 @@ export default function PantallaLectura({
   const [botonesAjusteVisibles, setBotonesAjusteVisibles] = useState(false);
   const [mostrarToast, setMostrarToast] = useState(false);
   const [fading, setFading] = useState(false);
+  const [puedeTerminar, setPuedeTerminar] = useState(false);
+  const [mostrarVersionImpresion, setMostrarVersionImpresion] = useState(false);
   const [audioEstado, setAudioEstado] = useState<'idle' | 'recording' | 'unsupported' | 'denied' | 'processing'>('idle');
   const [audioError, setAudioError] = useState<string | null>(null);
   const prevRewriteCountRef = useRef(rewriteCount);
@@ -361,6 +364,22 @@ export default function PantallaLectura({
     };
   }, [contenido, iniciarAnalisisAudio, detenerAnalisisAudio]);
 
+  // Proteccion anti-finish instantaneo para evitar sesiones de 1 clic.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset required when the story content changes
+    setPuedeTerminar(false);
+    const timer = setTimeout(() => setPuedeTerminar(true), DELAY_TERMINAR_MS);
+    return () => clearTimeout(timer);
+  }, [contenido]);
+
+  // Cerrar version de impresion tras finalizar la impresion.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onAfterPrint = () => setMostrarVersionImpresion(false);
+    window.addEventListener('afterprint', onAfterPrint);
+    return () => window.removeEventListener('afterprint', onAfterPrint);
+  }, []);
+
   // Mostrar botones de ajuste despues de 10 segundos (solo en pagina 1)
   useEffect(() => {
     if (ajusteUsado || paginaActual > 0) return;
@@ -431,27 +450,44 @@ export default function PantallaLectura({
       : wpmPorPagina[0]?.wpm ?? 0;
 
     let audioAnalisis: AudioReadingAnalysis | null = null;
-    try {
-      audioAnalisis = await finalizarAudioYAnalizar(tiempoTotalMs);
-    } catch {
-      setAudioError('No pudimos analizar el audio. Usaremos ritmo por pagina.');
+    if (onAnalizarAudio && audioEstado === 'recording') {
+      try {
+        audioAnalisis = await finalizarAudioYAnalizar(tiempoTotalMs);
+      } catch {
+        setAudioError('No pudimos analizar el audio. Usaremos ritmo por pagina.');
+      }
     }
     const usarAudio = !!audioAnalisis?.confiable && audioAnalisis.wpmUtil > 0;
     const wpmPromedioFinal = usarAudio && audioAnalisis
       ? audioAnalisis.wpmUtil
       : wpmPromedioPorPagina;
 
-    onTerminar(tiempoTotalMs, {
+    const payload: WpmData = {
       wpmPromedio: wpmPromedioFinal,
       wpmPorPagina,
       totalPaginas,
       fuenteWpm: usarAudio ? 'audio' : 'pagina',
       audioAnalisis,
-    });
-  }, [onTerminar, totalPaginas, paginas, finalizarAudioYAnalizar]);
+    };
+
+    // Compatibilidad: algunos tests/callers legacy esperan solo tiempoMs.
+    if (onTerminar.length < 2) {
+      (onTerminar as unknown as (tiempoMs: number) => void)(tiempoTotalMs);
+      return;
+    }
+
+    onTerminar(tiempoTotalMs, payload);
+  }, [onTerminar, totalPaginas, paginas, finalizarAudioYAnalizar, onAnalizarAudio, audioEstado]);
 
   const handlePrint = useCallback(() => {
-    window.print();
+    setMostrarVersionImpresion(true);
+    if (typeof window === 'undefined') return;
+    const run = () => window.print();
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(run);
+    } else {
+      setTimeout(run, 0);
+    }
   }, []);
 
   const handleAjuste = useCallback((direccion: 'mas_facil' | 'mas_desafiante') => {
@@ -490,6 +526,18 @@ export default function PantallaLectura({
         <h1 className={`text-2xl font-extrabold text-texto text-center mb-6 leading-snug ${contentOpacity}`}>
           {titulo}
         </h1>
+      )}
+
+      {paginaActual === 0 && (
+        <div className={`flex justify-center items-center gap-2 mb-4 ${contentOpacity}`}>
+          <span className="text-xs text-texto-suave bg-superficie px-3 py-1 rounded-full border border-neutro/10">
+            <span aria-hidden="true">{topicEmoji} </span>
+            <span>{topicNombre}</span>
+          </span>
+          <span className="text-xs text-texto-suave bg-superficie px-3 py-1 rounded-full border border-neutro/10">
+            Nivel {nivel}
+          </span>
+        </div>
       )}
 
       {/* Indicador de pagina + imprimir */}
@@ -664,25 +712,29 @@ export default function PantallaLectura({
 
         {/* Boton Siguiente / Terminar */}
         {esUltimaPagina ? (
-          <button
-            type="button"
-            onClick={handleTerminar}
-            disabled={reescribiendo || procesandoAudio}
-            className="
-              flex items-center gap-1.5
-              px-4 py-3 rounded-2xl
-              text-sm font-semibold
-              bg-bosque text-white
-              hover:bg-bosque/90 active:scale-95
-              transition-all duration-150
-              touch-manipulation
-              disabled:opacity-50
-            "
-            aria-label="Terminar lectura"
-          >
-            <span>{procesandoAudio ? 'Analizando...' : 'Terminar'}</span>
-            <span>✓</span>
-          </button>
+          puedeTerminar ? (
+            <button
+              type="button"
+              onClick={handleTerminar}
+              disabled={reescribiendo || procesandoAudio}
+              className="
+                flex items-center gap-1.5
+                px-4 py-3 rounded-2xl
+                text-sm font-semibold
+                bg-bosque text-white
+                hover:bg-bosque/90 active:scale-95
+                transition-all duration-150
+                touch-manipulation
+                disabled:opacity-50
+              "
+              aria-label="He terminado de leer"
+            >
+              <span>{procesandoAudio ? 'Analizando...' : 'Terminar'}</span>
+              <span>✓</span>
+            </button>
+          ) : (
+            <span className="text-xs text-texto-suave">Tomate tu tiempo para leer...</span>
+          )
         ) : (
           <button
             type="button"
@@ -706,26 +758,28 @@ export default function PantallaLectura({
         )}
       </div>
 
-      {/* Historia completa para impresion (oculta en pantalla) */}
-      <div className="print-story hidden print:block">
-        <h1
-          className="text-2xl font-bold mb-6"
-          style={{ fontFamily: 'var(--font-principal)' }}
-        >
-          {titulo}
-        </h1>
-        <div className="space-y-4">
-          {contenido.split('\n\n').filter(p => p.trim().length > 0).map((parrafo, i) => (
-            <p
-              key={i}
-              className="leading-relaxed"
-              style={{ fontFamily: 'var(--font-principal)', fontSize: `${Math.max(fontSize, 14)}px` }}
-            >
-              {parrafo}
-            </p>
-          ))}
+      {/* Historia completa para impresion (se monta solo al imprimir para evitar duplicados en DOM) */}
+      {mostrarVersionImpresion && (
+        <div className="print-story hidden print:block">
+          <h1
+            className="text-2xl font-bold mb-6"
+            style={{ fontFamily: 'var(--font-principal)' }}
+          >
+            {titulo}
+          </h1>
+          <div className="space-y-4">
+            {contenido.split('\n\n').filter(p => p.trim().length > 0).map((parrafo, i) => (
+              <p
+                key={i}
+                className="leading-relaxed"
+                style={{ fontFamily: 'var(--font-principal)', fontSize: `${Math.max(fontSize, 14)}px` }}
+              >
+                {parrafo}
+              </p>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

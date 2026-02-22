@@ -104,8 +104,8 @@ export async function registrarRespuestaComprension(datos: {
  * Calcular ajuste de dificultad tras una sesion.
  * Registra la decision con trazabilidad (por que).
  *
- * Formula v2:
- *   session_score = 0.55 * comprension + 0.25 * wpm_ratio + 0.10 * ritmo_mejora + 0.10 * estabilidad
+ * Formula:
+ *   session_score = 0.65 * comprension + 0.25 * ritmo_normalizado + 0.10 * estabilidad
  *
  * Reglas:
  *   - score >= 80%: subir
@@ -195,10 +195,10 @@ export async function calcularAjusteDificultad(datos: {
       }
     }
 
+    const ritmoNormalizado = Math.max(0, Math.min(1, (wpmRatio * 0.7) + (ritmoMejora * 0.3)));
     const sessionScoreBase = calcularSessionScore({
       comprension: datos.comprensionScore,
-      wpmRatio,
-      ritmoMejora,
+      ritmoNormalizado,
       estabilidad,
     });
 
@@ -264,7 +264,7 @@ export async function calcularAjusteDificultad(datos: {
       razon: razonFinal,
       evidencia: {
         comprensionScore: datos.comprensionScore,
-        ritmoNormalizado: Math.round(ritmoMejora * 100) / 100,
+        ritmoNormalizado: Math.round(ritmoNormalizado * 100) / 100,
         estabilidad: Math.round(estabilidad * 100) / 100,
         sessionScore,
         ajusteManual: ajusteManualTipo,

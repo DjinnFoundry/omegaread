@@ -51,15 +51,32 @@ export async function crearEstudiante(formData: FormData) {
   return { ok: true, estudiante };
 }
 
-/** Obtener estudiantes del padre actual */
+/** Obtener estudiantes del padre actual (sin campos sensibles) */
 export async function obtenerEstudiantes() {
   const db = await getDb();
   const padre = await requireAuth();
-
-  return db.query.students.findMany({
+  const resultados = await db.query.students.findMany({
     where: eq(students.parentId, padre.id),
     orderBy: [students.creadoEn],
+    columns: {
+      id: true,
+      nombre: true,
+      fechaNacimiento: true,
+      idioma: true,
+      dialecto: true,
+      curso: true,
+      nivelLectura: true,
+      comprensionScore: true,
+      baselineCompletado: true,
+      baselineConfianza: true,
+      perfilCompleto: true,
+      intereses: true,
+      creadoEn: true,
+      actualizadoEn: true,
+    },
   });
+
+  return resultados;
 }
 
 /** Obtener un estudiante por ID (verificando pertenencia al padre) */

@@ -11,6 +11,10 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/**',
       '**/.next/**',
+      '**/.next.bak*/**',
+      '**/.open-next/**',
+      '**/.wrangler/**',
+      '**/output/**',
       '**/dist/**',
       '**/.turbo/**',
       '**/next-env.d.ts',

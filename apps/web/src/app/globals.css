@@ -30,6 +30,10 @@
 
   /* Tipografia */
   --font-principal: var(--font-nunito), 'Nunito', system-ui, sans-serif;
+  /* Lectura dinamica */
+  --reading-font-size: 20px;
+  --reading-font-size-min: 16px;
+  --reading-font-size-max: 28px;
 }
 
 /* Reset para app infantil */
