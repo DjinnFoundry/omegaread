@@ -7,7 +7,6 @@ import {
   buildRewritePrompt,
   calcularNivelReescritura,
   getNivelConfig,
-  NIVELES_CONFIG,
   type RewritePromptInput,
 } from '@/lib/ai/prompts';
 
@@ -15,7 +14,8 @@ import {
 
 function crearRewriteInput(overrides: Partial<RewritePromptInput> = {}): RewritePromptInput {
   return {
-    historiaOriginal: 'Luna era una gatita curiosa. Un dia fue al bosque. Encontro un rio y vio peces.',
+    historiaOriginal:
+      'Luna era una gatita curiosa. Un dia fue al bosque. Encontro un rio y vio peces.',
     tituloOriginal: 'El viaje de Luna',
     nivelActual: 2,
     direccion: 'mas_facil',

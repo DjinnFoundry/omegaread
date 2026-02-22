@@ -20,6 +20,7 @@ import {
 } from '@/server/actions/lectura-flow-actions';
 import {
   generarHistoria,
+  generarPreguntasSesion,
   finalizarSesionLectura,
   reescribirHistoria,
   analizarLecturaAudio,
@@ -82,10 +83,16 @@ export default function LecturaPage() {
   const [errorGeneracion, setErrorGeneracion] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
 
+  // Estado de generacion de preguntas en background (por sesion)
+  const [preguntasGenerandoPara, setPreguntasGenerandoPara] = useState<string | null>(null);
+  const [errorPreguntas, setErrorPreguntas] = useState<string | null>(null);
+
   // Sprint 4: estado de reescritura
   const [reescribiendo, setReescribiendo] = useState(false);
   const [ajusteUsado, setAjusteUsado] = useState(false);
   const [rewriteCount, setRewriteCount] = useState(0);
+
+  const preguntasCargando = !!sesionActiva && preguntasGenerandoPara === sesionActiva.sessionId;
 
   const cargarEstado = useCallback(async () => {
     if (!estudiante) {
@@ -116,73 +123,142 @@ export default function LecturaPage() {
 
   // ─── Handlers de sesion ───
 
-  const handleStartReading = useCallback(async (topicSlug: string, forceRegenerate?: boolean) => {
-    if (!estudiante || generando) return;
-    setGenerando(true);
-    setErrorGeneracion(null);
-    setPasoSesion('generando');
+  const cargarPreguntasDeSesion = useCallback(
+    async (sessionId: string, storyId: string, studentId: string) => {
+      setPreguntasGenerandoPara(sessionId);
+      setErrorPreguntas(null);
 
-    try {
-      const result = await generarHistoria({
-        studentId: estudiante.id,
-        topicSlug,
-        forceRegenerate,
-      });
+      try {
+        const qResult = await generarPreguntasSesion({
+          sessionId,
+          studentId,
+          storyId,
+        });
 
-      if (!result.ok) {
-        setErrorGeneracion(result.error);
+        if (!qResult.ok) {
+          setErrorPreguntas(qResult.error || 'No pudimos preparar tus preguntas');
+          return;
+        }
+
+        setSesionActiva((prev) => {
+          if (!prev || prev.sessionId !== sessionId) return prev;
+          return { ...prev, preguntas: qResult.preguntas };
+        });
+      } catch {
+        setErrorPreguntas('No pudimos preparar tus preguntas. Intentalo de nuevo.');
+      } finally {
+        setPreguntasGenerandoPara((current) => (current === sessionId ? null : current));
+      }
+    },
+    [],
+  );
+
+  const handleStartReading = useCallback(
+    async (topicSlug: string, forceRegenerate?: boolean) => {
+      if (!estudiante || generando) return;
+      setGenerando(true);
+      setErrorGeneracion(null);
+      setPasoSesion('generando');
+
+      try {
+        const result = await generarHistoria({
+          studentId: estudiante.id,
+          topicSlug,
+          forceRegenerate,
+        });
+
+        if (!result.ok) {
+          setErrorGeneracion(result.error);
+          setPasoSesion('elegir-topic');
+          return;
+        }
+
+        const tienePreguntas = result.preguntas && result.preguntas.length > 0;
+
+        setSesionActiva({
+          sessionId: result.sessionId,
+          storyId: result.storyId,
+          fromCache: result.fromCache ?? false,
+          historia: result.historia,
+          preguntas: tienePreguntas ? result.preguntas : [],
+        });
+        setAjusteUsado(false);
+        setErrorPreguntas(null);
+        if (tienePreguntas) {
+          setPreguntasGenerandoPara(null);
+        }
+        setPasoSesion('leyendo');
+
+        // Si no hay preguntas (generacion nueva), generarlas en background
+        if (!tienePreguntas) {
+          void cargarPreguntasDeSesion(result.sessionId, result.storyId, estudiante.id);
+        }
+      } catch {
+        setErrorGeneracion('No pudimos crear tu historia. Intentalo de nuevo.');
         setPasoSesion('elegir-topic');
+      } finally {
+        setGenerando(false);
+      }
+    },
+    [estudiante, generando, cargarPreguntasDeSesion],
+  );
+
+  const handleTerminarLectura = useCallback(
+    async (tiempoMs: number, wpm: WpmData) => {
+      setTiempoLectura(tiempoMs);
+      setWpmData(wpm);
+
+      // Si las preguntas ya estan listas, ir directo
+      if (sesionActiva && sesionActiva.preguntas.length > 0) {
+        setPasoSesion('preguntas');
         return;
       }
 
-      setSesionActiva({
-        sessionId: result.sessionId,
-        storyId: result.storyId,
-        fromCache: result.fromCache ?? false,
-        historia: result.historia,
-        preguntas: result.preguntas,
-      });
-      setAjusteUsado(false);
-      setPasoSesion('leyendo');
-    } catch {
-      setErrorGeneracion('No pudimos crear tu historia. Intentalo de nuevo.');
-      setPasoSesion('elegir-topic');
-    } finally {
-      setGenerando(false);
-    }
-  }, [estudiante, generando]);
-
-  const handleTerminarLectura = useCallback((tiempoMs: number, wpm: WpmData) => {
-    setTiempoLectura(tiempoMs);
-    setWpmData(wpm);
-    setPasoSesion('preguntas');
-  }, []);
-
-  const handleAnalizarAudio = useCallback(async (payload: AudioAnalisisPayload) => {
-    if (!estudiante || !sesionActiva) {
-      return { ok: false as const, error: 'Sesion de lectura no activa' };
-    }
-
-    try {
-      const result = await analizarLecturaAudio({
-        sessionId: sesionActiva.sessionId,
-        studentId: estudiante.id,
-        storyId: sesionActiva.storyId,
-        audioBase64: payload.audioBase64,
-        mimeType: payload.mimeType,
-        tiempoVozActivaMs: payload.tiempoVozActivaMs,
-        tiempoTotalMs: payload.tiempoTotalMs,
-      });
-
-      if (!result.ok) {
-        return { ok: false as const, error: result.error };
+      // Si las preguntas aun se estan generando en background, esperar
+      if (preguntasCargando) {
+        setPasoSesion('preguntas');
+        return;
       }
 
-      return { ok: true as const, analisis: result.analisis };
-    } catch {
-      return { ok: false as const, error: 'No se pudo analizar el audio' };
-    }
-  }, [estudiante, sesionActiva]);
+      // Si no hay preguntas y no se estan cargando, reintentar
+      if (estudiante && sesionActiva) {
+        setPasoSesion('preguntas');
+        await cargarPreguntasDeSesion(sesionActiva.sessionId, sesionActiva.storyId, estudiante.id);
+      } else {
+        setPasoSesion('preguntas');
+      }
+    },
+    [sesionActiva, preguntasCargando, estudiante, cargarPreguntasDeSesion],
+  );
+
+  const handleAnalizarAudio = useCallback(
+    async (payload: AudioAnalisisPayload) => {
+      if (!estudiante || !sesionActiva) {
+        return { ok: false as const, error: 'Sesion de lectura no activa' };
+      }
+
+      try {
+        const result = await analizarLecturaAudio({
+          sessionId: sesionActiva.sessionId,
+          studentId: estudiante.id,
+          storyId: sesionActiva.storyId,
+          audioBase64: payload.audioBase64,
+          mimeType: payload.mimeType,
+          tiempoVozActivaMs: payload.tiempoVozActivaMs,
+          tiempoTotalMs: payload.tiempoTotalMs,
+        });
+
+        if (!result.ok) {
+          return { ok: false as const, error: result.error };
+        }
+
+        return { ok: true as const, analisis: result.analisis };
+      } catch {
+        return { ok: false as const, error: 'No se pudo analizar el audio' };
+      }
+    },
+    [estudiante, sesionActiva],
+  );
 
   // Handler de regeneracion (cuando la historia viene de cache y el nino quiere otra)
   const handleRegenerar = useCallback(() => {
@@ -191,75 +267,80 @@ export default function LecturaPage() {
   }, [sesionActiva, handleStartReading]);
 
   // Sprint 4: handler de ajuste manual (reescritura)
-  const handleAjusteManual = useCallback(async (
-    direccion: 'mas_facil' | 'mas_desafiante',
-    tiempoLecturaMs: number,
-  ) => {
-    if (!estudiante || !sesionActiva || reescribiendo || ajusteUsado) return;
+  const handleAjusteManual = useCallback(
+    async (direccion: 'mas_facil' | 'mas_desafiante', tiempoLecturaMs: number) => {
+      if (!estudiante || !sesionActiva || reescribiendo || ajusteUsado) return;
 
-    setReescribiendo(true);
+      setReescribiendo(true);
 
-    try {
-      const result = await reescribirHistoria({
-        sessionId: sesionActiva.sessionId,
-        studentId: estudiante.id,
-        storyId: sesionActiva.storyId,
-        direccion,
-        tiempoLecturaAntesDePulsar: tiempoLecturaMs,
-      });
+      try {
+        const result = await reescribirHistoria({
+          sessionId: sesionActiva.sessionId,
+          studentId: estudiante.id,
+          storyId: sesionActiva.storyId,
+          direccion,
+          tiempoLecturaAntesDePulsar: tiempoLecturaMs,
+        });
 
-      if (!result.ok) {
+        if (!result.ok) {
+          // Fallo silencioso: el nino puede seguir leyendo la historia original
+          return;
+        }
+
+        setSesionActiva((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            storyId: result.storyId,
+            historia: result.historia,
+            preguntas: result.preguntas,
+          };
+        });
+        setPreguntasGenerandoPara(null);
+        setErrorPreguntas(null);
+        setAjusteUsado(true);
+        setRewriteCount((c) => c + 1);
+      } catch {
         // Fallo silencioso: el nino puede seguir leyendo la historia original
-        return;
+      } finally {
+        setReescribiendo(false);
       }
-
-      setSesionActiva(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          storyId: result.storyId,
-          historia: result.historia,
-          preguntas: result.preguntas,
-        };
-      });
-      setAjusteUsado(true);
-      setRewriteCount(c => c + 1);
-    } catch {
-      // Fallo silencioso: el nino puede seguir leyendo la historia original
-    } finally {
-      setReescribiendo(false);
-    }
-  }, [estudiante, sesionActiva, reescribiendo, ajusteUsado]);
+    },
+    [estudiante, sesionActiva, reescribiendo, ajusteUsado],
+  );
 
   const [errorFinalizacion, setErrorFinalizacion] = useState<string | null>(null);
 
-  const handleRespuestasCompletas = useCallback(async (respuestas: RespuestaPregunta[]) => {
-    if (!estudiante || !sesionActiva) return;
-    setErrorFinalizacion(null);
+  const handleRespuestasCompletas = useCallback(
+    async (respuestas: RespuestaPregunta[]) => {
+      if (!estudiante || !sesionActiva) return;
+      setErrorFinalizacion(null);
 
-    try {
-      const result = await finalizarSesionLectura({
-        sessionId: sesionActiva.sessionId,
-        studentId: estudiante.id,
-        tiempoLecturaMs: tiempoLectura,
-        respuestas,
-        wpmPromedio: wpmData?.wpmPromedio ?? null,
-        wpmPorPagina: wpmData?.wpmPorPagina ?? null,
-        totalPaginas: wpmData?.totalPaginas ?? null,
-        audioAnalisis: wpmData?.audioAnalisis ?? undefined,
-      });
+      try {
+        const result = await finalizarSesionLectura({
+          sessionId: sesionActiva.sessionId,
+          studentId: estudiante.id,
+          tiempoLecturaMs: tiempoLectura,
+          respuestas,
+          wpmPromedio: wpmData?.wpmPromedio ?? null,
+          wpmPorPagina: wpmData?.wpmPorPagina ?? null,
+          totalPaginas: wpmData?.totalPaginas ?? null,
+          audioAnalisis: wpmData?.audioAnalisis ?? undefined,
+        });
 
-      if (result.ok) {
-        setResultadoSesion(result.resultado);
-        setPasoSesion('resultado');
-        void recargarProgreso();
-      } else {
-        setErrorFinalizacion('No pudimos guardar tus respuestas. Intentalo de nuevo.');
+        if (result.ok) {
+          setResultadoSesion(result.resultado);
+          setPasoSesion('resultado');
+          void recargarProgreso();
+        } else {
+          setErrorFinalizacion('No pudimos guardar tus respuestas. Intentalo de nuevo.');
+        }
+      } catch {
+        setErrorFinalizacion('Hubo un error de conexion. Intentalo de nuevo.');
       }
-    } catch {
-      setErrorFinalizacion('Hubo un error de conexion. Intentalo de nuevo.');
-    }
-  }, [estudiante, sesionActiva, tiempoLectura, wpmData, recargarProgreso]);
+    },
+    [estudiante, sesionActiva, tiempoLectura, wpmData, recargarProgreso],
+  );
 
   const handleLeerOtra = useCallback(() => {
     setSesionActiva(null);
@@ -270,6 +351,8 @@ export default function LecturaPage() {
     setAjusteUsado(false);
     setReescribiendo(false);
     setRewriteCount(0);
+    setPreguntasGenerandoPara(null);
+    setErrorPreguntas(null);
     setPasoSesion('elegir-topic');
     // Recargar estado por si el nivel cambio
     void cargarEstado();
@@ -386,12 +469,8 @@ export default function LecturaPage() {
       <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
         <div className="text-center animate-pulse-brillo">
           <span className="text-5xl animate-bounce-suave">✨</span>
-          <p className="mt-4 text-lg font-semibold text-texto">
-            Creando tu historia...
-          </p>
-          <p className="mt-1 text-sm text-texto-suave">
-            Esto tomara unos segundos
-          </p>
+          <p className="mt-4 text-lg font-semibold text-texto">Creando tu historia...</p>
+          <p className="mt-1 text-sm text-texto-suave">Esto tomara unos segundos</p>
         </div>
       </main>
     );
@@ -422,6 +501,49 @@ export default function LecturaPage() {
 
   // Preguntas
   if (pasoSesion === 'preguntas' && sesionActiva) {
+    // Si las preguntas aun no estan listas, mostrar loading o error con reintento
+    if (sesionActiva.preguntas.length === 0) {
+      if (preguntasCargando) {
+        return (
+          <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
+            <div className="text-center animate-pulse-brillo">
+              <span className="text-5xl animate-bounce-suave">🤔</span>
+              <p className="mt-4 text-lg font-semibold text-texto">Preparando tus preguntas...</p>
+              <p className="mt-1 text-sm text-texto-suave">Solo un momento</p>
+            </div>
+          </main>
+        );
+      }
+
+      return (
+        <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
+          <div className="w-full max-w-md rounded-2xl border border-coral/20 bg-error-suave p-5 text-center">
+            <span className="text-4xl">🧩</span>
+            <p className="mt-3 text-base font-semibold text-texto">
+              No pudimos preparar las preguntas
+            </p>
+            <p className="mt-2 text-sm text-texto-suave">
+              {errorPreguntas ?? 'Intenta de nuevo para continuar la sesion.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                if (!estudiante) return;
+                void cargarPreguntasDeSesion(
+                  sesionActiva.sessionId,
+                  sesionActiva.storyId,
+                  estudiante.id,
+                );
+              }}
+              className="mt-4 rounded-2xl bg-coral px-5 py-2.5 text-sm font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
+            >
+              Reintentar preguntas
+            </button>
+          </div>
+        </main>
+      );
+    }
+
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
         {errorFinalizacion && (

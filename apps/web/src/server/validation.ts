@@ -263,6 +263,13 @@ export const reescribirHistoriaSchema = z.object({
   tiempoLecturaAntesDePulsar: z.number().int().nonnegative(),
 });
 
+/** Schema: generarPreguntasSesion */
+export const generarPreguntasSesionSchema = z.object({
+  sessionId: uuid,
+  studentId: uuid,
+  storyId: uuid,
+});
+
 /** Schema: registrarAjusteManual */
 export const registrarAjusteManualSchema = z.object({
   studentId: uuid,

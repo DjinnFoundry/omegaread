@@ -27,8 +27,9 @@ import {
   finalizarSesionLecturaSchema,
   reescribirHistoriaSchema,
   analizarLecturaAudioSchema,
+  generarPreguntasSesionSchema,
 } from '../validation';
-import { generateStory, rewriteStory } from '@/lib/ai/story-generator';
+import { rewriteStory, generateStoryOnly, generateQuestions } from '@/lib/ai/story-generator';
 import { getOpenAIClient, hasOpenAIKey, OpenAIKeyMissingError } from '@/lib/ai/openai';
 import {
   getNivelConfig,
@@ -89,24 +90,16 @@ function normalizarToken(valor: string): string {
 }
 
 function tokenizarTexto(valor: string): string[] {
-  return valor
-    .split(/\s+/)
-    .map(normalizarToken)
-    .filter(Boolean);
+  return valor.split(/\s+/).map(normalizarToken).filter(Boolean);
 }
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function alinearPalabrasAlTexto(params: {
-  textoObjetivo: string;
-  palabrasTranscritas: string[];
-}) {
+function alinearPalabrasAlTexto(params: { textoObjetivo: string; palabrasTranscritas: string[] }) {
   const objetivo = tokenizarTexto(params.textoObjetivo);
-  const habladas = params.palabrasTranscritas
-    .map(normalizarToken)
-    .filter(Boolean);
+  const habladas = params.palabrasTranscritas.map(normalizarToken).filter(Boolean);
 
   let cursor = 0;
   let totalAlineadas = 0;
@@ -157,12 +150,7 @@ async function contarHistoriasHoy(studentId: string): Promise<number> {
   const result = await db
     .select({ count: sql<number>`count(*)` })
     .from(generatedStories)
-    .where(
-      and(
-        eq(generatedStories.studentId, studentId),
-        gte(generatedStories.creadoEn, hoy),
-      )
-    );
+    .where(and(eq(generatedStories.studentId, studentId), gte(generatedStories.creadoEn, hoy)));
 
   return Number(result[0]?.count ?? 0);
 }
@@ -187,10 +175,7 @@ export async function analizarLecturaAudio(datos: {
   await requireStudentOwnership(validado.studentId);
 
   const sesion = await db.query.sessions.findFirst({
-    where: and(
-      eq(sessions.id, validado.sessionId),
-      eq(sessions.studentId, validado.studentId),
-    ),
+    where: and(eq(sessions.id, validado.sessionId), eq(sessions.studentId, validado.studentId)),
     with: {
       story: {
         columns: {
@@ -246,11 +231,15 @@ export async function analizarLecturaAudio(datos: {
   let errorTranscripcion: string | null = null;
   const transcribeModel = process.env.LLM_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
-  if (hasOpenAIKey()) {
+  if (await hasOpenAIKey()) {
     try {
-      const client = getOpenAIClient();
+      const client = await getOpenAIClient();
       const mimeType = validado.mimeType || 'audio/webm';
-      const extension = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const extension = mimeType.includes('wav')
+        ? 'wav'
+        : mimeType.includes('mp4')
+          ? 'mp4'
+          : 'webm';
       const file = new File([audioBuffer], `lectura.${extension}`, { type: mimeType });
 
       try {
@@ -263,9 +252,11 @@ export async function analizarLecturaAudio(datos: {
         });
 
         transcripcionTexto = String((verbose as { text?: string }).text ?? '').trim();
-        const words = (verbose as { words?: Array<{ word?: string; start?: number; end?: number }> }).words;
+        const words = (
+          verbose as { words?: Array<{ word?: string; start?: number; end?: number }> }
+        ).words;
         if (Array.isArray(words) && words.length > 0) {
-          palabrasConTiempo = words.map(w => ({
+          palabrasConTiempo = words.map((w) => ({
             palabra: String(w.word ?? ''),
             inicioSeg: typeof w.start === 'number' ? w.start : undefined,
             finSeg: typeof w.end === 'number' ? w.end : undefined,
@@ -292,9 +283,10 @@ export async function analizarLecturaAudio(datos: {
     errorTranscripcion = 'Sin API key de transcripcion; usando analisis de senal.';
   }
 
-  const palabrasTranscritas = palabrasConTiempo.length > 0
-    ? palabrasConTiempo.map(p => p.palabra)
-    : tokenizarTexto(transcripcionTexto);
+  const palabrasTranscritas =
+    palabrasConTiempo.length > 0
+      ? palabrasConTiempo.map((p) => p.palabra)
+      : tokenizarTexto(transcripcionTexto);
 
   const minutosVozActiva = validado.tiempoVozActivaMs / 60_000;
   const pauseRatio = clamp01(
@@ -308,13 +300,15 @@ export async function analizarLecturaAudio(datos: {
       textoObjetivo: sesion.story.contenido,
       palabrasTranscritas,
     });
-    const wpmUtil = minutosVozActiva > 0
-      ? Math.round((alineacion.totalUnicasAlineadas / minutosVozActiva) * 10) / 10
-      : 0;
+    const wpmUtil =
+      minutosVozActiva > 0
+        ? Math.round((alineacion.totalUnicasAlineadas / minutosVozActiva) * 10) / 10
+        : 0;
     const scoreVoz = clamp01(validado.tiempoVozActivaMs / 25_000);
     const scorePrecision = clamp01(alineacion.precisionLectura / 0.75);
     const scoreCobertura = clamp01(alineacion.coberturaTexto / 0.65);
-    const qualityScore = Math.round((scoreVoz * 0.35 + scorePrecision * 0.4 + scoreCobertura * 0.25) * 100) / 100;
+    const qualityScore =
+      Math.round((scoreVoz * 0.35 + scorePrecision * 0.4 + scoreCobertura * 0.25) * 100) / 100;
 
     const motivos: string[] = [];
     if (validado.tiempoVozActivaMs < 20_000) motivos.push('poca voz activa');
@@ -323,7 +317,8 @@ export async function analizarLecturaAudio(datos: {
     if (alineacion.coberturaTexto < 0.2) motivos.push('cobertura de texto baja');
     if (errorTranscripcion) motivos.push('transcripcion parcial');
 
-    const confiable = qualityScore >= 0.55 && motivos.filter(m => m !== 'transcripcion parcial').length === 0;
+    const confiable =
+      qualityScore >= 0.55 && motivos.filter((m) => m !== 'transcripcion parcial').length === 0;
 
     analisis = {
       wpmUtil,
@@ -340,31 +335,32 @@ export async function analizarLecturaAudio(datos: {
     };
   } else {
     // Fallback puro por senal de audio (sin transcripcion util).
-    const wpmEstimadoPorSenal = minutosVozActiva > 0 && totalPalabrasObjetivo > 0
-      ? Math.round((totalPalabrasObjetivo / minutosVozActiva) * 10) / 10
-      : 0;
-    const duracionEsperadaMs = totalPalabrasObjetivo > 0
-      ? (totalPalabrasObjetivo / 85) * 60_000
-      : 0;
-    const coberturaProxy = duracionEsperadaMs > 0
-      ? clamp01(validado.tiempoVozActivaMs / duracionEsperadaMs)
-      : 0;
+    const wpmEstimadoPorSenal =
+      minutosVozActiva > 0 && totalPalabrasObjetivo > 0
+        ? Math.round((totalPalabrasObjetivo / minutosVozActiva) * 10) / 10
+        : 0;
+    const duracionEsperadaMs =
+      totalPalabrasObjetivo > 0 ? (totalPalabrasObjetivo / 85) * 60_000 : 0;
+    const coberturaProxy =
+      duracionEsperadaMs > 0 ? clamp01(validado.tiempoVozActivaMs / duracionEsperadaMs) : 0;
     const precisionProxy = wpmEstimadoPorSenal >= 35 && wpmEstimadoPorSenal <= 220 ? 0.6 : 0.35;
     const scoreVoz = clamp01(validado.tiempoVozActivaMs / 20_000);
     const scoreCobertura = clamp01(coberturaProxy / 0.6);
-    const scoreRitmo = wpmEstimadoPorSenal > 0
-      ? clamp01(1 - Math.abs(wpmEstimadoPorSenal - 95) / 120)
-      : 0;
-    const qualityScore = Math.round((scoreVoz * 0.35 + scoreCobertura * 0.35 + scoreRitmo * 0.30) * 100) / 100;
+    const scoreRitmo =
+      wpmEstimadoPorSenal > 0 ? clamp01(1 - Math.abs(wpmEstimadoPorSenal - 95) / 120) : 0;
+    const qualityScore =
+      Math.round((scoreVoz * 0.35 + scoreCobertura * 0.35 + scoreRitmo * 0.3) * 100) / 100;
 
     const motivos: string[] = [];
     if (validado.tiempoVozActivaMs < 15_000) motivos.push('poca voz activa');
-    if (wpmEstimadoPorSenal > 0 && (wpmEstimadoPorSenal < 25 || wpmEstimadoPorSenal > 260)) motivos.push('ritmo fuera de rango');
+    if (wpmEstimadoPorSenal > 0 && (wpmEstimadoPorSenal < 25 || wpmEstimadoPorSenal > 260))
+      motivos.push('ritmo fuera de rango');
     if (coberturaProxy < 0.25) motivos.push('voz activa insuficiente para el texto');
     if (pauseRatio > 0.85) motivos.push('muchas pausas');
     if (errorTranscripcion) motivos.push('sin transcripcion util');
 
-    const confiable = qualityScore >= 0.55 && motivos.filter(m => m !== 'sin transcripcion util').length === 0;
+    const confiable =
+      qualityScore >= 0.55 && motivos.filter((m) => m !== 'sin transcripcion util').length === 0;
 
     analisis = {
       wpmUtil: wpmEstimadoPorSenal,
@@ -410,7 +406,7 @@ function skillDominada(slug: string, map: Map<string, SkillProgressRow>): boolea
 
 function skillDesbloqueada(skill: SkillDef, map: Map<string, SkillProgressRow>): boolean {
   if (skill.prerequisitos.length === 0) return true;
-  return skill.prerequisitos.every(req => skillDominada(req, map));
+  return skill.prerequisitos.every((req) => skillDominada(req, map));
 }
 
 function ordenarSkillsPorRuta(a: SkillDef, b: SkillDef): number {
@@ -426,13 +422,13 @@ function elegirSiguienteSkillTechTree(params: {
   const { edadAnos, intereses, progresoMap } = params;
   const skillsEdad = getSkillsPorEdad(edadAnos).sort(ordenarSkillsPorRuta);
 
-  const poolIntereses = skillsEdad.filter(s => intereses.includes(s.dominio));
+  const poolIntereses = skillsEdad.filter((s) => intereses.includes(s.dominio));
   const pools = poolIntereses.length > 0 ? [poolIntereses, skillsEdad] : [skillsEdad];
 
   for (const pool of pools) {
     const desbloqueadasPendientes = pool
-      .filter(skill => skillDesbloqueada(skill, progresoMap))
-      .filter(skill => !skillDominada(skill.slug, progresoMap))
+      .filter((skill) => skillDesbloqueada(skill, progresoMap))
+      .filter((skill) => !skillDominada(skill.slug, progresoMap))
       .sort(ordenarSkillsPorRuta);
 
     if (desbloqueadasPendientes.length > 0) {
@@ -469,40 +465,45 @@ function construirContextoTechTree(params: {
   const skillsDominio = getSkillsDeDominio(skill.dominio).sort(ordenarSkillsPorRuta);
 
   const prerequisitosDominados = skill.prerequisitos
-    .filter(req => skillDominada(req, progresoMap))
-    .map(req => getSkillBySlug(req)?.nombre ?? req);
+    .filter((req) => skillDominada(req, progresoMap))
+    .map((req) => getSkillBySlug(req)?.nombre ?? req);
 
   const prerequisitosPendientes = skill.prerequisitos
-    .filter(req => !skillDominada(req, progresoMap))
-    .map(req => getSkillBySlug(req)?.nombre ?? req);
+    .filter((req) => !skillDominada(req, progresoMap))
+    .map((req) => getSkillBySlug(req)?.nombre ?? req);
 
   const skillsDominadasRelacionadas = skillsDominio
-    .filter(s => s.slug !== skill.slug && skillDominada(s.slug, progresoMap))
+    .filter((s) => s.slug !== skill.slug && skillDominada(s.slug, progresoMap))
     .slice(0, 3)
-    .map(s => s.nombre);
+    .map((s) => s.nombre);
 
   const skillsEnProgresoRelacionadas = skillsDominio
-    .filter(s => s.slug !== skill.slug)
-    .filter(s => {
+    .filter((s) => s.slug !== skill.slug)
+    .filter((s) => {
       const row = progresoMap.get(s.slug);
-      return !!row && row.totalIntentos > 0 && !skillDominada(s.slug, progresoMap) && row.nivelMastery >= 0.6;
+      return (
+        !!row &&
+        row.totalIntentos > 0 &&
+        !skillDominada(s.slug, progresoMap) &&
+        row.nivelMastery >= 0.6
+      );
     })
     .slice(0, 3)
-    .map(s => s.nombre);
+    .map((s) => s.nombre);
 
   const skillsAReforzarRelacionadas = skillsDominio
-    .filter(s => s.slug !== skill.slug)
-    .filter(s => {
+    .filter((s) => s.slug !== skill.slug)
+    .filter((s) => {
       const row = progresoMap.get(s.slug);
       return !!row && row.totalIntentos >= INTENTOS_MIN_REFORZAR && row.nivelMastery < 0.6;
     })
     .slice(0, 3)
-    .map(s => s.nombre);
+    .map((s) => s.nombre);
 
   const siguienteSkillSugerida = skillsDominio
-    .filter(s => s.slug !== skill.slug)
-    .filter(s => skillDesbloqueada(s, progresoMap))
-    .filter(s => !skillDominada(s.slug, progresoMap))
+    .filter((s) => s.slug !== skill.slug)
+    .filter((s) => skillDesbloqueada(s, progresoMap))
+    .filter((s) => !skillDominada(s.slug, progresoMap))
     .sort(ordenarSkillsPorRuta)[0]?.nombre;
 
   const rowActual = progresoMap.get(skill.slug);
@@ -536,10 +537,11 @@ export async function generarHistoria(datos: {
   const { estudiante } = await requireStudentOwnership(validado.studentId);
 
   // 1. Verificar API key
-  if (!hasOpenAIKey()) {
+  if (!(await hasOpenAIKey())) {
     return {
       ok: false as const,
-      error: 'Para generar historias personalizadas necesitas configurar una API key de OpenAI. Anade OPENAI_API_KEY en el archivo .env.local y reinicia la app.',
+      error:
+        'Para generar historias personalizadas necesitas configurar una API key de OpenAI. Anade OPENAI_API_KEY en el archivo .env.local y reinicia la app.',
       code: 'NO_API_KEY' as const,
     };
   }
@@ -582,12 +584,14 @@ export async function generarHistoria(datos: {
   if (!topicSlug) {
     // Fallback: topic apropiado para edad si no se pudo resolver por skill.
     const topicsPorEdad = TOPICS_SEED.filter(
-      t => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
+      (t) => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
     );
-    topicSlug = topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ?? 'como-funciona-corazon';
+    topicSlug =
+      topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ??
+      'como-funciona-corazon';
   }
 
-  const topic = TOPICS_SEED.find(t => t.slug === topicSlug);
+  const topic = TOPICS_SEED.find((t) => t.slug === topicSlug);
   if (!topic) {
     return { ok: false as const, error: 'Topic no encontrado', code: 'GENERATION_FAILED' as const };
   }
@@ -648,7 +652,7 @@ export async function generarHistoria(datos: {
         },
         preguntas: cached.questions
           .sort((a, b) => a.orden - b.orden)
-          .map(p => ({
+          .map((p) => ({
             id: p.id,
             tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
             pregunta: p.pregunta,
@@ -670,18 +674,18 @@ export async function generarHistoria(datos: {
     limit: 5,
     columns: { titulo: true },
   });
-  const titulosPrevios = historiasPrevias.map(h => h.titulo);
+  const titulosPrevios = historiasPrevias.map((h) => h.titulo);
 
   // 5. Generar historia
   const skill = getSkillBySlug(topicSlug);
-  const dominio = skill ? DOMINIOS.find(d => d.slug === skill.dominio) : undefined;
+  const dominio = skill ? DOMINIOS.find((d) => d.slug === skill.dominio) : undefined;
   const techTreeContext = skill
     ? construirContextoTechTree({
-      skill,
-      progresoMap,
-      edadAnos,
-      nivel,
-    })
+        skill,
+        progresoMap,
+        edadAnos,
+        nivel,
+      })
     : undefined;
 
   const promptInput: PromptInput = {
@@ -693,7 +697,7 @@ export async function generarHistoria(datos: {
     dominio: dominio?.nombre,
     modo: getModoFromCategoria(topic.categoria),
     intereses: intereses
-      .map(slug => CATEGORIAS.find(c => c.slug === slug)?.nombre)
+      .map((slug) => CATEGORIAS.find((c) => c.slug === slug)?.nombre)
       .filter((n): n is string => !!n)
       .slice(0, 3),
     personajesFavoritos: estudiante.personajesFavoritos ?? undefined,
@@ -702,7 +706,8 @@ export async function generarHistoria(datos: {
     techTreeContext,
   };
 
-  const result = await generateStory(promptInput);
+  // 5. Generar SOLO la historia (sin preguntas, mas rapido)
+  const result = await generateStoryOnly(promptInput);
 
   if (!result.ok) {
     return {
@@ -714,7 +719,7 @@ export async function generarHistoria(datos: {
 
   const { story } = result;
 
-  // 5. Guardar historia en DB
+  // 6. Guardar historia en DB (sin preguntas todavia)
   const [storyRow] = await db
     .insert(generatedStories)
     .values({
@@ -725,27 +730,10 @@ export async function generarHistoria(datos: {
       nivel,
       metadata: story.metadata,
       modeloGeneracion: story.modelo,
-      promptVersion: 'v2-tree',
+      promptVersion: 'v3-split',
       aprobadaQA: story.aprobadaQA,
       motivoRechazo: story.motivoRechazo ?? null,
     })
-    .returning();
-
-  // 6. Guardar preguntas
-  const preguntasInsert = story.preguntas.map((p, idx) => ({
-    storyId: storyRow.id,
-    tipo: p.tipo,
-    pregunta: p.pregunta,
-    opciones: p.opciones,
-    respuestaCorrecta: p.respuestaCorrecta,
-    explicacion: p.explicacion,
-    dificultad: p.dificultadPregunta,
-    orden: idx,
-  }));
-
-  const preguntasRows = await db
-    .insert(storyQuestions)
-    .values(preguntasInsert)
     .returning();
 
   // 7. Crear sesion de lectura
@@ -771,6 +759,7 @@ export async function generarHistoria(datos: {
     })
     .returning();
 
+  // Preguntas se generan por separado (en background mientras el nino lee)
   return {
     ok: true as const,
     sessionId: sesion.id,
@@ -785,7 +774,151 @@ export async function generarHistoria(datos: {
       topicNombre: topic.nombre,
       tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
     },
-    preguntas: preguntasRows.map(p => ({
+    preguntas: undefined,
+  };
+}
+
+/**
+ * Genera preguntas de comprension para una historia existente.
+ * Se llama en background mientras el nino lee, para no bloquear la UX.
+ */
+export async function generarPreguntasSesion(datos: {
+  sessionId: string;
+  studentId: string;
+  storyId: string;
+}) {
+  const db = await getDb();
+  const validado = generarPreguntasSesionSchema.parse(datos);
+  await requireStudentOwnership(validado.studentId);
+
+  // 1. Verificar sesion y consistencia session/story/student
+  const sesion = await db.query.sessions.findFirst({
+    where: and(eq(sessions.id, validado.sessionId), eq(sessions.studentId, validado.studentId)),
+    columns: {
+      id: true,
+      storyId: true,
+    },
+  });
+
+  if (!sesion) {
+    return {
+      ok: false as const,
+      error: 'Sesion no encontrada',
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  if (!sesion.storyId || sesion.storyId !== validado.storyId) {
+    return {
+      ok: false as const,
+      error: 'La historia no corresponde a la sesion activa',
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  // 2. Verificar que la historia existe y obtener datos
+  const historia = await db.query.generatedStories.findFirst({
+    where: and(
+      eq(generatedStories.id, validado.storyId),
+      eq(generatedStories.studentId, validado.studentId),
+    ),
+    with: { questions: true },
+  });
+
+  if (!historia) {
+    return {
+      ok: false as const,
+      error: 'Historia no encontrada',
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  // 3. Si ya tiene preguntas, devolverlas directamente
+  if (historia.questions && historia.questions.length > 0) {
+    return {
+      ok: true as const,
+      preguntas: historia.questions
+        .sort((a, b) => a.orden - b.orden)
+        .map((p) => ({
+          id: p.id,
+          tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+          pregunta: p.pregunta,
+          opciones: p.opciones,
+          respuestaCorrecta: p.respuestaCorrecta,
+          explicacion: p.explicacion,
+        })),
+    };
+  }
+
+  // 4. Verificar API key
+  if (!(await hasOpenAIKey())) {
+    return { ok: false as const, error: 'API key no configurada', code: 'NO_API_KEY' as const };
+  }
+
+  // 5. Obtener estudiante para nivel y edad
+  const estudiante = await db.query.students.findFirst({
+    where: eq(students.id, validado.studentId),
+  });
+
+  if (!estudiante) {
+    return {
+      ok: false as const,
+      error: 'Estudiante no encontrado',
+      code: 'GENERATION_FAILED' as const,
+    };
+  }
+
+  const edadAnos = calcularEdad(estudiante.fechaNacimiento);
+
+  // 6. Generar preguntas
+  const result = await generateQuestions({
+    storyTitulo: historia.titulo,
+    storyContenido: historia.contenido,
+    nivel: historia.nivel,
+    edadAnos,
+  });
+
+  if (!result.ok) {
+    return { ok: false as const, error: result.error, code: result.code };
+  }
+
+  // 7. Revalidar por concurrencia (si otra llamada ya inserto preguntas)
+  const preguntasExistentes = await db.query.storyQuestions.findMany({
+    where: eq(storyQuestions.storyId, validado.storyId),
+    orderBy: [storyQuestions.orden],
+  });
+
+  if (preguntasExistentes.length > 0) {
+    return {
+      ok: true as const,
+      preguntas: preguntasExistentes.map((p) => ({
+        id: p.id,
+        tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+        pregunta: p.pregunta,
+        opciones: p.opciones,
+        respuestaCorrecta: p.respuestaCorrecta,
+        explicacion: p.explicacion,
+      })),
+    };
+  }
+
+  // 8. Guardar preguntas en DB
+  const preguntasInsert = result.questions.preguntas.map((p, idx) => ({
+    storyId: validado.storyId,
+    tipo: p.tipo,
+    pregunta: p.pregunta,
+    opciones: p.opciones,
+    respuestaCorrecta: p.respuestaCorrecta,
+    explicacion: p.explicacion,
+    dificultad: p.dificultadPregunta,
+    orden: idx,
+  }));
+
+  const preguntasRows = await db.insert(storyQuestions).values(preguntasInsert).returning();
+
+  return {
+    ok: true as const,
+    preguntas: preguntasRows.map((p) => ({
       id: p.id,
       tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
       pregunta: p.pregunta,
@@ -821,10 +954,7 @@ export async function finalizarSesionLectura(datos: {
 
   // Verificar sesion
   const sesion = await db.query.sessions.findFirst({
-    where: and(
-      eq(sessions.id, validado.sessionId),
-      eq(sessions.studentId, validado.studentId),
-    ),
+    where: and(eq(sessions.id, validado.sessionId), eq(sessions.studentId, validado.studentId)),
   });
 
   if (!sesion) {
@@ -837,7 +967,7 @@ export async function finalizarSesionLectura(datos: {
 
   // 1. Guardar respuestas individuales (batch insert)
   await db.insert(responses).values(
-    validado.respuestas.map(resp => ({
+    validado.respuestas.map((resp) => ({
       sessionId: validado.sessionId,
       ejercicioId: resp.preguntaId,
       tipoEjercicio: resp.tipo,
@@ -846,7 +976,7 @@ export async function finalizarSesionLectura(datos: {
       respuestaCorrecta: String(resp.correcta ? resp.respuestaSeleccionada : 'incorrecto'),
       correcta: resp.correcta,
       tiempoRespuestaMs: resp.tiempoMs,
-    }))
+    })),
   );
 
   // 1b. Actualizar skill progress por tipo de pregunta
@@ -861,7 +991,7 @@ export async function finalizarSesionLectura(datos: {
     });
   }
   if (topicSlug) {
-    const aciertosTotal = validado.respuestas.filter(r => r.correcta).length;
+    const aciertosTotal = validado.respuestas.filter((r) => r.correcta).length;
     await actualizarProgresoInmediato({
       studentId: validado.studentId,
       skillId: `topic-${topicSlug}`,
@@ -872,17 +1002,18 @@ export async function finalizarSesionLectura(datos: {
 
   // 2. Calcular comprension
   const totalPreguntas = validado.respuestas.length;
-  const aciertos = validado.respuestas.filter(r => r.correcta).length;
+  const aciertos = validado.respuestas.filter((r) => r.correcta).length;
   const comprensionScore = totalPreguntas > 0 ? aciertos / totalPreguntas : 0;
 
   // 3. Marcar sesion como completada
   const duracionSegundos = Math.round(validado.tiempoLecturaMs / 1000);
   const ratioAciertos = totalPreguntas > 0 ? aciertos / totalPreguntas : 0;
   const estrellas = ratioAciertos >= 1 ? 3 : ratioAciertos >= 0.75 ? 2 : ratioAciertos > 0 ? 1 : 0;
-  const usarAudioParaWpm = !!validado.audioAnalisis?.confiable && validado.audioAnalisis.wpmUtil > 0;
+  const usarAudioParaWpm =
+    !!validado.audioAnalisis?.confiable && validado.audioAnalisis.wpmUtil > 0;
   const wpmPromedioFinal = usarAudioParaWpm
-    ? validado.audioAnalisis?.wpmUtil ?? null
-    : validado.wpmPromedio ?? null;
+    ? (validado.audioAnalisis?.wpmUtil ?? null)
+    : (validado.wpmPromedio ?? null);
   const fuenteWpm = usarAudioParaWpm ? 'audio' : 'pagina';
 
   await db
@@ -904,18 +1035,18 @@ export async function finalizarSesionLectura(datos: {
         fuenteWpm,
         audioAnalisis: validado.audioAnalisis
           ? {
-            wpmUtil: validado.audioAnalisis.wpmUtil,
-            precisionLectura: validado.audioAnalisis.precisionLectura,
-            coberturaTexto: validado.audioAnalisis.coberturaTexto,
-            pauseRatio: validado.audioAnalisis.pauseRatio,
-            qualityScore: validado.audioAnalisis.qualityScore,
-            confiable: validado.audioAnalisis.confiable,
-            motivoNoConfiable: validado.audioAnalisis.motivoNoConfiable ?? null,
-            motor: validado.audioAnalisis.motor,
-            tiempoVozActivaMs: validado.audioAnalisis.tiempoVozActivaMs,
-            totalPalabrasTranscritas: validado.audioAnalisis.totalPalabrasTranscritas,
-            totalPalabrasAlineadas: validado.audioAnalisis.totalPalabrasAlineadas,
-          }
+              wpmUtil: validado.audioAnalisis.wpmUtil,
+              precisionLectura: validado.audioAnalisis.precisionLectura,
+              coberturaTexto: validado.audioAnalisis.coberturaTexto,
+              pauseRatio: validado.audioAnalisis.pauseRatio,
+              qualityScore: validado.audioAnalisis.qualityScore,
+              confiable: validado.audioAnalisis.confiable,
+              motivoNoConfiable: validado.audioAnalisis.motivoNoConfiable ?? null,
+              motor: validado.audioAnalisis.motor,
+              tiempoVozActivaMs: validado.audioAnalisis.tiempoVozActivaMs,
+              totalPalabrasTranscritas: validado.audioAnalisis.totalPalabrasTranscritas,
+              totalPalabrasAlineadas: validado.audioAnalisis.totalPalabrasAlineadas,
+            }
           : null,
       },
     })
@@ -923,8 +1054,9 @@ export async function finalizarSesionLectura(datos: {
 
   // 4. Calcular ajuste de dificultad
   const tiempoEsperadoMs =
-    (sesion.metadata as Record<string, unknown>)?.tiempoEsperadoMs as number
-    ?? getNivelConfig((sesion.metadata as Record<string, unknown>)?.nivelTexto as number ?? 2).tiempoEsperadoMs;
+    ((sesion.metadata as Record<string, unknown>)?.tiempoEsperadoMs as number) ??
+    getNivelConfig(((sesion.metadata as Record<string, unknown>)?.nivelTexto as number) ?? 2)
+      .tiempoEsperadoMs;
 
   let ajuste: {
     sessionScore: number;
@@ -961,10 +1093,12 @@ export async function finalizarSesionLectura(datos: {
   }
 
   // Guardar sessionScore compuesto en metadata para futuras sesiones.
-  const metadataActual = (await db.query.sessions.findFirst({
-    where: eq(sessions.id, validado.sessionId),
-    columns: { metadata: true },
-  }))?.metadata as Record<string, unknown> | null;
+  const metadataActual = (
+    await db.query.sessions.findFirst({
+      where: eq(sessions.id, validado.sessionId),
+      columns: { metadata: true },
+    })
+  )?.metadata as Record<string, unknown> | null;
 
   await db
     .update(sessions)
@@ -982,7 +1116,7 @@ export async function finalizarSesionLectura(datos: {
       const preguntasDB = await db.query.storyQuestions.findMany({
         where: eq(storyQuestions.storyId, storyId),
       });
-      const preguntaMap = new Map(preguntasDB.map(p => [p.id, p]));
+      const preguntaMap = new Map(preguntasDB.map((p) => [p.id, p]));
 
       // Leer Elo actual del estudiante
       const estudianteElo = await db.query.students.findFirst({
@@ -1007,10 +1141,11 @@ export async function finalizarSesionLectura(datos: {
           rd: estudianteElo.eloRd,
         };
 
-        const nivelTexto = (sesion.metadata as Record<string, unknown>)?.nivelTexto as number ?? 2;
+        const nivelTexto =
+          ((sesion.metadata as Record<string, unknown>)?.nivelTexto as number) ?? 2;
 
         // Construir respuestas para el motor Elo
-        const respuestasElo: RespuestaElo[] = validado.respuestas.map(r => {
+        const respuestasElo: RespuestaElo[] = validado.respuestas.map((r) => {
           const preguntaDB = preguntaMap.get(r.preguntaId);
           return {
             tipo: r.tipo as TipoPregunta,
@@ -1087,7 +1222,7 @@ export async function reescribirHistoria(datos: {
   const { estudiante } = await requireStudentOwnership(validado.studentId);
 
   // 1. Verificar API key
-  if (!hasOpenAIKey()) {
+  if (!(await hasOpenAIKey())) {
     return {
       ok: false as const,
       error: 'API key de OpenAI no configurada.',
@@ -1101,7 +1236,11 @@ export async function reescribirHistoria(datos: {
   });
 
   if (!historiaOriginal) {
-    return { ok: false as const, error: 'Historia no encontrada', code: 'GENERATION_FAILED' as const };
+    return {
+      ok: false as const,
+      error: 'Historia no encontrada',
+      code: 'GENERATION_FAILED' as const,
+    };
   }
 
   // 3. Verificar que no se haya hecho ya un ajuste manual en esta sesion
@@ -1125,7 +1264,7 @@ export async function reescribirHistoria(datos: {
   const nivelNuevo = calcularNivelReescritura(nivelActual, validado.direccion);
   const edadAnos = calcularEdad(estudiante.fechaNacimiento);
 
-  const topic = TOPICS_SEED.find(t => t.slug === historiaOriginal.topicSlug);
+  const topic = TOPICS_SEED.find((t) => t.slug === historiaOriginal.topicSlug);
 
   // 5. Reescribir via LLM
   const result = await rewriteStory({
@@ -1173,10 +1312,7 @@ export async function reescribirHistoria(datos: {
     orden: idx,
   }));
 
-  const preguntasRows = await db
-    .insert(storyQuestions)
-    .values(preguntasInsert)
-    .returning();
+  const preguntasRows = await db.insert(storyQuestions).values(preguntasInsert).returning();
 
   // 8. Registrar ajuste manual en DB
   await db.insert(manualAdjustments).values({
@@ -1222,7 +1358,7 @@ export async function reescribirHistoria(datos: {
       topicNombre: topic?.nombre ?? historiaOriginal.topicSlug,
       tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
     },
-    preguntas: preguntasRows.map(p => ({
+    preguntas: preguntasRows.map((p) => ({
       id: p.id,
       tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
       pregunta: p.pregunta,

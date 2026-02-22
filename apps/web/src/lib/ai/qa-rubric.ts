@@ -24,6 +24,25 @@ export interface StoryLLMOutput {
   }>;
 }
 
+/** Output de generacion de historia sin preguntas (flujo dividido). */
+export interface StoryOnlyLLMOutput {
+  titulo: string;
+  contenido: string;
+  vocabularioNuevo: string[];
+}
+
+/** Output de generacion de preguntas por separado (flujo dividido). */
+export interface QuestionsLLMOutput {
+  preguntas: Array<{
+    tipo: string;
+    pregunta: string;
+    opciones: string[];
+    respuestaCorrecta: number;
+    explicacion: string;
+    dificultadPregunta?: number;
+  }>;
+}
+
 export interface QAResult {
   aprobada: boolean;
   motivo?: string;
@@ -247,6 +266,158 @@ export function evaluarHistoria(
       aprobada: false,
       motivo: 'Historia plana: faltan conectores narrativos que creen progresion',
     };
+  }
+
+  return { aprobada: true };
+}
+
+// ─────────────────────────────────────────────
+// VALIDADORES PARA FLUJO DIVIDIDO
+// ─────────────────────────────────────────────
+
+/**
+ * Valida la estructura del output de historia sin preguntas.
+ */
+export function validarEstructuraHistoria(data: unknown): data is StoryOnlyLLMOutput {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+
+  if (typeof d.titulo !== 'string' || d.titulo.length === 0) return false;
+  if (typeof d.contenido !== 'string' || d.contenido.length === 0) return false;
+  if (!Array.isArray(d.vocabularioNuevo)) return false;
+
+  return true;
+}
+
+/**
+ * Valida la estructura del output de preguntas por separado.
+ */
+export function validarEstructuraPreguntas(data: unknown): data is QuestionsLLMOutput {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+
+  if (!Array.isArray(d.preguntas) || d.preguntas.length !== 4) return false;
+
+  for (const p of d.preguntas) {
+    if (!p || typeof p !== 'object') return false;
+    const q = p as Record<string, unknown>;
+    if (typeof q.tipo !== 'string') return false;
+    if (typeof q.pregunta !== 'string') return false;
+    if (!Array.isArray(q.opciones) || q.opciones.length !== 4) return false;
+    if (typeof q.respuestaCorrecta !== 'number') return false;
+    if (q.respuestaCorrecta < 0 || q.respuestaCorrecta > 3) return false;
+    if (typeof q.explicacion !== 'string') return false;
+    if (q.dificultadPregunta !== undefined) {
+      if (typeof q.dificultadPregunta !== 'number') return false;
+      if (q.dificultadPregunta < 1 || q.dificultadPregunta > 5) return false;
+      if (!Number.isInteger(q.dificultadPregunta)) return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Rubrica QA para historia sin preguntas (flujo dividido).
+ */
+export function evaluarHistoriaSinPreguntas(
+  story: StoryOnlyLLMOutput,
+  nivel: number,
+  context?: QAContext,
+): QAResult {
+  // 1. Contenido seguro
+  const textoCompleto = `${story.titulo} ${story.contenido}`.toLowerCase();
+  for (const palabra of PALABRAS_PROHIBIDAS) {
+    if (textoCompleto.includes(palabra)) {
+      return { aprobada: false, motivo: `Contenido inseguro: contiene "${palabra}"` };
+    }
+  }
+
+  // 2. Validar longitud
+  const config = getNivelConfig(nivel);
+  const palabras = story.contenido.split(/\s+/).filter(w => w.length > 0).length;
+  const tolerancia = 0.3;
+
+  if (palabras < config.palabrasMin * (1 - tolerancia)) {
+    return {
+      aprobada: false,
+      motivo: `Historia muy corta: ${palabras} palabras (minimo ~${config.palabrasMin})`,
+    };
+  }
+
+  if (palabras > config.palabrasMax * (1 + tolerancia)) {
+    return {
+      aprobada: false,
+      motivo: `Historia muy larga: ${palabras} palabras (maximo ~${config.palabrasMax})`,
+    };
+  }
+
+  // 3. Titulo
+  if (story.titulo.length < 3) {
+    return { aprobada: false, motivo: 'Titulo demasiado corto' };
+  }
+
+  // 4. Titulo repetido
+  if (context?.historiasAnteriores && context.historiasAnteriores.length > 0) {
+    const tituloActual = normalizarTexto(story.titulo);
+    for (const tituloAnterior of context.historiasAnteriores) {
+      const tituloPrevio = normalizarTexto(tituloAnterior);
+      if (!tituloPrevio) continue;
+      if (tituloActual === tituloPrevio || similitudTexto(tituloActual, tituloPrevio) >= 0.9) {
+        return {
+          aprobada: false,
+          motivo: 'Titulo repetido o muy similar a una historia reciente',
+        };
+      }
+    }
+  }
+
+  // 5. Apertura plana
+  if (tieneAperturaPlana(story.contenido)) {
+    return {
+      aprobada: false,
+      motivo: 'Inicio poco engaging: apertura plana tipo texto escolar',
+    };
+  }
+
+  // 6. Conectores narrativos
+  if (!tieneConectoresNarrativos(story.contenido)) {
+    return {
+      aprobada: false,
+      motivo: 'Historia plana: faltan conectores narrativos que creen progresion',
+    };
+  }
+
+  return { aprobada: true };
+}
+
+/**
+ * Rubrica QA para preguntas generadas por separado.
+ */
+export function evaluarPreguntas(questions: QuestionsLLMOutput): QAResult {
+  // 1. Tipos requeridos
+  const tiposPresentes = questions.preguntas.map(p => p.tipo);
+  for (const tipo of TIPOS_REQUERIDOS) {
+    if (!tiposPresentes.includes(tipo)) {
+      return { aprobada: false, motivo: `Falta pregunta de tipo: ${tipo}` };
+    }
+  }
+
+  // 2. Opciones validas
+  for (const pregunta of questions.preguntas) {
+    if (pregunta.opciones.some(o => typeof o !== 'string' || o.length === 0)) {
+      return { aprobada: false, motivo: `Pregunta "${pregunta.tipo}" tiene opciones vacias` };
+    }
+    if (pregunta.respuestaCorrecta < 0 || pregunta.respuestaCorrecta > 3) {
+      return { aprobada: false, motivo: `Pregunta "${pregunta.tipo}" tiene indice de respuesta invalido` };
+    }
+    const motivoAmbigua = opcionesAmbiguas(pregunta.opciones, pregunta.respuestaCorrecta);
+    if (motivoAmbigua) {
+      return {
+        aprobada: false,
+        motivo: `Pregunta "${pregunta.tipo}" con opciones ambiguas: ${motivoAmbigua}`,
+      };
+    }
   }
 
   return { aprobada: true };

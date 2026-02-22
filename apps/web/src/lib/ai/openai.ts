@@ -1,12 +1,38 @@
 /**
  * Cliente LLM singleton.
- * Soporta OpenAI y z.ai (GLM) — cualquier proveedor compatible con OpenAI API.
+ * Soporta OpenAI y z.ai (GLM) -- cualquier proveedor compatible con OpenAI API.
  * Prioridad: LLM_API_KEY > OPENAI_API_KEY
+ *
+ * Resuelve env vars desde Cloudflare context (produccion) o process.env (local).
  */
 import OpenAI from 'openai';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 let _client: OpenAI | null = null;
 let _clientConfigKey: string | null = null;
+let _envResolved = false;
+
+/**
+ * Asegura que process.env tiene las variables de entorno del LLM.
+ * En Cloudflare Workers, los secrets estan en el binding context, no en process.env.
+ * Esta funcion los copia a process.env para que el resto del codigo funcione igual.
+ */
+async function ensureEnvFromCloudflare(): Promise<void> {
+  if (_envResolved) return;
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    const cfEnv = env as Record<string, string>;
+    const keys = ['LLM_API_KEY', 'LLM_BASE_URL', 'LLM_MODEL', 'OPENAI_API_KEY'];
+    for (const key of keys) {
+      if (cfEnv[key] && !process.env[key]) {
+        process.env[key] = cfEnv[key];
+      }
+    }
+  } catch {
+    // No estamos en Cloudflare context (dev local) - process.env ya tiene los valores
+  }
+  _envResolved = true;
+}
 
 function getLLMConfig() {
   // Custom LLM provider (z.ai, GLM, etc.) - requires explicit base URL
@@ -34,7 +60,8 @@ function getLLMConfig() {
   throw new LLMKeyMissingError();
 }
 
-export function getOpenAIClient(): OpenAI {
+export async function getOpenAIClient(): Promise<OpenAI> {
+  await ensureEnvFromCloudflare();
   const config = getLLMConfig();
   const configKey = `${config.apiKey}|${config.baseURL ?? ''}`;
   if (!_client || _clientConfigKey !== configKey) {
@@ -47,11 +74,13 @@ export function getOpenAIClient(): OpenAI {
   return _client;
 }
 
-export function getLLMModel(): string {
+export async function getLLMModel(): Promise<string> {
+  await ensureEnvFromCloudflare();
   return getLLMConfig().model;
 }
 
-export function hasOpenAIKey(): boolean {
+export async function hasOpenAIKey(): Promise<boolean> {
+  await ensureEnvFromCloudflare();
   return !!(process.env.LLM_API_KEY || process.env.OPENAI_API_KEY);
 }
 

@@ -31,18 +31,14 @@ export function LineaEvolucion({
   sufijo = '%',
 }: LineaEvolucionProps) {
   if (datos.length === 0) {
-    return (
-      <div className="text-center text-texto-suave text-sm py-4">
-        Sin datos todavia
-      </div>
-    );
+    return <div className="text-center text-texto-suave text-sm py-4">Sin datos todavia</div>;
   }
 
-  const tieneBanda = datos.some(d => d.banda != null && d.banda > 0);
+  const tieneBanda = datos.some((d) => d.banda != null && d.banda > 0);
 
   // Calcular rango del eje Y
-  const allUpper = datos.map(d => d.valor + (d.banda ?? 0));
-  const allLower = datos.map(d => d.valor - (d.banda ?? 0));
+  const allUpper = datos.map((d) => d.valor + (d.banda ?? 0));
+  const allLower = datos.map((d) => d.valor - (d.banda ?? 0));
 
   const autoMax = Math.max(...allUpper);
   const autoMin = Math.min(...allLower);
@@ -69,15 +65,16 @@ export function LineaEvolucion({
   }));
 
   // Path de la linea principal
-  const linePath = puntos
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
-    .join(' ');
+  const linePath = puntos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
   // Path de la banda de confianza (area entre upper y lower)
   let bandPath = '';
   if (tieneBanda) {
     const upperPath = puntos.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.yUpper}`).join(' ');
-    const lowerPath = [...puntos].reverse().map((p, i) => `${i === 0 ? 'L' : 'L'} ${p.x} ${p.yLower}`).join(' ');
+    const lowerPath = [...puntos]
+      .reverse()
+      .map((p, i) => `${i === 0 ? 'L' : 'L'} ${p.x} ${p.yLower}`)
+      .join(' ');
     bandPath = `${upperPath} ${lowerPath} Z`;
   }
 
@@ -101,11 +98,11 @@ export function LineaEvolucion({
       aria-label="Grafico de evolucion"
     >
       {/* Lineas de referencia */}
-      {refLines.map(v => {
+      {refLines.map((v, idx) => {
         const y = toY(v);
         return (
           <line
-            key={v}
+            key={`${idx}-${v}`}
             x1={padding.left}
             y1={y}
             x2={padding.left + chartW}
@@ -117,14 +114,10 @@ export function LineaEvolucion({
       })}
 
       {/* Banda de confianza */}
-      {tieneBanda && bandPath && (
-        <path d={bandPath} fill={color} opacity={0.12} />
-      )}
+      {tieneBanda && bandPath && <path d={bandPath} fill={color} opacity={0.12} />}
 
       {/* Area rellena (sin banda) */}
-      {!tieneBanda && areaPath && (
-        <path d={areaPath} fill={color} opacity={0.15} />
-      )}
+      {!tieneBanda && areaPath && <path d={areaPath} fill={color} opacity={0.15} />}
 
       {/* Linea principal */}
       <path
@@ -162,7 +155,8 @@ export function LineaEvolucion({
               fontWeight="bold"
               fill={color}
             >
-              {Math.round(p.valor)}{sufijo}
+              {Math.round(p.valor)}
+              {sufijo}
             </text>
           )}
         </g>

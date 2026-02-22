@@ -19,8 +19,8 @@ describe('story-actions exports', () => {
 });
 
 describe('openai module', () => {
-  it('hasOpenAIKey devuelve boolean', () => {
-    const result = hasOpenAIKey();
+  it('hasOpenAIKey devuelve boolean', async () => {
+    const result = await hasOpenAIKey();
     expect(typeof result).toBe('boolean');
   });
 

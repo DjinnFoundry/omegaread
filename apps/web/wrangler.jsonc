@@ -18,5 +18,9 @@
   ],
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "LLM_BASE_URL": "https://api.z.ai/api/coding/paas/v4",
+    "LLM_MODEL": "glm-5"
   }
 }

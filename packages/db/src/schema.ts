@@ -1,37 +1,15 @@
-/**
- * Schema de base de datos para OmegaRead (SQLite / Cloudflare D1)
- * Modelo de datos para lectura adaptativa.
- *
- * Tablas: padres, estudiantes, topics, sesiones, respuestas,
- *         logros, progreso de habilidades, baseline, ajustes de dificultad
- */
-import {
-  sqliteTable,
-  text,
-  integer,
-  real,
-  index,
-} from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, index } from 'drizzle-orm/sqlite-core';
 import { sql, relations } from 'drizzle-orm';
 
-// Helper: UUID default via crypto.randomUUID()
 const uuidPk = () =>
   text('id')
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID());
 
-const uuidCol = (name: string) =>
-  text(name).$defaultFn(() => crypto.randomUUID());
-
-// Helper: timestamp as integer (unix seconds)
 const createdAt = (name = 'creado_en') =>
   integer(name, { mode: 'timestamp' })
     .notNull()
     .default(sql`(unixepoch())`);
-
-// ─────────────────────────────────────────────
-// PADRES (autenticacion y gestion)
-// ─────────────────────────────────────────────
 
 export const parents = sqliteTable('parents', {
   id: uuidPk(),
@@ -50,55 +28,49 @@ export const parentsRelations = relations(parents, ({ many }) => ({
   students: many(students),
 }));
 
-// ─────────────────────────────────────────────
-// ESTUDIANTES (los ninos)
-// ─────────────────────────────────────────────
-
-export const students = sqliteTable('students', {
-  id: uuidPk(),
-  parentId: text('parent_id')
-    .notNull()
-    .references(() => parents.id, { onDelete: 'cascade' }),
-  nombre: text('nombre').notNull(),
-  fechaNacimiento: integer('fecha_nacimiento', { mode: 'timestamp' }).notNull(),
-  idioma: text('idioma').notNull().default('es-ES'),
-  dialecto: text('dialecto').notNull().default('es-ES'),
-  curso: text('curso'),
-  centroEscolar: text('centro_escolar'),
-  rutinaLectura: text('rutina_lectura'),
-  acompanamiento: text('acompanamiento'),
-  senalesDificultad: text('senales_dificultad', { mode: 'json' })
-    .$type<SenalesDificultad>()
-    .default({}),
-  intereses: text('intereses', { mode: 'json' }).$type<string[]>().default([]),
-  temasEvitar: text('temas_evitar', { mode: 'json' })
-    .$type<string[]>()
-    .default([]),
-  personajesFavoritos: text('personajes_favoritos'),
-  contextoPersonal: text('contexto_personal'),
-  nivelLectura: real('nivel_lectura'),
-  comprensionScore: real('comprension_score'),
-  baselineConfianza: text('baseline_confianza'),
-  baselineCompletado: integer('baseline_completado', { mode: 'boolean' })
-    .notNull()
-    .default(false),
-  perfilCompleto: integer('perfil_completo', { mode: 'boolean' })
-    .notNull()
-    .default(false),
-  eloGlobal: real('elo_global').notNull().default(1000),
-  eloLiteral: real('elo_literal').notNull().default(1000),
-  eloInferencia: real('elo_inferencia').notNull().default(1000),
-  eloVocabulario: real('elo_vocabulario').notNull().default(1000),
-  eloResumen: real('elo_resumen').notNull().default(1000),
-  eloRd: real('elo_rd').notNull().default(350),
-  accesibilidad: text('accesibilidad', { mode: 'json' })
-    .$type<AccesibilidadConfig>()
-    .default({}),
-  creadoEn: createdAt(),
-  actualizadoEn: integer('actualizado_en', { mode: 'timestamp' })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const students = sqliteTable(
+  'students',
+  {
+    id: uuidPk(),
+    parentId: text('parent_id')
+      .notNull()
+      .references(() => parents.id, { onDelete: 'cascade' }),
+    nombre: text('nombre').notNull(),
+    fechaNacimiento: integer('fecha_nacimiento', { mode: 'timestamp' }).notNull(),
+    idioma: text('idioma').notNull().default('es-ES'),
+    dialecto: text('dialecto').notNull().default('es-ES'),
+    curso: text('curso'),
+    centroEscolar: text('centro_escolar'),
+    rutinaLectura: text('rutina_lectura'),
+    acompanamiento: text('acompanamiento'),
+    senalesDificultad: text('senales_dificultad', { mode: 'json' })
+      .$type<SenalesDificultad>()
+      .default({}),
+    intereses: text('intereses', { mode: 'json' }).$type<string[]>().default([]),
+    temasEvitar: text('temas_evitar', { mode: 'json' }).$type<string[]>().default([]),
+    personajesFavoritos: text('personajes_favoritos'),
+    contextoPersonal: text('contexto_personal'),
+    nivelLectura: real('nivel_lectura'),
+    comprensionScore: real('comprension_score'),
+    baselineConfianza: text('baseline_confianza'),
+    baselineCompletado: integer('baseline_completado', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    perfilCompleto: integer('perfil_completo', { mode: 'boolean' }).notNull().default(false),
+    eloGlobal: real('elo_global').notNull().default(1000),
+    eloLiteral: real('elo_literal').notNull().default(1000),
+    eloInferencia: real('elo_inferencia').notNull().default(1000),
+    eloVocabulario: real('elo_vocabulario').notNull().default(1000),
+    eloResumen: real('elo_resumen').notNull().default(1000),
+    eloRd: real('elo_rd').notNull().default(350),
+    accesibilidad: text('accesibilidad', { mode: 'json' }).$type<AccesibilidadConfig>().default({}),
+    creadoEn: createdAt(),
+    actualizadoEn: integer('actualizado_en', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [index('students_parent_idx').on(table.parentId)],
+);
 
 export const studentsRelations = relations(students, ({ one, many }) => ({
   parent: one(parents, {
@@ -113,10 +85,6 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
   manualAdjustments: many(manualAdjustments),
   eloSnapshots: many(eloSnapshots),
 }));
-
-// ─────────────────────────────────────────────
-// TOPICS (taxonomia de intereses)
-// ─────────────────────────────────────────────
 
 export const topics = sqliteTable(
   'topics',
@@ -140,10 +108,6 @@ export const topics = sqliteTable(
   ],
 );
 
-// ─────────────────────────────────────────────
-// BASELINE ASSESSMENTS (test de nivel inicial)
-// ─────────────────────────────────────────────
-
 export const baselineAssessments = sqliteTable(
   'baseline_assessments',
   {
@@ -159,27 +123,18 @@ export const baselineAssessments = sqliteTable(
       .$type<Record<string, number>>()
       .default({}),
     tiempoLecturaMs: integer('tiempo_lectura_ms'),
-    respuestas: text('respuestas', { mode: 'json' })
-      .$type<BaselineRespuesta[]>()
-      .default([]),
+    respuestas: text('respuestas', { mode: 'json' }).$type<BaselineRespuesta[]>().default([]),
     creadoEn: createdAt(),
   },
   (table) => [index('baseline_student_idx').on(table.studentId)],
 );
 
-export const baselineAssessmentsRelations = relations(
-  baselineAssessments,
-  ({ one }) => ({
-    student: one(students, {
-      fields: [baselineAssessments.studentId],
-      references: [students.id],
-    }),
+export const baselineAssessmentsRelations = relations(baselineAssessments, ({ one }) => ({
+  student: one(students, {
+    fields: [baselineAssessments.studentId],
+    references: [students.id],
   }),
-);
-
-// ─────────────────────────────────────────────
-// AJUSTES DE DIFICULTAD (trazabilidad)
-// ─────────────────────────────────────────────
+}));
 
 export const difficultyAdjustments = sqliteTable(
   'difficulty_adjustments',
@@ -195,9 +150,7 @@ export const difficultyAdjustments = sqliteTable(
     nivelNuevo: real('nivel_nuevo').notNull(),
     direccion: text('direccion').notNull(),
     razon: text('razon').notNull(),
-    evidencia: text('evidencia', { mode: 'json' })
-      .$type<DifficultyEvidence>()
-      .default({}),
+    evidencia: text('evidencia', { mode: 'json' }).$type<DifficultyEvidence>().default({}),
     creadoEn: createdAt(),
   },
   (table) => [
@@ -206,23 +159,16 @@ export const difficultyAdjustments = sqliteTable(
   ],
 );
 
-export const difficultyAdjustmentsRelations = relations(
-  difficultyAdjustments,
-  ({ one }) => ({
-    student: one(students, {
-      fields: [difficultyAdjustments.studentId],
-      references: [students.id],
-    }),
-    session: one(sessions, {
-      fields: [difficultyAdjustments.sessionId],
-      references: [sessions.id],
-    }),
+export const difficultyAdjustmentsRelations = relations(difficultyAdjustments, ({ one }) => ({
+  student: one(students, {
+    fields: [difficultyAdjustments.studentId],
+    references: [students.id],
   }),
-);
-
-// ─────────────────────────────────────────────
-// AJUSTES MANUALES (Sprint 4: reescritura en sesion)
-// ─────────────────────────────────────────────
+  session: one(sessions, {
+    fields: [difficultyAdjustments.sessionId],
+    references: [sessions.id],
+  }),
+}));
 
 export const manualAdjustments = sqliteTable(
   'manual_adjustments',
@@ -241,10 +187,9 @@ export const manualAdjustments = sqliteTable(
     nivelAntes: real('nivel_antes').notNull(),
     nivelDespues: real('nivel_despues').notNull(),
     tiempoLecturaAntesDePulsar: integer('tiempo_lectura_antes_ms').notNull(),
-    rewrittenStoryId: text('rewritten_story_id').references(
-      () => generatedStories.id,
-      { onDelete: 'set null' },
-    ),
+    rewrittenStoryId: text('rewritten_story_id').references(() => generatedStories.id, {
+      onDelete: 'set null',
+    }),
     creadoEn: createdAt(),
   },
   (table) => [
@@ -253,27 +198,20 @@ export const manualAdjustments = sqliteTable(
   ],
 );
 
-export const manualAdjustmentsRelations = relations(
-  manualAdjustments,
-  ({ one }) => ({
-    student: one(students, {
-      fields: [manualAdjustments.studentId],
-      references: [students.id],
-    }),
-    session: one(sessions, {
-      fields: [manualAdjustments.sessionId],
-      references: [sessions.id],
-    }),
-    story: one(generatedStories, {
-      fields: [manualAdjustments.storyId],
-      references: [generatedStories.id],
-    }),
+export const manualAdjustmentsRelations = relations(manualAdjustments, ({ one }) => ({
+  student: one(students, {
+    fields: [manualAdjustments.studentId],
+    references: [students.id],
   }),
-);
-
-// ─────────────────────────────────────────────
-// HISTORIAS GENERADAS (LLM)
-// ─────────────────────────────────────────────
+  session: one(sessions, {
+    fields: [manualAdjustments.sessionId],
+    references: [sessions.id],
+  }),
+  story: one(generatedStories, {
+    fields: [manualAdjustments.storyId],
+    references: [generatedStories.id],
+  }),
+}));
 
 export const generatedStories = sqliteTable(
   'generated_stories',
@@ -286,18 +224,12 @@ export const generatedStories = sqliteTable(
     titulo: text('titulo').notNull(),
     contenido: text('contenido').notNull(),
     nivel: real('nivel').notNull(),
-    metadata: text('metadata', { mode: 'json' })
-      .$type<StoryMetadata>()
-      .notNull(),
+    metadata: text('metadata', { mode: 'json' }).$type<StoryMetadata>().notNull(),
     modeloGeneracion: text('modelo_generacion').notNull(),
     promptVersion: text('prompt_version').notNull().default('v1'),
-    aprobadaQA: integer('aprobada_qa', { mode: 'boolean' })
-      .notNull()
-      .default(false),
+    aprobadaQA: integer('aprobada_qa', { mode: 'boolean' }).notNull().default(false),
     motivoRechazo: text('motivo_rechazo'),
-    reutilizable: integer('reutilizable', { mode: 'boolean' })
-      .notNull()
-      .default(true),
+    reutilizable: integer('reutilizable', { mode: 'boolean' }).notNull().default(true),
     creadoEn: createdAt(),
   },
   (table) => [
@@ -312,20 +244,13 @@ export const generatedStories = sqliteTable(
   ],
 );
 
-export const generatedStoriesRelations = relations(
-  generatedStories,
-  ({ one, many }) => ({
-    student: one(students, {
-      fields: [generatedStories.studentId],
-      references: [students.id],
-    }),
-    questions: many(storyQuestions),
+export const generatedStoriesRelations = relations(generatedStories, ({ one, many }) => ({
+  student: one(students, {
+    fields: [generatedStories.studentId],
+    references: [students.id],
   }),
-);
-
-// ─────────────────────────────────────────────
-// PREGUNTAS DE HISTORIA (generadas con la historia)
-// ─────────────────────────────────────────────
+  questions: many(storyQuestions),
+}));
 
 export const storyQuestions = sqliteTable(
   'story_questions',
@@ -353,10 +278,6 @@ export const storyQuestionsRelations = relations(storyQuestions, ({ one }) => ({
   }),
 }));
 
-// ─────────────────────────────────────────────
-// SESIONES (cada vez que el nino lee)
-// ─────────────────────────────────────────────
-
 export const sessions = sqliteTable(
   'sessions',
   {
@@ -367,17 +288,13 @@ export const sessions = sqliteTable(
     tipoActividad: text('tipo_actividad').notNull(),
     modulo: text('modulo').notNull(),
     duracionSegundos: integer('duracion_segundos'),
-    completada: integer('completada', { mode: 'boolean' })
-      .notNull()
-      .default(false),
+    completada: integer('completada', { mode: 'boolean' }).notNull().default(false),
     estrellasGanadas: integer('estrellas_ganadas').notNull().default(0),
     stickerGanado: text('sticker_ganado'),
     storyId: text('story_id').references(() => generatedStories.id, {
       onDelete: 'set null',
     }),
-    metadata: text('metadata', { mode: 'json' })
-      .$type<Record<string, unknown>>()
-      .default({}),
+    metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>().default({}),
     wpmPromedio: real('wpm_promedio'),
     wpmPorPagina: text('wpm_por_pagina', { mode: 'json' }).$type<
       Array<{ pagina: number; wpm: number }>
@@ -408,10 +325,6 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   manualAdjustments: many(manualAdjustments),
 }));
 
-// ─────────────────────────────────────────────
-// RESPUESTAS (cada interaccion dentro de sesion)
-// ─────────────────────────────────────────────
-
 export const responses = sqliteTable(
   'responses',
   {
@@ -427,9 +340,7 @@ export const responses = sqliteTable(
     correcta: integer('correcta', { mode: 'boolean' }).notNull(),
     tiempoRespuestaMs: integer('tiempo_respuesta_ms'),
     intentoNumero: integer('intento_numero').notNull().default(1),
-    metadata: text('metadata', { mode: 'json' })
-      .$type<Record<string, unknown>>()
-      .default({}),
+    metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>().default({}),
     creadaEn: createdAt('creada_en'),
   },
   (table) => [index('responses_session_idx').on(table.sessionId)],
@@ -441,10 +352,6 @@ export const responsesRelations = relations(responses, ({ one }) => ({
     references: [sessions.id],
   }),
 }));
-
-// ─────────────────────────────────────────────
-// LOGROS (stickers, medallas, etc.)
-// ─────────────────────────────────────────────
 
 export const achievements = sqliteTable(
   'achievements',
@@ -459,9 +366,7 @@ export const achievements = sqliteTable(
     icono: text('icono'),
     descripcion: text('descripcion'),
     coleccion: text('coleccion'),
-    metadata: text('metadata', { mode: 'json' })
-      .$type<Record<string, unknown>>()
-      .default({}),
+    metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>().default({}),
     ganadoEn: integer('ganado_en', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -475,10 +380,6 @@ export const achievementsRelations = relations(achievements, ({ one }) => ({
     references: [students.id],
   }),
 }));
-
-// ─────────────────────────────────────────────
-// PROGRESO DE HABILIDADES
-// ─────────────────────────────────────────────
 
 export const skillProgress = sqliteTable(
   'skill_progress',
@@ -495,9 +396,7 @@ export const skillProgress = sqliteTable(
     dominada: integer('dominada', { mode: 'boolean' }).notNull().default(false),
     ultimaPractica: integer('ultima_practica', { mode: 'timestamp' }),
     proximaRevision: integer('proxima_revision', { mode: 'timestamp' }),
-    metadata: text('metadata', { mode: 'json' })
-      .$type<Record<string, unknown>>()
-      .default({}),
+    metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>().default({}),
     creadoEn: createdAt(),
     actualizadoEn: integer('actualizado_en', { mode: 'timestamp' })
       .notNull()
@@ -515,10 +414,6 @@ export const skillProgressRelations = relations(skillProgress, ({ one }) => ({
     references: [students.id],
   }),
 }));
-
-// ─────────────────────────────────────────────
-// ELO SNAPSHOTS (evolucion por sesion)
-// ─────────────────────────────────────────────
 
 export const eloSnapshots = sqliteTable(
   'elo_snapshots',
@@ -555,10 +450,6 @@ export const eloSnapshotsRelations = relations(eloSnapshots, ({ one }) => ({
     references: [sessions.id],
   }),
 }));
-
-// ─────────────────────────────────────────────
-// TIPOS auxiliares
-// ─────────────────────────────────────────────
 
 export type ParentConfig = {
   notificaciones?: boolean;
