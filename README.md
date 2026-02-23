@@ -107,13 +107,38 @@ Variables de entorno minimas para desarrollo:
 ```bash
 AUTH_SECRET="<minimo-32-caracteres>"
 
-# Opcion A: proveedor compatible con OpenAI API
+# Opcion A (recomendada): z.ai Code subscription
+ZAI_API_KEY="<key>"
+# Opcional, por defecto usa https://api.z.ai/api/coding/paas/v4
+ZAI_BASE_URL="https://api.z.ai/api/coding/paas/v4"
+LLM_MODEL="glm-5"
+# Opcional (default recomendado para bajar latencia en glm-5)
+ZAI_THINKING_TYPE="disabled"
+# Opcional (prompt de historia compacto; recomendado)
+LLM_FAST_STORY_PROMPT="true"
+
+# Opcion B: proveedor compatible con OpenAI API (generico)
 LLM_API_KEY="<key>"
 LLM_BASE_URL="https://..."
 LLM_MODEL="glm-5"
 
-# Opcion B: OpenAI directo (fallback)
+# Opcion C: OpenAI directo (fallback)
 OPENAI_API_KEY="<key>"
+# OPENAI_BASE_URL="https://api.openai.com/v1" # opcional
+
+# Tuning de red (opcionales)
+LLM_TIMEOUT_MS="45000"
+LLM_MAX_RETRIES="0"
+
+# Tuning de salida (opcionales)
+LLM_MAX_TOKENS_STORY="900"
+LLM_MAX_TOKENS_QUESTIONS="650"
+LLM_MAX_TOKENS_REWRITE="1200"
+
+# Modelo por tarea (opcionales)
+# LLM_MODEL_STORY="glm-5"
+# LLM_MODEL_QUESTIONS="glm-5"
+# LLM_MODEL_REWRITE="glm-5"
 
 # Opcional en local
 DEV_ADMIN_ENABLED="true"
@@ -122,7 +147,8 @@ DEV_ADMIN_ENABLED="true"
 Notas importantes:
 
 - `AUTH_SECRET` es obligatorio y se usa para firmar JWT en cookies.
-- La app prioriza `LLM_API_KEY`; si no existe, usa `OPENAI_API_KEY`.
+- La app prioriza `ZAI_API_KEY`, luego `LLM_API_KEY`, y finalmente `OPENAI_API_KEY`.
+- Si `OPENAI_API_KEY` no tiene formato OpenAI (`sk-...`), se usa el endpoint de z.ai por compatibilidad.
 - El runtime actual usa Cloudflare D1 binding (`DB`) via `getCloudflareContext`.
 - `.env.example` aun menciona `DATABASE_URL` de PostgreSQL; hoy es referencia legacy y no refleja el runtime real de D1.
 

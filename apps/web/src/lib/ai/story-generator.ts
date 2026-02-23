@@ -2,7 +2,13 @@
  * Pipeline de generacion de historias.
  * Orquesta: prompt → LLM → parseo → QA → resultado.
  */
-import { getOpenAIClient, OpenAIKeyMissingError } from './openai';
+import type OpenAI from 'openai';
+import {
+  getOpenAIClient,
+  getLLMModel,
+  getLLMRequestOverrides,
+  OpenAIKeyMissingError,
+} from './openai';
 import {
   buildSystemPrompt,
   buildUserPrompt,
@@ -11,6 +17,7 @@ import {
   buildStoryOnlyUserPrompt,
   buildQuestionsSystemPrompt,
   buildQuestionsUserPrompt,
+  getQuestionDifficultyPlan,
   type PromptInput,
   type RewritePromptInput,
   type QuestionsPromptInput,
@@ -29,13 +36,115 @@ import {
   type QAResult,
 } from './qa-rubric';
 
-import { getLLMModel } from './openai';
 // Reintentos automaticos desactivados por UX/latencia.
 // 0 = una sola llamada al LLM y, si falla, el reintento queda en manos del usuario.
 const MAX_REINTENTOS = 0;
 const TIPOS_PREGUNTA_CANONICOS = ['literal', 'inferencia', 'vocabulario', 'resumen'] as const;
 
 type TipoPreguntaCanonico = (typeof TIPOS_PREGUNTA_CANONICOS)[number];
+type ChatCompletion = OpenAI.Chat.Completions.ChatCompletion;
+type ChatParams = OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+
+interface CompletionSnapshot {
+  finishReason: string | null;
+  contentKind: 'string' | 'array' | 'null' | 'other';
+  contentLength: number;
+  hasReasoningContent: boolean;
+  reasoningLength: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+}
+
+function buildChatParams(base: ChatParams, overrides: Record<string, unknown>): ChatParams {
+  return {
+    ...base,
+    ...overrides,
+  } as ChatParams;
+}
+
+function extractTextFromContentPart(part: unknown): string {
+  if (typeof part === 'string') return part;
+  if (!part || typeof part !== 'object') return '';
+  const node = part as Record<string, unknown>;
+  if (typeof node.text === 'string') return node.text;
+  return '';
+}
+
+function extractCompletionContent(
+  completion: ChatCompletion,
+): { content: string | null; snapshot: CompletionSnapshot } {
+  const choice = completion.choices[0];
+  const message = (choice?.message ?? {}) as unknown as Record<string, unknown>;
+  const rawContent = message.content;
+
+  let contentKind: CompletionSnapshot['contentKind'] = 'null';
+  let content = '';
+
+  if (typeof rawContent === 'string') {
+    contentKind = 'string';
+    content = rawContent;
+  } else if (Array.isArray(rawContent)) {
+    contentKind = 'array';
+    content = rawContent.map(extractTextFromContentPart).join('');
+  } else if (rawContent !== null && rawContent !== undefined) {
+    contentKind = 'other';
+    content = String(rawContent);
+  }
+
+  const normalized = content.trim();
+  const reasoningContent = typeof message.reasoning_content === 'string' ? message.reasoning_content : '';
+
+  return {
+    content: normalized || null,
+    snapshot: {
+      finishReason: choice?.finish_reason ?? null,
+      contentKind,
+      contentLength: normalized.length,
+      hasReasoningContent: reasoningContent.length > 0,
+      reasoningLength: reasoningContent.length,
+      promptTokens: completion.usage?.prompt_tokens ?? null,
+      completionTokens: completion.usage?.completion_tokens ?? null,
+      totalTokens: completion.usage?.total_tokens ?? null,
+    },
+  };
+}
+
+function formatCompletionSnapshot(snapshot: CompletionSnapshot): string {
+  const parts = [
+    `finish_reason=${snapshot.finishReason ?? 'null'}`,
+    `content_kind=${snapshot.contentKind}`,
+    `content_len=${snapshot.contentLength}`,
+    `prompt_tokens=${snapshot.promptTokens ?? 'n/a'}`,
+    `completion_tokens=${snapshot.completionTokens ?? 'n/a'}`,
+  ];
+  if (snapshot.hasReasoningContent) {
+    parts.push(`reasoning_len=${snapshot.reasoningLength}`);
+  }
+  return parts.join(', ');
+}
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function envString(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+}
+
+function envFlag(name: string, fallback = false): boolean {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
 
 function normalizarTextoPlano(value: string): string {
   return value
@@ -224,9 +333,12 @@ export type StoryGenerationResult =
 export async function generateStory(input: PromptInput): Promise<StoryGenerationResult> {
   let client;
   let model: string;
+  let requestOverrides: Record<string, unknown>;
+  const maxTokens = envInt('LLM_MAX_TOKENS_STORY', 1200);
   try {
     client = await getOpenAIClient();
-    model = await getLLMModel();
+    model = envString('LLM_MODEL_STORY') ?? await getLLMModel();
+    requestOverrides = await getLLMRequestOverrides();
   } catch (e) {
     if (e instanceof OpenAIKeyMissingError) {
       return { ok: false, error: e.message, code: 'NO_API_KEY' };
@@ -245,20 +357,26 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
     });
 
     try {
-      const completion = await client.chat.completions.create({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.8,
-        max_tokens: 2000,
-        response_format: { type: 'json_object' },
-      });
+      const completion = await client.chat.completions.create(
+        buildChatParams(
+          {
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.8,
+            max_tokens: maxTokens,
+            response_format: { type: 'json_object' },
+          },
+          requestOverrides,
+        ),
+      );
 
-      const content = completion.choices[0]?.message?.content;
+      const { content, snapshot } = extractCompletionContent(completion);
       if (!content) {
-        lastError = 'El LLM no devolvio contenido';
+        lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
+        console.warn('[llm:generateStory] Respuesta sin contenido', snapshot);
         continue;
       }
 
@@ -266,7 +384,15 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
       try {
         parsed = JSON.parse(content);
       } catch {
-        lastError = 'El LLM devolvio JSON invalido';
+        if (snapshot.finishReason === 'length') {
+          lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
+        } else {
+          lastError = 'El LLM devolvio JSON invalido';
+        }
+        console.warn('[llm:generateStory] JSON no parseable', {
+          ...snapshot,
+          preview: content.slice(0, 220),
+        });
         continue;
       }
 
@@ -314,6 +440,7 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error desconocido';
       lastError = `Error de API: ${msg}`;
+      console.error('[llm:generateStory] Error de API', { model, error: msg });
     }
   }
 
@@ -381,9 +508,13 @@ export type QuestionsResult =
 export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyResult> {
   let client;
   let model: string;
+  let requestOverrides: Record<string, unknown>;
+  const maxTokens = envInt('LLM_MAX_TOKENS_STORY', 900);
+  const fastPromptMode = envFlag('LLM_FAST_STORY_PROMPT', true);
   try {
     client = await getOpenAIClient();
-    model = await getLLMModel();
+    model = envString('LLM_MODEL_STORY') ?? await getLLMModel();
+    requestOverrides = await getLLMRequestOverrides();
   } catch (e) {
     if (e instanceof OpenAIKeyMissingError) {
       return { ok: false, error: e.message, code: 'NO_API_KEY' };
@@ -399,23 +530,30 @@ export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyRe
     const userPrompt = buildStoryOnlyUserPrompt(input, {
       retryHint: intento > 0 ? lastError : undefined,
       intento: intento + 1,
+      fastMode: fastPromptMode,
     });
 
     try {
-      const completion = await client.chat.completions.create({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.8,
-        max_tokens: 1500,
-        response_format: { type: 'json_object' },
-      });
+      const completion = await client.chat.completions.create(
+        buildChatParams(
+          {
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.8,
+            max_tokens: maxTokens,
+            response_format: { type: 'json_object' },
+          },
+          requestOverrides,
+        ),
+      );
 
-      const content = completion.choices[0]?.message?.content;
+      const { content, snapshot } = extractCompletionContent(completion);
       if (!content) {
-        lastError = 'El LLM no devolvio contenido';
+        lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
+        console.warn('[llm:generateStoryOnly] Respuesta sin contenido', snapshot);
         continue;
       }
 
@@ -423,7 +561,15 @@ export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyRe
       try {
         parsed = JSON.parse(content);
       } catch {
-        lastError = 'El LLM devolvio JSON invalido';
+        if (snapshot.finishReason === 'length') {
+          lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
+        } else {
+          lastError = 'El LLM devolvio JSON invalido';
+        }
+        console.warn('[llm:generateStoryOnly] JSON no parseable', {
+          ...snapshot,
+          preview: content.slice(0, 220),
+        });
         continue;
       }
 
@@ -465,6 +611,7 @@ export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyRe
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error desconocido';
       lastError = `Error de API: ${msg}`;
+      console.error('[llm:generateStoryOnly] Error de API', { model, error: msg });
     }
   }
 
@@ -482,9 +629,12 @@ export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyRe
 export async function generateQuestions(input: QuestionsPromptInput): Promise<QuestionsResult> {
   let client;
   let model: string;
+  let requestOverrides: Record<string, unknown>;
+  const maxTokens = envInt('LLM_MAX_TOKENS_QUESTIONS', 650);
   try {
     client = await getOpenAIClient();
-    model = await getLLMModel();
+    model = envString('LLM_MODEL_QUESTIONS') ?? await getLLMModel();
+    requestOverrides = await getLLMRequestOverrides();
   } catch (e) {
     if (e instanceof OpenAIKeyMissingError) {
       return { ok: false, error: e.message, code: 'NO_API_KEY' };
@@ -494,25 +644,40 @@ export async function generateQuestions(input: QuestionsPromptInput): Promise<Qu
 
   const systemPrompt = buildQuestionsSystemPrompt();
   const userPrompt = buildQuestionsUserPrompt(input);
+  const difficultyPlan = getQuestionDifficultyPlan({ nivel: input.nivel, elo: input.elo });
+  console.info('[llm:generateQuestions] difficulty-plan', {
+    nivel: input.nivel,
+    subnivel: difficultyPlan.subnivel,
+    banda: difficultyPlan.banda,
+    tramo: difficultyPlan.tramo,
+    rdMode: difficultyPlan.rdMode,
+    objetivo: difficultyPlan.objetivo,
+  });
 
   let lastError = '';
 
   for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
     try {
-      const completion = await client.chat.completions.create({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.6,
-        max_tokens: 1000,
-        response_format: { type: 'json_object' },
-      });
+      const completion = await client.chat.completions.create(
+        buildChatParams(
+          {
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.6,
+            max_tokens: maxTokens,
+            response_format: { type: 'json_object' },
+          },
+          requestOverrides,
+        ),
+      );
 
-      const content = completion.choices[0]?.message?.content;
+      const { content, snapshot } = extractCompletionContent(completion);
       if (!content) {
-        lastError = 'El LLM no devolvio contenido';
+        lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
+        console.warn('[llm:generateQuestions] Respuesta sin contenido', snapshot);
         continue;
       }
 
@@ -520,7 +685,15 @@ export async function generateQuestions(input: QuestionsPromptInput): Promise<Qu
       try {
         parsed = JSON.parse(content);
       } catch {
-        lastError = 'El LLM devolvio JSON invalido';
+        if (snapshot.finishReason === 'length') {
+          lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
+        } else {
+          lastError = 'El LLM devolvio JSON invalido';
+        }
+        console.warn('[llm:generateQuestions] JSON no parseable', {
+          ...snapshot,
+          preview: content.slice(0, 220),
+        });
         continue;
       }
 
@@ -531,7 +704,15 @@ export async function generateQuestions(input: QuestionsPromptInput): Promise<Qu
         continue;
       }
 
-      const questionsOutput = normalizedQuestions;
+      const questionsOutput: QuestionsLLMOutput = {
+        preguntas: normalizedQuestions.preguntas.map((p) => ({
+          ...p,
+          dificultadPregunta:
+            difficultyPlan.objetivo[p.tipo as keyof typeof difficultyPlan.objetivo]
+            ?? p.dificultadPregunta
+            ?? 3,
+        })),
+      };
       const qa: QAResult = evaluarPreguntas(questionsOutput);
 
       const questions: GeneratedQuestions = {
@@ -554,6 +735,7 @@ export async function generateQuestions(input: QuestionsPromptInput): Promise<Qu
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error desconocido';
       lastError = `Error de API: ${msg}`;
+      console.error('[llm:generateQuestions] Error de API', { model, error: msg });
     }
   }
 
@@ -571,9 +753,12 @@ export async function generateQuestions(input: QuestionsPromptInput): Promise<Qu
 export async function rewriteStory(input: RewritePromptInput): Promise<StoryGenerationResult> {
   let client;
   let model: string;
+  let requestOverrides: Record<string, unknown>;
+  const maxTokens = envInt('LLM_MAX_TOKENS_REWRITE', 1200);
   try {
     client = await getOpenAIClient();
-    model = await getLLMModel();
+    model = envString('LLM_MODEL_REWRITE') ?? await getLLMModel();
+    requestOverrides = await getLLMRequestOverrides();
   } catch (e) {
     if (e instanceof OpenAIKeyMissingError) {
       return { ok: false, error: e.message, code: 'NO_API_KEY' };
@@ -588,20 +773,26 @@ export async function rewriteStory(input: RewritePromptInput): Promise<StoryGene
 
   for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
     try {
-      const completion = await client.chat.completions.create({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-        response_format: { type: 'json_object' },
-      });
+      const completion = await client.chat.completions.create(
+        buildChatParams(
+          {
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.7,
+            max_tokens: maxTokens,
+            response_format: { type: 'json_object' },
+          },
+          requestOverrides,
+        ),
+      );
 
-      const content = completion.choices[0]?.message?.content;
+      const { content, snapshot } = extractCompletionContent(completion);
       if (!content) {
-        lastError = 'El LLM no devolvio contenido';
+        lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
+        console.warn('[llm:rewriteStory] Respuesta sin contenido', snapshot);
         continue;
       }
 
@@ -609,7 +800,15 @@ export async function rewriteStory(input: RewritePromptInput): Promise<StoryGene
       try {
         parsed = JSON.parse(content);
       } catch {
-        lastError = 'El LLM devolvio JSON invalido';
+        if (snapshot.finishReason === 'length') {
+          lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
+        } else {
+          lastError = 'El LLM devolvio JSON invalido';
+        }
+        console.warn('[llm:rewriteStory] JSON no parseable', {
+          ...snapshot,
+          preview: content.slice(0, 220),
+        });
         continue;
       }
 
@@ -658,6 +857,7 @@ export async function rewriteStory(input: RewritePromptInput): Promise<StoryGene
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error desconocido';
       lastError = `Error de API: ${msg}`;
+      console.error('[llm:rewriteStory] Error de API', { model, error: msg });
     }
   }
 

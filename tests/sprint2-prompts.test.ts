@@ -5,6 +5,8 @@ import { describe, it, expect } from 'vitest';
 import {
   NIVELES_CONFIG,
   getNivelConfig,
+  getPromptDeterministicProfile,
+  getQuestionDifficultyPlan,
   buildSystemPrompt,
   buildUserPrompt,
   type PromptInput,
@@ -84,24 +86,62 @@ describe('NIVELES_CONFIG', () => {
 
 describe('getNivelConfig', () => {
   it('devuelve config exacta para subniveles', () => {
-    expect(getNivelConfig(1.0)).toBe(NIVELES_CONFIG[1.0]);
-    expect(getNivelConfig(4.8)).toBe(NIVELES_CONFIG[4.8]);
+    expect(getNivelConfig(1.0)).toStrictEqual(NIVELES_CONFIG[1.0]);
+    expect(getNivelConfig(4.8)).toStrictEqual(NIVELES_CONFIG[4.8]);
   });
 
-  it('redondea al 0.2 mas cercano', () => {
-    expect(getNivelConfig(1.49)).toBe(NIVELES_CONFIG[1.4]);
-    expect(getNivelConfig(2.31)).toBe(NIVELES_CONFIG[2.4]);
-    expect(getNivelConfig(3.74)).toBe(NIVELES_CONFIG[3.8]);
+  it('interpola entre anclas manteniendo rangos', () => {
+    const c149 = getNivelConfig(1.49);
+    expect(c149.palabrasMin).toBeGreaterThanOrEqual(NIVELES_CONFIG[1.4].palabrasMin);
+    expect(c149.palabrasMin).toBeLessThanOrEqual(NIVELES_CONFIG[1.6].palabrasMin);
+
+    const c231 = getNivelConfig(2.31);
+    expect(c231.palabrasMax).toBeGreaterThanOrEqual(NIVELES_CONFIG[2.2].palabrasMax);
+    expect(c231.palabrasMax).toBeLessThanOrEqual(NIVELES_CONFIG[2.4].palabrasMax);
+
+    const c374 = getNivelConfig(3.74);
+    expect(c374.dialogoPorcentaje).toBeGreaterThanOrEqual(NIVELES_CONFIG[3.6].dialogoPorcentaje);
+    expect(c374.dialogoPorcentaje).toBeLessThanOrEqual(NIVELES_CONFIG[3.8].dialogoPorcentaje);
   });
 
   it('clampea por debajo a nivel 1.0', () => {
-    expect(getNivelConfig(0)).toBe(NIVELES_CONFIG[1.0]);
-    expect(getNivelConfig(-1)).toBe(NIVELES_CONFIG[1.0]);
+    expect(getNivelConfig(0)).toStrictEqual(NIVELES_CONFIG[1.0]);
+    expect(getNivelConfig(-1)).toStrictEqual(NIVELES_CONFIG[1.0]);
   });
 
   it('clampea por arriba a nivel 4.8', () => {
-    expect(getNivelConfig(5)).toBe(NIVELES_CONFIG[4.8]);
-    expect(getNivelConfig(10)).toBe(NIVELES_CONFIG[4.8]);
+    expect(getNivelConfig(5)).toStrictEqual(NIVELES_CONFIG[4.8]);
+    expect(getNivelConfig(10)).toStrictEqual(NIVELES_CONFIG[4.8]);
+  });
+});
+
+describe('deterministic prompt catalog', () => {
+  it('genera perfil estable por subnivel', () => {
+    const perfil = getPromptDeterministicProfile(3.33);
+    expect(perfil.subnivel).toBe(3.33);
+    expect([1, 2, 3, 4]).toContain(perfil.banda);
+    expect([1, 2, 3]).toContain(perfil.tramo);
+    expect(perfil.story.hookModelo.length).toBeGreaterThan(10);
+  });
+
+  it('calcula dificultad de preguntas por tipo con modo conservador de RD', () => {
+    const plan = getQuestionDifficultyPlan({
+      nivel: 3.3,
+      elo: {
+        global: 1100,
+        literal: 820,
+        inferencia: 1280,
+        vocabulario: 980,
+        resumen: 1210,
+        rd: 170,
+      },
+    });
+
+    expect(plan.rdMode).toBe('conservative');
+    expect(plan.objetivo.literal).toBeGreaterThanOrEqual(2);
+    expect(plan.objetivo.literal).toBeLessThanOrEqual(4);
+    expect(plan.objetivo.inferencia).toBeGreaterThanOrEqual(2);
+    expect(plan.objetivo.inferencia).toBeLessThanOrEqual(4);
   });
 });
 
@@ -231,10 +271,10 @@ describe('buildUserPrompt', () => {
       },
     });
 
-    expect(prompt).toContain('RUTA DEL TECH TREE');
+    expect(prompt).toContain('SKILL ACTUAL DEL TECH TREE');
     expect(prompt).toContain('cohetes-3-empuje');
     expect(prompt).toContain('accion y reaccion');
-    expect(prompt).toContain('Partes del cohete');
+    expect(prompt).toContain('solo esta skill');
   });
 
   it('incluye feedback de reintento cuando aplica', () => {

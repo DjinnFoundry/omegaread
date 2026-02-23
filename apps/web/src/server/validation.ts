@@ -126,7 +126,7 @@ export const actualizarPerfilSchema = z.object({
 /** Schema: guardarIntereses (del nino) */
 export const guardarInteresesSchema = z.object({
   studentId: uuid,
-  intereses: z.array(z.string().max(50)).min(1, 'Selecciona al menos 1 interes').max(10),
+  intereses: z.array(z.string().max(50)).min(1, 'Selecciona al menos 1 interes').max(30),
 });
 
 /** Schema: guardarContextoPersonal */
@@ -140,7 +140,7 @@ export const guardarPerfilVivoSchema = z.object({
   studentId: uuid,
   contextoPersonal: z.string().max(2000).optional(),
   personajesFavoritos: z.string().max(300).optional(),
-  intereses: z.array(z.string().max(50)).max(10).optional(),
+  intereses: z.array(z.string().max(50)).max(30).optional(),
   temasEvitar: z.array(z.string().max(50)).max(10).optional(),
   nuevoHecho: z.string().max(300).optional(),
   categoriaHecho: z.enum(['interes', 'fortaleza', 'reto', 'hito', 'contexto']).optional(),

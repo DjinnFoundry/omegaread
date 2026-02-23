@@ -31,7 +31,7 @@ import {
   obtenerProgresoGeneracionHistoriaSchema,
 } from '../validation';
 import { rewriteStory, generateStoryOnly, generateQuestions } from '@/lib/ai/story-generator';
-import { getOpenAIClient, hasOpenAIKey, OpenAIKeyMissingError } from '@/lib/ai/openai';
+import { getOpenAIClient, hasLLMKey, OpenAIKeyMissingError } from '@/lib/ai/openai';
 import {
   getNivelConfig,
   calcularNivelReescritura,
@@ -436,7 +436,7 @@ export async function analizarLecturaAudio(datos: {
   let errorTranscripcion: string | null = null;
   const transcribeModel = process.env.LLM_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
 
-  if (await hasOpenAIKey()) {
+  if (await hasLLMKey()) {
     try {
       const client = await getOpenAIClient();
       const mimeType = validado.mimeType || 'audio/webm';
@@ -605,7 +605,8 @@ function extraerHechosPerfilVivo(raw: unknown): string[] {
     .filter((h) => h && typeof h === 'object')
     .map((h) => (h as Record<string, unknown>).texto)
     .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-    .slice(0, 6);
+    .map((t) => t.trim().slice(0, 90))
+    .slice(0, 3);
 }
 
 function crearMapaProgresoSkill(rows: SkillProgressRow[]): Map<string, SkillProgressRow> {
@@ -829,12 +830,19 @@ export async function generarHistoria(datos: {
   };
 
   try {
+    console.info('[story-generation] inicio', {
+      traceId: traceId ?? null,
+      studentId: validado.studentId,
+      topicSlug: validado.topicSlug ?? null,
+      forceRegenerate: !!validado.forceRegenerate,
+    });
+
     await avanzarEtapa('validaciones', 'Comprobando API key y limites de uso');
 
-    if (!(await hasOpenAIKey())) {
+    if (!(await hasLLMKey())) {
       return await finalizarConError(
         'validaciones',
-        'Para generar historias personalizadas necesitas configurar una API key de OpenAI. Anade OPENAI_API_KEY en el archivo .env.local y reinicia la app.',
+        'Para generar historias personalizadas necesitas configurar una API key de LLM. Recomendado: ZAI_API_KEY (Code subscription). Reinicia la app tras actualizar .env.local.',
         'NO_API_KEY',
       );
     }
@@ -1021,23 +1029,50 @@ export async function generarHistoria(datos: {
         .slice(0, 3),
       personajesFavoritos: estudiante.personajesFavoritos ?? undefined,
       contextoPersonal: (() => {
-        const base = (estudiante.contextoPersonal ?? '').trim();
+        const base = (estudiante.contextoPersonal ?? '').trim().slice(0, 320);
         const hechos = extraerHechosPerfilVivo(estudiante.senalesDificultad);
         if (hechos.length === 0) return base || undefined;
         const memoria = `Hechos recientes del nino: ${hechos.join(' | ')}`;
-        return [base, memoria].filter(Boolean).join('\n');
+        return [base, memoria].filter(Boolean).join('\n').slice(0, 560);
       })(),
       historiasAnteriores: titulosPrevios.length > 0 ? titulosPrevios : undefined,
-      techTreeContext,
+      techTreeContext: techTreeContext
+        ? {
+            skillSlug: techTreeContext.skillSlug,
+            skillNombre: techTreeContext.skillNombre,
+            skillNivel: techTreeContext.skillNivel,
+            objetivoSesion: techTreeContext.objetivoSesion,
+            estrategia: techTreeContext.estrategia,
+          }
+        : undefined,
     };
+    console.info('[story-generation] prompt profile', {
+      traceId: traceId ?? null,
+      topicSlug,
+      nivel,
+      skillSlug: promptInput.techTreeContext?.skillSlug ?? null,
+      estrategia: promptInput.techTreeContext?.estrategia ?? null,
+    });
     await completarEtapa('prompt', 'Prompt listo');
 
     await avanzarEtapa('llm', 'Llamando al modelo para generar la narrativa');
     const result = await generateStoryOnly(promptInput);
     if (!result.ok) {
+      console.warn('[story-generation] fallo en LLM', {
+        traceId: traceId ?? null,
+        topicSlug,
+        error: result.error,
+        code: result.code,
+      });
       return await finalizarConError('llm', result.error, result.code);
     }
     const { story } = result;
+    console.info('[story-generation] historia generada', {
+      traceId: traceId ?? null,
+      topicSlug,
+      model: story.modelo,
+      palabras: story.metadata.longitudPalabras,
+    });
     await completarEtapa('llm', 'Historia validada por QA');
 
     await avanzarEtapa('persistencia', 'Guardando historia en base de datos');
@@ -1103,6 +1138,11 @@ export async function generarHistoria(datos: {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error interno inesperado';
+    console.error('[story-generation] error inesperado', {
+      traceId: traceId ?? null,
+      studentId: validado.studentId,
+      message,
+    });
     return await finalizarConError(trace.stageCurrent, message, 'GENERATION_FAILED');
   }
 }
@@ -1225,8 +1265,8 @@ export async function generarPreguntasSesion(datos: {
   }
 
   // 4. Verificar API key
-  if (!(await hasOpenAIKey())) {
-    return { ok: false as const, error: 'API key no configurada', code: 'NO_API_KEY' as const };
+  if (!(await hasLLMKey())) {
+    return { ok: false as const, error: 'API key de LLM no configurada', code: 'NO_API_KEY' as const };
   }
 
   // 5. Obtener estudiante para nivel y edad
@@ -1604,10 +1644,10 @@ export async function reescribirHistoria(datos: {
   const { estudiante } = await requireStudentOwnership(validado.studentId);
 
   // 1. Verificar API key
-  if (!(await hasOpenAIKey())) {
+  if (!(await hasLLMKey())) {
     return {
       ok: false as const,
-      error: 'API key de OpenAI no configurada.',
+      error: 'API key de LLM no configurada.',
       code: 'NO_API_KEY' as const,
     };
   }

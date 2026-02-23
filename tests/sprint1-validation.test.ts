@@ -108,10 +108,10 @@ describe('guardarInteresesSchema', () => {
     ).toThrow();
   });
 
-  it('limita a 10 intereses', () => {
-    const once = Array.from({ length: 11 }, (_, i) => `interes-${i}`);
+  it('limita a 30 intereses', () => {
+    const demasiados = Array.from({ length: 31 }, (_, i) => `interes-${i}`);
     expect(() =>
-      guardarInteresesSchema.parse({ studentId: UUID_VALIDO, intereses: once }),
+      guardarInteresesSchema.parse({ studentId: UUID_VALIDO, intereses: demasiados }),
     ).toThrow();
   });
 

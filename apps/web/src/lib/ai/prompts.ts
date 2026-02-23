@@ -473,6 +473,274 @@ export function getNivelConfig(nivel: number): NivelConfig {
   };
 }
 
+type BandaLecturaDeterminista = 1 | 2 | 3 | 4;
+type TramoBandaDeterminista = 0 | 1 | 2;
+type TipoPreguntaDeterminista = 'literal' | 'inferencia' | 'vocabulario' | 'resumen';
+
+interface StoryDirectiveTemplate {
+  hookModelo: string;
+  tonoModelo: string;
+  vocabModelo: string;
+  objetivoComprension: string;
+}
+
+type QuestionStyleTemplate = Record<TipoPreguntaDeterminista, string>;
+type QuestionDifficultyTemplate = Record<TipoPreguntaDeterminista, number>;
+
+export interface PromptDeterministicProfile {
+  subnivel: number;
+  banda: BandaLecturaDeterminista;
+  tramo: 1 | 2 | 3;
+  story: StoryDirectiveTemplate;
+  questionStyles: QuestionStyleTemplate;
+  questionDifficultyBase: QuestionDifficultyTemplate;
+}
+
+const STORY_DIRECTIVES_BY_BANDA: Record<
+  BandaLecturaDeterminista,
+  [StoryDirectiveTemplate, StoryDirectiveTemplate, StoryDirectiveTemplate]
+> = {
+  1: [
+    {
+      hookModelo: 'PUM! La mochila salto sola antes de que Leo la tocara.',
+      tonoModelo: 'Frases cortas, ritmo rapido, accion visible en cada linea.',
+      vocabModelo: 'Palabras cotidianas; maximo 1 palabra nueva explicada en la frase.',
+      objetivoComprension: 'Localizar acciones explicitas (quien hizo que).',
+    },
+    {
+      hookModelo: 'CRASH! Algo cayo del techo justo encima del cuaderno de Noa.',
+      tonoModelo: 'Accion + dialogo simple, una idea por oracion.',
+      vocabModelo: 'Vocabulario frecuente con una comparacion sencilla.',
+      objetivoComprension: 'Seguir secuencias simples de causa y efecto.',
+    },
+    {
+      hookModelo: 'ZAS! El suelo brillo y todos dieron un paso atras.',
+      tonoModelo: 'Narracion concreta con microtension y cierre claro.',
+      vocabModelo: 'Palabras conocidas y 1 termino nuevo inferible por contexto.',
+      objetivoComprension: 'Identificar idea principal en 2-3 parrafos cortos.',
+    },
+  ],
+  2: [
+    {
+      hookModelo: 'Nadie esperaba que el recreo terminara con una puerta secreta abierta.',
+      tonoModelo: 'Aventura ligera con dialogo natural y humor situacional.',
+      vocabModelo: '1-2 palabras nuevas inferibles en contexto directo.',
+      objetivoComprension: 'Relacionar hechos explicitos y consecuencias inmediatas.',
+    },
+    {
+      hookModelo: 'Cuando tocaron el timbre, el pasillo olia a tormenta y nadie sabia por que.',
+      tonoModelo: 'Trama con pequenos giros y personaje con rasgo marcado.',
+      vocabModelo: 'Vocabulario variado con conectores (porque, entonces, despues).',
+      objetivoComprension: 'Deducir intenciones simples desde acciones y dialogos.',
+    },
+    {
+      hookModelo: 'En el minuto exacto en que abrieron la caja, todo salio al reves.',
+      tonoModelo: 'Ritmo medio, conflicto claro y resolucion con descubrimiento.',
+      vocabModelo: 'Terminos cotidianos + 2 nuevos contextualizados sin definicion escolar.',
+      objetivoComprension: 'Integrar detalle literal + inferencia basica.',
+    },
+  ],
+  3: [
+    {
+      hookModelo: 'Lo raro no fue el ruido, fue que solo Paula lo escucho.',
+      tonoModelo: 'Narrador cercano al pensamiento del protagonista, con subtexto suave.',
+      vocabModelo: 'Vocabulario intermedio, 2 terminos nuevos inferibles.',
+      objetivoComprension: 'Unir pistas separadas para inferir una causa no explicita.',
+    },
+    {
+      hookModelo: 'El mapa no estaba roto, pero cada vez que lo miraban cambiaba.',
+      tonoModelo: 'Curiosidad sostenida, escenas sensoriales y dialogo con intencion.',
+      vocabModelo: 'Conectores temporales y causales con precision.',
+      objetivoComprension: 'Distinguir hecho, pista y conclusion del personaje.',
+    },
+    {
+      hookModelo: 'Tenian tres minutos para decidir, y ninguno entendia la regla completa.',
+      tonoModelo: 'Tension amable, decisiones con dudas y cierre coherente.',
+      vocabModelo: 'Lexico rico con analogias simples y tecnicismos suaves contextualizados.',
+      objetivoComprension: 'Sintetizar trama y razonamiento en un resumen breve.',
+    },
+  ],
+  4: [
+    {
+      hookModelo: 'Lo imposible era que los dos tuvieran razon al mismo tiempo.',
+      tonoModelo: 'Narrador con voz marcada, matices emocionales y humor fino.',
+      vocabModelo: 'Vocabulario preciso con 3 terminos nuevos contextualizados.',
+      objetivoComprension: 'Inferir motivaciones y conflicto interno de personajes.',
+    },
+    {
+      hookModelo: 'Esa manana parecia normal, hasta que leyeron la nota equivocada.',
+      tonoModelo: 'Escenas conectadas por causalidad compleja y perspectiva parcial.',
+      vocabModelo: 'Lexico variado con conectores avanzados y comparaciones funcionales.',
+      objetivoComprension: 'Relacionar varias pistas para explicar un giro narrativo.',
+    },
+    {
+      hookModelo: 'Solo despues entendieron que el error era parte del plan.',
+      tonoModelo: 'Ritmo fluido con capas de significado y cierre memorable.',
+      vocabModelo: 'Lenguaje casi adulto simplificado, sin perder claridad.',
+      objetivoComprension: 'Construir una sintesis de tema, conflicto y aprendizaje.',
+    },
+  ],
+};
+
+const QUESTION_STYLE_BY_BANDA: Record<
+  BandaLecturaDeterminista,
+  [QuestionStyleTemplate, QuestionStyleTemplate, QuestionStyleTemplate]
+> = {
+  1: [
+    {
+      literal: 'Pregunta por una accion visible (quien hizo que) en una frase concreta.',
+      inferencia: 'Deduccion corta apoyada en una pista explicita del texto.',
+      vocabulario: 'Palabra frecuente del cuento con contexto inmediato para inferir sentido.',
+      resumen: 'Idea principal en una frase muy directa sobre lo que paso.',
+    },
+    {
+      literal: 'Dato puntual de personaje, objeto o lugar mencionado literalmente.',
+      inferencia: 'Relaciona dos hechos cercanos para deducir una causa simple.',
+      vocabulario: 'Palabra nueva corta cuyo significado se deduce por accion o dialogo.',
+      resumen: 'Tema central expresado con lenguaje cotidiano y claro.',
+    },
+    {
+      literal: 'Hecho explicito del inicio o del final, sin ambiguedad.',
+      inferencia: 'Conclusiones simples sobre intencion o emocion observables.',
+      vocabulario: 'Termino contextualizado con sinonimo implicito en la escena.',
+      resumen: 'Sintesis breve de problema y resolucion principal.',
+    },
+  ],
+  2: [
+    {
+      literal: 'Dato explicito que requiera ubicar un detalle en el desarrollo.',
+      inferencia: 'Deduccion de causa-efecto a partir de dos acciones conectadas.',
+      vocabulario: 'Palabra de dificultad media inferible por el contexto inmediato.',
+      resumen: 'Idea global del cuento sin entrar en detalles secundarios.',
+    },
+    {
+      literal: 'Hecho concreto expresado en dialogo o narracion central.',
+      inferencia: 'Inferir una intencion del protagonista a partir de lo que hace y dice.',
+      vocabulario: 'Termino nuevo del texto con opciones plausibles pero distinguibles.',
+      resumen: 'Resumen corto que conecte conflicto y desenlace.',
+    },
+    {
+      literal: 'Referencia explicita a una consecuencia de la trama.',
+      inferencia: 'Interpretar por que un personaje cambia de decision.',
+      vocabulario: 'Palabra contextual con matiz de significado segun la escena.',
+      resumen: 'Sintesis de idea principal mas aprendizaje del personaje.',
+    },
+  ],
+  3: [
+    {
+      literal: 'Detalle textual que obligue a localizar informacion exacta.',
+      inferencia: 'Conectar pista inicial con evento posterior para deducir causa.',
+      vocabulario: 'Termino intermedio inferible por contraste en el propio texto.',
+      resumen: 'Identificar eje narrativo y objetivo del protagonista.',
+    },
+    {
+      literal: 'Dato explicito en seccion media o final, no solo en la apertura.',
+      inferencia: 'Inferir motivacion o estado mental a partir de subtexto leve.',
+      vocabulario: 'Palabra de precision media-alta deducible por relaciones causales.',
+      resumen: 'Condensar conflicto, giro y resolucion en una idea central.',
+    },
+    {
+      literal: 'Hecho explicito con opcion distractora muy cercana pero incorrecta.',
+      inferencia: 'Explicar implicacion no escrita uniendo varias pistas.',
+      vocabulario: 'Termino tecnico suave inferible por ejemplos narrativos.',
+      resumen: 'Resumen de trama y mensaje implicito sin moralina.',
+    },
+  ],
+  4: [
+    {
+      literal: 'Dato literal preciso en un tramo con alta densidad de informacion.',
+      inferencia: 'Inferir motivacion compleja o contradiccion del personaje.',
+      vocabulario: 'Palabra avanzada contextualizada por contraste o consecuencia.',
+      resumen: 'Sintesis del tema central con relacion entre conflicto y cambio.',
+    },
+    {
+      literal: 'Hecho explicito que exija discriminar entre dos eventos parecidos.',
+      inferencia: 'Deducir por que un giro era inevitable segun pistas previas.',
+      vocabulario: 'Termino abstracto deducible por contexto narrativo acumulado.',
+      resumen: 'Integrar idea principal y matiz emocional en una frase compacta.',
+    },
+    {
+      literal: 'Dato textual exacto en escena con multiples elementos activos.',
+      inferencia: 'Conclusiones sobre causa profunda o intencion no declarada.',
+      vocabulario: 'Vocabulario rico inferible por relacion semantica dentro del pasaje.',
+      resumen: 'Sintesis de conflicto, decision y consecuencia final.',
+    },
+  ],
+};
+
+const QUESTION_DIFFICULTY_BASE_BY_BANDA: Record<
+  BandaLecturaDeterminista,
+  [QuestionDifficultyTemplate, QuestionDifficultyTemplate, QuestionDifficultyTemplate]
+> = {
+  1: [
+    { literal: 1, inferencia: 2, vocabulario: 2, resumen: 2 },
+    { literal: 1, inferencia: 2, vocabulario: 2, resumen: 2 },
+    { literal: 2, inferencia: 2, vocabulario: 2, resumen: 2 },
+  ],
+  2: [
+    { literal: 2, inferencia: 3, vocabulario: 2, resumen: 3 },
+    { literal: 2, inferencia: 3, vocabulario: 3, resumen: 3 },
+    { literal: 2, inferencia: 3, vocabulario: 3, resumen: 4 },
+  ],
+  3: [
+    { literal: 2, inferencia: 3, vocabulario: 3, resumen: 3 },
+    { literal: 2, inferencia: 4, vocabulario: 3, resumen: 4 },
+    { literal: 3, inferencia: 4, vocabulario: 4, resumen: 4 },
+  ],
+  4: [
+    { literal: 3, inferencia: 4, vocabulario: 4, resumen: 4 },
+    { literal: 3, inferencia: 4, vocabulario: 4, resumen: 5 },
+    { literal: 3, inferencia: 5, vocabulario: 4, resumen: 5 },
+  ],
+};
+
+function obtenerBandaDeterminista(subnivel: number): {
+  banda: BandaLecturaDeterminista;
+  tramo: TramoBandaDeterminista;
+} {
+  const clamped = normalizarSubnivel(subnivel);
+  let banda: BandaLecturaDeterminista;
+  let bandaMin: number;
+  let bandaMax: number;
+
+  if (clamped < 2) {
+    banda = 1;
+    bandaMin = 1;
+    bandaMax = 2;
+  } else if (clamped < 3) {
+    banda = 2;
+    bandaMin = 2;
+    bandaMax = 3;
+  } else if (clamped < 4) {
+    banda = 3;
+    bandaMin = 3;
+    bandaMax = 4;
+  } else {
+    banda = 4;
+    bandaMin = 4;
+    bandaMax = 4.8;
+  }
+
+  const ratio = (clamped - bandaMin) / Math.max(0.01, bandaMax - bandaMin);
+  const tramo = ratio < 1 / 3 ? 0 : ratio < 2 / 3 ? 1 : 2;
+
+  return { banda, tramo };
+}
+
+export function getPromptDeterministicProfile(nivel: number): PromptDeterministicProfile {
+  const subnivel = normalizarSubnivel(nivel);
+  const { banda, tramo } = obtenerBandaDeterminista(subnivel);
+
+  return {
+    subnivel,
+    banda,
+    tramo: (tramo + 1) as 1 | 2 | 3,
+    story: STORY_DIRECTIVES_BY_BANDA[banda][tramo],
+    questionStyles: QUESTION_STYLE_BY_BANDA[banda][tramo],
+    questionDifficultyBase: QUESTION_DIFFICULTY_BASE_BY_BANDA[banda][tramo],
+  };
+}
+
 export type EstrategiaPedagogica = 'story_first' | 'balanced' | 'learning_first';
 
 export interface TechTreeContext {
@@ -660,6 +928,7 @@ export function buildUserPrompt(
   options?: { retryHint?: string; intento?: number },
 ): string {
   const config = getNivelConfig(input.nivel);
+  const perfilDeterminista = getPromptDeterministicProfile(input.nivel);
   const estrategia = input.techTreeContext?.estrategia
     ?? inferirEstrategiaPedagogica(input.edadAnos, input.nivel);
   const intento = options?.intento ?? 1;
@@ -701,28 +970,10 @@ export function buildUserPrompt(
   // Tech tree context
   if (input.techTreeContext) {
     const ctx = input.techTreeContext;
-    partes.push(`\nRUTA DEL TECH TREE (PRIORIDAD MAXIMA):`);
-    partes.push(`Nodo actual: ${ctx.skillNombre} (${ctx.skillSlug}), nivel ${ctx.skillNivel}.`);
-    partes.push(`Objetivo de esta lectura: ${ctx.objetivoSesion}`);
-    if (ctx.prerequisitosDominados && ctx.prerequisitosDominados.length > 0) {
-      partes.push(`Prerequisitos ya dominados: ${ctx.prerequisitosDominados.join(', ')}.`);
-    }
-    if (ctx.prerequisitosPendientes && ctx.prerequisitosPendientes.length > 0) {
-      partes.push(`Prerequisitos pendientes (dar soporte suave, sin profundizar): ${ctx.prerequisitosPendientes.join(', ')}.`);
-    }
-    if (ctx.skillsAReforzarRelacionadas && ctx.skillsAReforzarRelacionadas.length > 0) {
-      partes.push(`Skills a reforzar segun progreso reciente: ${ctx.skillsAReforzarRelacionadas.join(', ')}.`);
-    }
-    if (ctx.skillsEnProgresoRelacionadas && ctx.skillsEnProgresoRelacionadas.length > 0) {
-      partes.push(`Skills en progreso: ${ctx.skillsEnProgresoRelacionadas.join(', ')}.`);
-    }
-    if (ctx.skillsDominadasRelacionadas && ctx.skillsDominadasRelacionadas.length > 0) {
-      partes.push(`Skills ya dominadas: ${ctx.skillsDominadasRelacionadas.join(', ')}.`);
-    }
-    if (ctx.siguienteSkillSugerida) {
-      partes.push(`Siguiente skill sugerida (NO ensenar a fondo hoy): ${ctx.siguienteSkillSugerida}.`);
-    }
-    partes.push(`Regla pedagogica: centra la ensenanza en el nodo actual y evita avanzar al siguiente nodo salvo una frase puente.`);
+    partes.push(`\nSKILL ACTUAL DEL TECH TREE (solo esta skill):`);
+    partes.push(`- Skill: ${ctx.skillNombre} (${ctx.skillSlug}), nivel ${ctx.skillNivel}.`);
+    partes.push(`- Objetivo de esta historia: ${ctx.objetivoSesion}`);
+    partes.push(`- Regla: no explicar otras skills ni prerrequisitos, solo esta skill con una frase puente opcional al final.`);
   }
 
   // Estrategia pedagogica
@@ -749,6 +1000,12 @@ export function buildUserPrompt(
   partes.push(`- Lexico: ${config.complejidadLexica}`);
   partes.push(`- Densidad: ${config.densidadIdeas}`);
   partes.push(`- 4 preguntas: literal, inferencia, vocabulario, resumen`);
+  partes.push(`\nPERFIL DETERMINISTA DEL SUBNIVEL ${perfilDeterminista.subnivel}:`);
+  partes.push(`- Banda ${perfilDeterminista.banda}, tramo ${perfilDeterminista.tramo}/3.`);
+  partes.push(`- Hook modelo: "${perfilDeterminista.story.hookModelo}"`);
+  partes.push(`- Tono modelo: ${perfilDeterminista.story.tonoModelo}`);
+  partes.push(`- Vocabulario modelo: ${perfilDeterminista.story.vocabModelo}`);
+  partes.push(`- Objetivo de comprension: ${perfilDeterminista.story.objetivoComprension}`);
 
   if (options?.retryHint) {
     partes.push(`\nREINTENTO #${intento}: en el intento anterior fallo por "${options.retryHint}". Corrigelo explicitamente en esta nueva salida.`);
@@ -866,12 +1123,14 @@ ${JSON_SCHEMA_STORY_ONLY}`;
  */
 export function buildStoryOnlyUserPrompt(
   input: PromptInput,
-  options?: { retryHint?: string; intento?: number },
+  options?: { retryHint?: string; intento?: number; fastMode?: boolean },
 ): string {
   const config = getNivelConfig(input.nivel);
+  const perfilDeterminista = getPromptDeterministicProfile(input.nivel);
   const estrategia = input.techTreeContext?.estrategia
     ?? inferirEstrategiaPedagogica(input.edadAnos, input.nivel);
   const intento = options?.intento ?? 1;
+  const fastMode = options?.fastMode ?? false;
 
   const partes: string[] = [];
 
@@ -900,19 +1159,10 @@ export function buildStoryOnlyUserPrompt(
   if (input.contextoPersonal) {
     partes.push(`Semilla de contexto personal (solo inspiracion): ${input.contextoPersonal}`);
   }
-
-  // Tech tree context (compacto)
   if (input.techTreeContext) {
     const ctx = input.techTreeContext;
-    partes.push(`\nRUTA PEDAGOGICA (prioridad):`);
-    partes.push(`Skill objetivo: ${ctx.skillNombre} (${ctx.skillSlug}), nivel ${ctx.skillNivel}.`);
-    partes.push(`Objetivo de sesion: ${ctx.objetivoSesion}`);
-    if (ctx.prerequisitosPendientes && ctx.prerequisitosPendientes.length > 0) {
-      partes.push(`Apoyo suave a prerequisitos pendientes: ${ctx.prerequisitosPendientes.slice(0, 3).join(', ')}.`);
-    }
-    if (ctx.siguienteSkillSugerida) {
-      partes.push(`No avanzar de skill hoy (solo puente breve hacia: ${ctx.siguienteSkillSugerida}).`);
-    }
+    partes.push(`Skill actual del tech tree (solo esta): ${ctx.skillNombre} (${ctx.skillSlug}), objetivo: ${ctx.objetivoSesion}.`);
+    partes.push(`No ensenes otras skills ni prerrequisitos en esta historia.`);
   }
 
   // Estrategia pedagogica
@@ -929,14 +1179,22 @@ export function buildStoryOnlyUserPrompt(
     partes.push(`No repetir titulos recientes: ${input.historiasAnteriores.join(' | ')}`);
   }
 
-  // Directivas de estilo por nivel
-  partes.push(`\nESTILO DEL NIVEL:`);
-  partes.push(config.estiloNarrativo);
-  partes.push(`Usa al menos 2 tecnicas de engagement:`);
-  config.tecnicasEngagement.slice(0, 4).forEach(t => partes.push(`- ${t}`));
-  partes.push(`Dialogo minimo: ${config.dialogoPorcentaje}% del texto.`);
-  partes.push(`Primera frase: hook fuerte (usa una tecnica sugerida).`);
-  config.aperturasSugeridas.slice(0, 3).forEach(a => partes.push(`- ${a}`));
+  // Directivas deterministas por nivel (sin cargar toda la taxonomia)
+  partes.push(`\nGUIA DETERMINISTA DEL NIVEL (obligatoria):`);
+  partes.push(`- Subnivel: ${perfilDeterminista.subnivel} (banda ${perfilDeterminista.banda}, tramo ${perfilDeterminista.tramo}/3).`);
+  partes.push(`- Longitud: ${config.palabrasMin}-${config.palabrasMax} palabras.`);
+  partes.push(`- Longitud media de oracion: ${config.oracionMin}-${config.oracionMax} palabras.`);
+  partes.push(`- Dialogo minimo: ${config.dialogoPorcentaje}% del texto.`);
+  partes.push(`- Lexico: ${config.complejidadLexica}`);
+  partes.push(`- Densidad de ideas: ${config.densidadIdeas}`);
+  partes.push(`- Hook modelo de apertura: "${perfilDeterminista.story.hookModelo}"`);
+  partes.push(`- Tono modelo: ${perfilDeterminista.story.tonoModelo}`);
+  partes.push(`- Vocabulario modelo: ${perfilDeterminista.story.vocabModelo}`);
+  partes.push(`- Objetivo de comprension de la historia: ${perfilDeterminista.story.objetivoComprension}`);
+  if (!fastMode) {
+    partes.push(`- Refuerzo de estilo: ${config.estiloNarrativo}`);
+    partes.push(`- Tecnicas sugeridas: ${config.tecnicasEngagement.slice(0, 2).join(' | ')}`);
+  }
 
   // Requisitos tecnicos (sin preguntas)
   partes.push(`\nREQUISITOS:`);
@@ -998,11 +1256,92 @@ export interface QuestionsPromptInput {
   };
 }
 
-function rangoDificultadPorElo(elo: number): string {
-  if (elo < 900) return '1-2';
-  if (elo < 1100) return '2-3';
-  if (elo < 1300) return '3-4';
-  return '4-5';
+export interface QuestionDifficultyPlan {
+  subnivel: number;
+  banda: 1 | 2 | 3 | 4;
+  tramo: 1 | 2 | 3;
+  base: QuestionDifficultyTemplate;
+  ajustePorElo: QuestionDifficultyTemplate;
+  objetivo: QuestionDifficultyTemplate;
+  rdMode: 'normal' | 'conservative';
+}
+
+function clampDificultadPregunta(value: number): number {
+  return Math.max(1, Math.min(5, Math.round(value)));
+}
+
+function calcularAjustePorElo(elo: number): number {
+  if (elo < 850) return -1;
+  if (elo < 1050) return 0;
+  if (elo < 1250) return 1;
+  return 2;
+}
+
+function limitarAjustePorRd(ajuste: number, rd: number): number {
+  if (rd > 180) {
+    if (ajuste === 0) return 0;
+    return ajuste > 0 ? 1 : -1;
+  }
+  if (rd > 150) {
+    if (ajuste > 0) return Math.min(1, ajuste);
+    if (ajuste < 0) return Math.max(-1, ajuste);
+  }
+  return ajuste;
+}
+
+function formatAjuste(ajuste: number): string {
+  if (ajuste === 0) return '0';
+  return ajuste > 0 ? `+${ajuste}` : `${ajuste}`;
+}
+
+export function getQuestionDifficultyPlan(input: {
+  nivel: number;
+  elo?: QuestionsPromptInput['elo'];
+}): QuestionDifficultyPlan {
+  const perfil = getPromptDeterministicProfile(input.nivel);
+  const base: QuestionDifficultyTemplate = {
+    ...perfil.questionDifficultyBase,
+  };
+
+  const elo = input.elo;
+  const rdMode: QuestionDifficultyPlan['rdMode'] = elo && elo.rd > 150 ? 'conservative' : 'normal';
+  const minD = rdMode === 'conservative' ? 2 : 1;
+  const maxD = rdMode === 'conservative' ? 4 : 5;
+
+  const ajustePorElo: QuestionDifficultyTemplate = {
+    literal: 0,
+    inferencia: 0,
+    vocabulario: 0,
+    resumen: 0,
+  };
+
+  if (elo) {
+    ajustePorElo.literal = limitarAjustePorRd(calcularAjustePorElo(elo.literal), elo.rd);
+    ajustePorElo.inferencia = limitarAjustePorRd(calcularAjustePorElo(elo.inferencia), elo.rd);
+    ajustePorElo.vocabulario = limitarAjustePorRd(calcularAjustePorElo(elo.vocabulario), elo.rd);
+    ajustePorElo.resumen = limitarAjustePorRd(calcularAjustePorElo(elo.resumen), elo.rd);
+  }
+
+  const objetivo: QuestionDifficultyTemplate = {
+    literal: clampDificultadPregunta(Math.max(minD, Math.min(maxD, base.literal + ajustePorElo.literal))),
+    inferencia: clampDificultadPregunta(
+      Math.max(minD, Math.min(maxD, base.inferencia + ajustePorElo.inferencia)),
+    ),
+    vocabulario: clampDificultadPregunta(
+      Math.max(minD, Math.min(maxD, base.vocabulario + ajustePorElo.vocabulario)),
+    ),
+    resumen: clampDificultadPregunta(Math.max(minD, Math.min(maxD, base.resumen + ajustePorElo.resumen))),
+  };
+
+  return {
+    subnivel: perfil.subnivel,
+    banda: perfil.banda,
+    tramo: perfil.tramo,
+    base,
+    ajustePorElo,
+    objetivo,
+    rdMode,
+  };
 }
 
 /**
@@ -1010,29 +1349,35 @@ function rangoDificultadPorElo(elo: number): string {
  */
 export function buildQuestionsUserPrompt(input: QuestionsPromptInput): string {
   const config = getNivelConfig(input.nivel);
-  const elo = input.elo;
+  const perfil = getPromptDeterministicProfile(input.nivel);
+  const dificultadPlan = getQuestionDifficultyPlan({ nivel: input.nivel, elo: input.elo });
 
-  const bloqueElo = elo
+  const bloqueElo = input.elo
     ? `
-PERFIL ELO DEL NINO (usar para calibrar dificultad por tipo):
-- Elo global: ${Math.round(elo.global)}
-- Literal: ${Math.round(elo.literal)} (objetivo dificultad ${rangoDificultadPorElo(elo.literal)})
-- Inferencia: ${Math.round(elo.inferencia)} (objetivo dificultad ${rangoDificultadPorElo(elo.inferencia)})
-- Vocabulario: ${Math.round(elo.vocabulario)} (objetivo dificultad ${rangoDificultadPorElo(elo.vocabulario)})
-- Resumen: ${Math.round(elo.resumen)} (objetivo dificultad ${rangoDificultadPorElo(elo.resumen)})
-- Incertidumbre RD: ${Math.round(elo.rd)}
-
-Reglas de calibracion por Elo:
-- Si RD > 150, evita extremos (1 y 5) salvo evidencia textual muy clara.
-- Ajusta cada pregunta al Elo de su tipo, no solo al Elo global.
-- Mantener coherencia con el nivel de lectura ${input.nivel}/4.8 (no crear preguntas fuera del texto).`
-    : '';
+PERFIL ELO DEL NINO:
+- Elo global: ${Math.round(input.elo.global)}
+- Literal: ${Math.round(input.elo.literal)} (ajuste ${formatAjuste(dificultadPlan.ajustePorElo.literal)})
+- Inferencia: ${Math.round(input.elo.inferencia)} (ajuste ${formatAjuste(dificultadPlan.ajustePorElo.inferencia)})
+- Vocabulario: ${Math.round(input.elo.vocabulario)} (ajuste ${formatAjuste(dificultadPlan.ajustePorElo.vocabulario)})
+- Resumen: ${Math.round(input.elo.resumen)} (ajuste ${formatAjuste(dificultadPlan.ajustePorElo.resumen)})
+- RD: ${Math.round(input.elo.rd)} (${dificultadPlan.rdMode === 'conservative' ? 'modo conservador (evitar extremos)' : 'modo normal'})`
+    : `
+Sin Elo disponible: usa solo la base del nivel actual.`;
 
   return `Genera 4 preguntas de comprension para esta historia.
 
 LECTOR: nino de ${input.edadAnos} anos, nivel de lectura ${input.nivel}/4.8.
 Complejidad lexica del nivel: ${config.complejidadLexica}
+Banda determinista: ${perfil.banda}, tramo ${perfil.tramo}/3 (subnivel ${perfil.subnivel}).
 ${bloqueElo}
+
+MATRIZ DETERMINISTA DE ESTA HISTORIA (OBLIGATORIA):
+- literal: dificultadPregunta EXACTA ${dificultadPlan.objetivo.literal}. ${perfil.questionStyles.literal}
+- inferencia: dificultadPregunta EXACTA ${dificultadPlan.objetivo.inferencia}. ${perfil.questionStyles.inferencia}
+- vocabulario: dificultadPregunta EXACTA ${dificultadPlan.objetivo.vocabulario}. ${perfil.questionStyles.vocabulario}
+- resumen: dificultadPregunta EXACTA ${dificultadPlan.objetivo.resumen}. ${perfil.questionStyles.resumen}
+- No inventes dificultad: usa esos valores exactos por tipo.
+- Todas las preguntas se responden SOLO con el texto.
 
 HISTORIA - "${input.storyTitulo}":
 ${input.storyContenido}
