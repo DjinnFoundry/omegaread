@@ -50,9 +50,11 @@ async function verificarToken(token: string): Promise<{ parentId: string; email:
 
 /** Registra un nuevo padre */
 export async function registrarPadre(datos: { email: string; password: string; nombre: string }) {
+  console.log('[registrarPadre] Iniciando registro para:', datos.email);
   const db = await getDb();
   const passwordHash = await bcrypt.hash(datos.password, 12);
 
+  console.log('[registrarPadre] Hash generado, insertando en DB...');
   const [padre] = await db
     .insert(parents)
     .values({
@@ -62,11 +64,13 @@ export async function registrarPadre(datos: { email: string; password: string; n
     })
     .returning();
 
+  console.log('[registrarPadre] Padre creado con id:', padre.id);
   return padre;
 }
 
 /** Inicia sesión de padre */
 export async function loginPadre(email: string, password: string) {
+  console.log('[loginPadre] Intento de login para:', email);
   const db = await getDb();
   const normalizedEmail = email.toLowerCase().trim();
 

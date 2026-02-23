@@ -30,11 +30,13 @@ export async function actionRegistro(formData: FormData): Promise<AuthResult> {
     // Auto-login después de registro
     await loginPadre(email, password);
   } catch (error: unknown) {
+    console.error('[actionRegistro] Error al crear cuenta:', error);
     const message = error instanceof Error ? error.message : 'Error desconocido';
-    if (message.includes('unique') || message.includes('duplicate')) {
+    const lower = message.toLowerCase();
+    if (lower.includes('unique') || lower.includes('duplicate')) {
       return { ok: false, error: 'Ya existe una cuenta con este email' };
     }
-    return { ok: false, error: 'Error al crear la cuenta. Inténtalo de nuevo.' };
+    return { ok: false, error: `Error al crear la cuenta: ${message}` };
   }
 
   redirect('/padre/dashboard');
