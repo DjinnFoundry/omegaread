@@ -28,6 +28,7 @@ import {
   reescribirHistoriaSchema,
   analizarLecturaAudioSchema,
   generarPreguntasSesionSchema,
+  obtenerProgresoGeneracionHistoriaSchema,
 } from '../validation';
 import { rewriteStory, generateStoryOnly, generateQuestions } from '@/lib/ai/story-generator';
 import { getOpenAIClient, hasOpenAIKey, OpenAIKeyMissingError } from '@/lib/ai/openai';
@@ -60,6 +61,209 @@ const UMBRAL_SKILL_DOMINADA = 0.85;
 const INTENTOS_MIN_REFORZAR = 3;
 
 type SkillProgressRow = InferSelectModel<typeof skillProgress>;
+
+type StoryGenerationStageId =
+  | 'validaciones'
+  | 'ruta'
+  | 'cache'
+  | 'prompt'
+  | 'llm'
+  | 'persistencia'
+  | 'sesion';
+
+type StoryGenerationStageStatus = 'pending' | 'running' | 'done' | 'error';
+
+interface StoryGenerationStage {
+  id: StoryGenerationStageId;
+  label: string;
+  progressTarget: number;
+  status: StoryGenerationStageStatus;
+  detail?: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+}
+
+export interface StoryGenerationTrace {
+  status: 'running' | 'done' | 'error';
+  progress: number;
+  stageCurrent: StoryGenerationStageId;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+  totalMs?: number;
+  error?: string;
+  stages: StoryGenerationStage[];
+}
+
+const STORY_GENERATION_STAGE_BLUEPRINT: Array<{
+  id: StoryGenerationStageId;
+  label: string;
+  progressTarget: number;
+}> = [
+  { id: 'validaciones', label: 'Validando perfil y limites', progressTarget: 10 },
+  { id: 'ruta', label: 'Seleccionando topic y ruta de aprendizaje', progressTarget: 25 },
+  { id: 'cache', label: 'Buscando historia cacheada', progressTarget: 40 },
+  { id: 'prompt', label: 'Preparando prompt narrativo', progressTarget: 55 },
+  { id: 'llm', label: 'Generando historia con IA', progressTarget: 82 },
+  { id: 'persistencia', label: 'Guardando historia', progressTarget: 92 },
+  { id: 'sesion', label: 'Creando sesion de lectura', progressTarget: 98 },
+];
+
+function nowIsoString(): string {
+  return new Date().toISOString();
+}
+
+function crearStoryGenerationTrace(): StoryGenerationTrace {
+  const now = nowIsoString();
+  return {
+    status: 'running',
+    progress: 0,
+    stageCurrent: 'validaciones',
+    startedAt: now,
+    updatedAt: now,
+    stages: STORY_GENERATION_STAGE_BLUEPRINT.map((s) => ({
+      id: s.id,
+      label: s.label,
+      progressTarget: s.progressTarget,
+      status: 'pending',
+    })),
+  };
+}
+
+function buscarStage(trace: StoryGenerationTrace, stageId: StoryGenerationStageId): StoryGenerationStage {
+  const stage = trace.stages.find((s) => s.id === stageId);
+  if (!stage) {
+    throw new Error(`Etapa de traza no encontrada: ${stageId}`);
+  }
+  return stage;
+}
+
+function marcarStageRunning(trace: StoryGenerationTrace, stageId: StoryGenerationStageId, detail?: string) {
+  const now = nowIsoString();
+  const stage = buscarStage(trace, stageId);
+  if (!stage.startedAt) {
+    stage.startedAt = now;
+  }
+  stage.status = 'running';
+  stage.detail = detail;
+  trace.stageCurrent = stageId;
+  trace.updatedAt = now;
+  trace.progress = Math.max(trace.progress, Math.max(stage.progressTarget - 12, 1));
+}
+
+function marcarStageDone(trace: StoryGenerationTrace, stageId: StoryGenerationStageId, detail?: string) {
+  const now = nowIsoString();
+  const stage = buscarStage(trace, stageId);
+  if (!stage.startedAt) {
+    stage.startedAt = now;
+  }
+  stage.status = 'done';
+  stage.detail = detail;
+  stage.endedAt = now;
+  stage.durationMs = Math.max(0, new Date(now).getTime() - new Date(stage.startedAt).getTime());
+  trace.progress = Math.max(trace.progress, stage.progressTarget);
+  trace.updatedAt = now;
+}
+
+function marcarStageError(trace: StoryGenerationTrace, stageId: StoryGenerationStageId, error: string) {
+  const now = nowIsoString();
+  const stage = buscarStage(trace, stageId);
+  if (!stage.startedAt) {
+    stage.startedAt = now;
+  }
+  stage.status = 'error';
+  stage.detail = error;
+  stage.endedAt = now;
+  stage.durationMs = Math.max(0, new Date(now).getTime() - new Date(stage.startedAt).getTime());
+  trace.status = 'error';
+  trace.error = error;
+  trace.finishedAt = now;
+  trace.updatedAt = now;
+  trace.totalMs = Math.max(0, new Date(now).getTime() - new Date(trace.startedAt).getTime());
+}
+
+function finalizarTraceOk(trace: StoryGenerationTrace, detail?: string) {
+  const now = nowIsoString();
+  const stageSesion = buscarStage(trace, 'sesion');
+  if (stageSesion.status !== 'done') {
+    marcarStageDone(trace, 'sesion', detail ?? stageSesion.detail);
+  }
+  trace.status = 'done';
+  trace.progress = 100;
+  trace.finishedAt = now;
+  trace.updatedAt = now;
+  trace.totalMs = Math.max(0, new Date(now).getTime() - new Date(trace.startedAt).getTime());
+}
+
+function completarEtapasRestantesComoOmitidas(
+  trace: StoryGenerationTrace,
+  stageIds: StoryGenerationStageId[],
+  detail: string,
+) {
+  for (const stageId of stageIds) {
+    const stage = buscarStage(trace, stageId);
+    if (stage.status === 'pending') {
+      marcarStageDone(trace, stageId, detail);
+    }
+  }
+}
+
+function extraerTraceMetadata(metadata: unknown): StoryGenerationTrace | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const root = metadata as Record<string, unknown>;
+  const traceRaw = root.generationTrace;
+  if (!traceRaw || typeof traceRaw !== 'object') return null;
+  const trace = traceRaw as Record<string, unknown>;
+  if (!Array.isArray(trace.stages)) return null;
+  if (typeof trace.status !== 'string') return null;
+  if (typeof trace.progress !== 'number') return null;
+  if (typeof trace.stageCurrent !== 'string') return null;
+  if (typeof trace.startedAt !== 'string') return null;
+  if (typeof trace.updatedAt !== 'string') return null;
+  return traceRaw as StoryGenerationTrace;
+}
+
+async function persistirStoryGenerationTrace(params: {
+  db: Awaited<ReturnType<typeof getDb>>;
+  traceId: string | undefined;
+  studentId: string;
+  trace: StoryGenerationTrace;
+}) {
+  const { db, traceId, studentId, trace } = params;
+  if (!traceId) return;
+
+  const terminal = trace.status === 'done' || trace.status === 'error';
+  const startedAtDate = new Date(trace.startedAt);
+  const finishedAtDate = trace.finishedAt ? new Date(trace.finishedAt) : null;
+  const duracionSegundos = trace.totalMs !== undefined
+    ? Math.max(0, Math.round(trace.totalMs / 1000))
+    : null;
+
+  await db
+    .insert(sessions)
+    .values({
+      id: traceId,
+      studentId,
+      tipoActividad: 'sistema',
+      modulo: 'story-generation',
+      completada: terminal,
+      estrellasGanadas: 0,
+      metadata: { generationTrace: trace },
+      iniciadaEn: startedAtDate,
+      finalizadaEn: finishedAtDate,
+      duracionSegundos,
+    })
+    .onConflictDoUpdate({
+      target: sessions.id,
+      set: {
+        metadata: { generationTrace: trace },
+        completada: terminal,
+        finalizadaEn: finishedAtDate,
+        duracionSegundos,
+      },
+    });
+}
 
 interface PalabraTimestamp {
   palabra: string;
@@ -577,266 +781,374 @@ export async function generarHistoria(datos: {
   studentId: string;
   topicSlug?: string;
   forceRegenerate?: boolean;
+  progressTraceId?: string;
 }) {
   const db = await getDb();
   const validado = generarHistoriaSchema.parse(datos);
   const { estudiante } = await requireStudentOwnership(validado.studentId);
+  const traceId = validado.progressTraceId;
+  const trace = crearStoryGenerationTrace();
 
-  // 1. Verificar API key
-  if (!(await hasOpenAIKey())) {
-    return {
-      ok: false as const,
-      error:
-        'Para generar historias personalizadas necesitas configurar una API key de OpenAI. Anade OPENAI_API_KEY en el archivo .env.local y reinicia la app.',
-      code: 'NO_API_KEY' as const,
-    };
-  }
-
-  // 2. Rate limiting
-  const historiasHoy = await contarHistoriasHoy(validado.studentId);
-  if (historiasHoy >= MAX_HISTORIAS_DIA) {
-    return {
-      ok: false as const,
-      error: `Has alcanzado el limite de ${MAX_HISTORIAS_DIA} historias por dia. Vuelve manana para seguir leyendo.`,
-      code: 'RATE_LIMIT' as const,
-    };
-  }
-
-  // 3. Determinar topic
-  const edadAnos = calcularEdad(estudiante.fechaNacimiento);
-  const nivel = estudiante.nivelLectura ?? 1;
-  const intereses = estudiante.intereses ?? [];
-  const progresoSkillsTopic = await db.query.skillProgress.findMany({
-    where: and(
-      eq(skillProgress.studentId, validado.studentId),
-      eq(skillProgress.categoria, 'topic'),
-    ),
-  });
-  const progresoMap = crearMapaProgresoSkill(progresoSkillsTopic);
-  const historiasRecientesNodos = await db.query.generatedStories.findMany({
-    where: eq(generatedStories.studentId, validado.studentId),
-    orderBy: [desc(generatedStories.creadoEn)],
-    limit: 8,
-    columns: { topicSlug: true },
-  });
-  const historialReciente = historiasRecientesNodos.map((h) => h.topicSlug);
-  const skillActualSlug = historialReciente[0];
-
-  let topicSlug = validado.topicSlug;
-  if (!topicSlug) {
-    // Elegir siguiente nodo del tech tree segun desbloqueo y progreso.
-    const skillSiguiente = elegirSiguienteSkillTechTree({
-      edadAnos,
-      intereses,
-      progresoMap,
-      skillActualSlug,
-      historialReciente,
+  const persistirTrace = async () =>
+    persistirStoryGenerationTrace({
+      db,
+      traceId,
+      studentId: validado.studentId,
+      trace,
     });
-    if (skillSiguiente) {
-      topicSlug = skillSiguiente.slug;
+
+  const avanzarEtapa = async (
+    stageId: StoryGenerationStageId,
+    detail: string,
+  ) => {
+    marcarStageRunning(trace, stageId, detail);
+    await persistirTrace();
+  };
+
+  const completarEtapa = async (
+    stageId: StoryGenerationStageId,
+    detail: string,
+  ) => {
+    marcarStageDone(trace, stageId, detail);
+    await persistirTrace();
+  };
+
+  const finalizarConError = async (
+    stageId: StoryGenerationStageId,
+    error: string,
+    code: 'NO_API_KEY' | 'RATE_LIMIT' | 'GENERATION_FAILED' | 'QA_REJECTED',
+  ) => {
+    marcarStageError(trace, stageId, error);
+    await persistirTrace();
+    return {
+      ok: false as const,
+      error,
+      code,
+      generationTrace: trace,
+    };
+  };
+
+  try {
+    await avanzarEtapa('validaciones', 'Comprobando API key y limites de uso');
+
+    if (!(await hasOpenAIKey())) {
+      return await finalizarConError(
+        'validaciones',
+        'Para generar historias personalizadas necesitas configurar una API key de OpenAI. Anade OPENAI_API_KEY en el archivo .env.local y reinicia la app.',
+        'NO_API_KEY',
+      );
     }
-  }
 
-  if (!topicSlug) {
-    // Fallback: topic apropiado para edad si no se pudo resolver por skill.
-    const topicsPorEdad = TOPICS_SEED.filter(
-      (t) => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
+    const historiasHoy = await contarHistoriasHoy(validado.studentId);
+    if (historiasHoy >= MAX_HISTORIAS_DIA) {
+      return await finalizarConError(
+        'validaciones',
+        `Has alcanzado el limite de ${MAX_HISTORIAS_DIA} historias por dia. Vuelve manana para seguir leyendo.`,
+        'RATE_LIMIT',
+      );
+    }
+    await completarEtapa('validaciones', 'Validaciones completadas');
+
+    await avanzarEtapa('ruta', 'Analizando nivel, historial e intereses');
+    const edadAnos = calcularEdad(estudiante.fechaNacimiento);
+    const nivel = estudiante.nivelLectura ?? 1;
+    const intereses = estudiante.intereses ?? [];
+    const progresoSkillsTopic = await db.query.skillProgress.findMany({
+      where: and(
+        eq(skillProgress.studentId, validado.studentId),
+        eq(skillProgress.categoria, 'topic'),
+      ),
+    });
+    const progresoMap = crearMapaProgresoSkill(progresoSkillsTopic);
+    const historiasRecientesNodos = await db.query.generatedStories.findMany({
+      where: eq(generatedStories.studentId, validado.studentId),
+      orderBy: [desc(generatedStories.creadoEn)],
+      limit: 8,
+      columns: { topicSlug: true },
+    });
+    const historialReciente = historiasRecientesNodos.map((h) => h.topicSlug);
+    const skillActualSlug = historialReciente[0];
+
+    let topicSlug = validado.topicSlug;
+    if (!topicSlug) {
+      const skillSiguiente = elegirSiguienteSkillTechTree({
+        edadAnos,
+        intereses,
+        progresoMap,
+        skillActualSlug,
+        historialReciente,
+      });
+      if (skillSiguiente) {
+        topicSlug = skillSiguiente.slug;
+      }
+    }
+
+    if (!topicSlug) {
+      const topicsPorEdad = TOPICS_SEED.filter(
+        (t) => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
+      );
+      topicSlug =
+        topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ??
+        'como-funciona-corazon';
+    }
+
+    const topic = TOPICS_SEED.find((t) => t.slug === topicSlug);
+    if (!topic) {
+      return await finalizarConError('ruta', 'Topic no encontrado', 'GENERATION_FAILED');
+    }
+    await completarEtapa('ruta', `Topic seleccionado: ${topic.nombre}`);
+
+    await avanzarEtapa(
+      'cache',
+      validado.forceRegenerate
+        ? 'Regeneracion forzada, se omite cache'
+        : 'Buscando historia reutilizable',
     );
-    topicSlug =
-      topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ??
-      'como-funciona-corazon';
-  }
+    if (!validado.forceRegenerate) {
+      const ttlDate = new Date();
+      ttlDate.setDate(ttlDate.getDate() - 7);
+      const cached = await db.query.generatedStories.findFirst({
+        where: and(
+          eq(generatedStories.studentId, validado.studentId),
+          eq(generatedStories.topicSlug, topicSlug),
+          eq(generatedStories.nivel, nivel),
+          eq(generatedStories.reutilizable, true),
+          eq(generatedStories.aprobadaQA, true),
+          gte(generatedStories.creadoEn, ttlDate),
+        ),
+        orderBy: [desc(generatedStories.creadoEn)],
+        with: { questions: true },
+      });
 
-  const topic = TOPICS_SEED.find((t) => t.slug === topicSlug);
-  if (!topic) {
-    return { ok: false as const, error: 'Topic no encontrado', code: 'GENERATION_FAILED' as const };
-  }
+      if (cached && cached.questions.length > 0) {
+        await completarEtapa('cache', 'Cache hit, se reutiliza historia');
+        completarEtapasRestantesComoOmitidas(
+          trace,
+          ['prompt', 'llm', 'persistencia'],
+          'Omitida por reutilizacion de cache',
+        );
+        await persistirTrace();
 
-  // 3b. Buscar historia cacheada (misma combinacion student+topic+nivel, con TTL)
-  if (!validado.forceRegenerate) {
-    const ttlDate = new Date();
-    ttlDate.setDate(ttlDate.getDate() - 7);
-    const cached = await db.query.generatedStories.findFirst({
+        await avanzarEtapa('sesion', 'Creando sesion de lectura');
+        const nivelConfig = getNivelConfig(nivel);
+        const [sesion] = await db
+          .insert(sessions)
+          .values({
+            studentId: validado.studentId,
+            tipoActividad: 'lectura',
+            modulo: 'lectura-adaptativa',
+            completada: false,
+            estrellasGanadas: 0,
+            storyId: cached.id,
+            metadata: {
+              textoId: cached.id,
+              nivelTexto: nivel,
+              topicSlug,
+              skillSlug: getSkillBySlug(topicSlug)?.slug ?? topicSlug,
+              tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
+              fromCache: true,
+            },
+          })
+          .returning();
+        await completarEtapa('sesion', 'Sesion creada');
+        finalizarTraceOk(trace, 'Historia lista desde cache');
+        await persistirTrace();
+
+        return {
+          ok: true as const,
+          sessionId: sesion.id,
+          storyId: cached.id,
+          fromCache: true,
+          historia: {
+            titulo: cached.titulo,
+            contenido: cached.contenido,
+            nivel,
+            topicSlug,
+            topicEmoji: topic.emoji,
+            topicNombre: topic.nombre,
+            tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
+          },
+          preguntas: cached.questions
+            .sort((a, b) => a.orden - b.orden)
+            .map((p) => ({
+              id: p.id,
+              tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+              pregunta: p.pregunta,
+              opciones: p.opciones,
+              respuestaCorrecta: p.respuestaCorrecta,
+              explicacion: p.explicacion,
+            })),
+          generationTrace: trace,
+        };
+      }
+    }
+    await completarEtapa('cache', 'Sin cache valida, se genera historia nueva');
+
+    await avanzarEtapa('prompt', 'Preparando contexto pedagogico y personalizacion');
+    const historiasPrevias = await db.query.generatedStories.findMany({
       where: and(
         eq(generatedStories.studentId, validado.studentId),
         eq(generatedStories.topicSlug, topicSlug),
-        eq(generatedStories.nivel, nivel),
-        eq(generatedStories.reutilizable, true),
-        eq(generatedStories.aprobadaQA, true),
-        gte(generatedStories.creadoEn, ttlDate),
       ),
       orderBy: [desc(generatedStories.creadoEn)],
-      with: { questions: true },
+      limit: 5,
+      columns: { titulo: true },
     });
+    const titulosPrevios = historiasPrevias.map((h) => h.titulo);
 
-    if (cached && cached.questions.length > 0) {
-      // Crear sesion con la historia cacheada
-      const nivelConfig = getNivelConfig(nivel);
-      const [sesion] = await db
-        .insert(sessions)
-        .values({
-          studentId: validado.studentId,
-          tipoActividad: 'lectura',
-          modulo: 'lectura-adaptativa',
-          completada: false,
-          estrellasGanadas: 0,
-          storyId: cached.id,
-          metadata: {
-            textoId: cached.id,
-            nivelTexto: nivel,
-            topicSlug,
-            skillSlug: getSkillBySlug(topicSlug)?.slug ?? topicSlug,
-            tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
-            fromCache: true,
-          },
-        })
-        .returning();
-
-      return {
-        ok: true as const,
-        sessionId: sesion.id,
-        storyId: cached.id,
-        fromCache: true,
-        historia: {
-          titulo: cached.titulo,
-          contenido: cached.contenido,
+    const skill = getSkillBySlug(topicSlug);
+    const dominio = skill ? DOMINIOS.find((d) => d.slug === skill.dominio) : undefined;
+    const techTreeContext = skill
+      ? construirContextoTechTree({
+          skill,
+          progresoMap,
+          edadAnos,
           nivel,
+        })
+      : undefined;
+
+    const promptInput: PromptInput = {
+      edadAnos,
+      nivel,
+      topicNombre: topic.nombre,
+      topicDescripcion: topic.descripcion,
+      conceptoNucleo: skill?.conceptoNucleo,
+      dominio: dominio?.nombre,
+      modo: getModoFromCategoria(topic.categoria),
+      intereses: intereses
+        .map((slug) => CATEGORIAS.find((c) => c.slug === slug)?.nombre)
+        .filter((n): n is string => !!n)
+        .slice(0, 3),
+      personajesFavoritos: estudiante.personajesFavoritos ?? undefined,
+      contextoPersonal: (() => {
+        const base = (estudiante.contextoPersonal ?? '').trim();
+        const hechos = extraerHechosPerfilVivo(estudiante.senalesDificultad);
+        if (hechos.length === 0) return base || undefined;
+        const memoria = `Hechos recientes del nino: ${hechos.join(' | ')}`;
+        return [base, memoria].filter(Boolean).join('\n');
+      })(),
+      historiasAnteriores: titulosPrevios.length > 0 ? titulosPrevios : undefined,
+      techTreeContext,
+    };
+    await completarEtapa('prompt', 'Prompt listo');
+
+    await avanzarEtapa('llm', 'Llamando al modelo para generar la narrativa');
+    const result = await generateStoryOnly(promptInput);
+    if (!result.ok) {
+      return await finalizarConError('llm', result.error, result.code);
+    }
+    const { story } = result;
+    await completarEtapa('llm', 'Historia validada por QA');
+
+    await avanzarEtapa('persistencia', 'Guardando historia en base de datos');
+    const [storyRow] = await db
+      .insert(generatedStories)
+      .values({
+        studentId: validado.studentId,
+        topicSlug,
+        titulo: story.titulo,
+        contenido: story.contenido,
+        nivel,
+        metadata: story.metadata,
+        modeloGeneracion: story.modelo,
+        promptVersion: 'v3-split',
+        aprobadaQA: story.aprobadaQA,
+        motivoRechazo: story.motivoRechazo ?? null,
+      })
+      .returning();
+    await completarEtapa('persistencia', 'Historia guardada');
+
+    await avanzarEtapa('sesion', 'Creando sesion de lectura');
+    const nivelConfig = getNivelConfig(nivel);
+    const [sesion] = await db
+      .insert(sessions)
+      .values({
+        studentId: validado.studentId,
+        tipoActividad: 'lectura',
+        modulo: 'lectura-adaptativa',
+        completada: false,
+        estrellasGanadas: 0,
+        storyId: storyRow.id,
+        metadata: {
+          textoId: storyRow.id,
+          nivelTexto: nivel,
           topicSlug,
-          topicEmoji: topic.emoji,
-          topicNombre: topic.nombre,
+          skillSlug: skill?.slug ?? topicSlug,
+          objetivoSesion: techTreeContext?.objetivoSesion,
+          estrategiaPedagogica: techTreeContext?.estrategia,
           tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
         },
-        preguntas: cached.questions
-          .sort((a, b) => a.orden - b.orden)
-          .map((p) => ({
-            id: p.id,
-            tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
-            pregunta: p.pregunta,
-            opciones: p.opciones,
-            respuestaCorrecta: p.respuestaCorrecta,
-            explicacion: p.explicacion,
-          })),
-      };
-    }
-  }
-
-  // 4. Consultar historial de historias previas para evitar repeticion
-  const historiasPrevias = await db.query.generatedStories.findMany({
-    where: and(
-      eq(generatedStories.studentId, validado.studentId),
-      eq(generatedStories.topicSlug, topicSlug),
-    ),
-    orderBy: [desc(generatedStories.creadoEn)],
-    limit: 5,
-    columns: { titulo: true },
-  });
-  const titulosPrevios = historiasPrevias.map((h) => h.titulo);
-
-  // 5. Generar historia
-  const skill = getSkillBySlug(topicSlug);
-  const dominio = skill ? DOMINIOS.find((d) => d.slug === skill.dominio) : undefined;
-  const techTreeContext = skill
-    ? construirContextoTechTree({
-        skill,
-        progresoMap,
-        edadAnos,
-        nivel,
       })
-    : undefined;
+      .returning();
+    await completarEtapa('sesion', 'Sesion lista');
+    finalizarTraceOk(trace, 'Historia lista');
+    await persistirTrace();
 
-  const promptInput: PromptInput = {
-    edadAnos,
-    nivel,
-    topicNombre: topic.nombre,
-    topicDescripcion: topic.descripcion,
-    conceptoNucleo: skill?.conceptoNucleo,
-    dominio: dominio?.nombre,
-    modo: getModoFromCategoria(topic.categoria),
-    intereses: intereses
-      .map((slug) => CATEGORIAS.find((c) => c.slug === slug)?.nombre)
-      .filter((n): n is string => !!n)
-      .slice(0, 3),
-    personajesFavoritos: estudiante.personajesFavoritos ?? undefined,
-    contextoPersonal: (() => {
-      const base = (estudiante.contextoPersonal ?? '').trim();
-      const hechos = extraerHechosPerfilVivo(estudiante.senalesDificultad);
-      if (hechos.length === 0) return base || undefined;
-      const memoria = `Hechos recientes del nino: ${hechos.join(' | ')}`;
-      return [base, memoria].filter(Boolean).join('\n');
-    })(),
-    historiasAnteriores: titulosPrevios.length > 0 ? titulosPrevios : undefined,
-    techTreeContext,
-  };
+    return {
+      ok: true as const,
+      sessionId: sesion.id,
+      storyId: storyRow.id,
+      fromCache: false,
+      historia: {
+        titulo: story.titulo,
+        contenido: story.contenido,
+        nivel,
+        topicSlug,
+        topicEmoji: topic.emoji,
+        topicNombre: topic.nombre,
+        tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
+      },
+      preguntas: undefined,
+      generationTrace: trace,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error interno inesperado';
+    return await finalizarConError(trace.stageCurrent, message, 'GENERATION_FAILED');
+  }
+}
 
-  // 5. Generar SOLO la historia (sin preguntas, mas rapido)
-  const result = await generateStoryOnly(promptInput);
+/**
+ * Devuelve el progreso en tiempo real de una generacion de historia.
+ * Se consulta por polling desde la UI mientras `generarHistoria` esta en curso.
+ */
+export async function obtenerProgresoGeneracionHistoria(datos: {
+  studentId: string;
+  progressTraceId: string;
+}) {
+  const db = await getDb();
+  const validado = obtenerProgresoGeneracionHistoriaSchema.parse(datos);
+  await requireStudentOwnership(validado.studentId);
 
-  if (!result.ok) {
+  const row = await db.query.sessions.findFirst({
+    where: and(
+      eq(sessions.id, validado.progressTraceId),
+      eq(sessions.studentId, validado.studentId),
+      eq(sessions.tipoActividad, 'sistema'),
+      eq(sessions.modulo, 'story-generation'),
+    ),
+    columns: {
+      metadata: true,
+    },
+  });
+
+  if (!row) {
     return {
       ok: false as const,
-      error: result.error,
-      code: result.code,
+      error: 'Progreso aun no disponible',
     };
   }
 
-  const { story } = result;
+  const trace = extraerTraceMetadata(row.metadata);
+  if (!trace) {
+    return {
+      ok: false as const,
+      error: 'No se encontro traza de progreso',
+    };
+  }
 
-  // 6. Guardar historia en DB (sin preguntas todavia)
-  const [storyRow] = await db
-    .insert(generatedStories)
-    .values({
-      studentId: validado.studentId,
-      topicSlug,
-      titulo: story.titulo,
-      contenido: story.contenido,
-      nivel,
-      metadata: story.metadata,
-      modeloGeneracion: story.modelo,
-      promptVersion: 'v3-split',
-      aprobadaQA: story.aprobadaQA,
-      motivoRechazo: story.motivoRechazo ?? null,
-    })
-    .returning();
-
-  // 7. Crear sesion de lectura
-  const nivelConfig = getNivelConfig(nivel);
-  const [sesion] = await db
-    .insert(sessions)
-    .values({
-      studentId: validado.studentId,
-      tipoActividad: 'lectura',
-      modulo: 'lectura-adaptativa',
-      completada: false,
-      estrellasGanadas: 0,
-      storyId: storyRow.id,
-      metadata: {
-        textoId: storyRow.id,
-        nivelTexto: nivel,
-        topicSlug,
-        skillSlug: skill?.slug ?? topicSlug,
-        objetivoSesion: techTreeContext?.objetivoSesion,
-        estrategiaPedagogica: techTreeContext?.estrategia,
-        tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
-      },
-    })
-    .returning();
-
-  // Preguntas se generan por separado (en background mientras el nino lee)
   return {
     ok: true as const,
-    sessionId: sesion.id,
-    storyId: storyRow.id,
-    fromCache: false,
-    historia: {
-      titulo: story.titulo,
-      contenido: story.contenido,
-      nivel,
-      topicSlug,
-      topicEmoji: topic.emoji,
-      topicNombre: topic.nombre,
-      tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
-    },
-    preguntas: undefined,
+    trace,
   };
 }
 

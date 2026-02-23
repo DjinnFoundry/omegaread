@@ -105,7 +105,10 @@ export async function obtenerResumenProgreso(studentId: string) {
   });
 
   const todasSesiones = await db.query.sessions.findMany({
-    where: eq(sessions.studentId, studentId),
+    where: and(
+      eq(sessions.studentId, studentId),
+      eq(sessions.tipoActividad, 'lectura'),
+    ),
     orderBy: [desc(sessions.iniciadaEn)],
   });
 

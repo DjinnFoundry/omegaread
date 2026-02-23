@@ -220,6 +220,14 @@ export const generarHistoriaSchema = z.object({
   topicSlug: z.string().min(1).max(50).optional(),
   /** Forzar regeneracion aunque exista historia cacheada */
   forceRegenerate: z.boolean().optional(),
+  /** Token para reportar progreso en tiempo real al cliente */
+  progressTraceId: uuid.optional(),
+});
+
+/** Schema: obtenerProgresoGeneracionHistoria */
+export const obtenerProgresoGeneracionHistoriaSchema = z.object({
+  studentId: uuid,
+  progressTraceId: uuid,
 });
 
 /** Schema: finalizarSesionLectura */

@@ -66,6 +66,11 @@ function categoriaHechoLabel(cat: string): string {
   return 'Contexto';
 }
 
+function recortarLabel(value: string, max = 16): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 3)}...`;
+}
+
 /**
  * Filters WPM data to remove outlier sessions where the child likely skipped
  * without reading. Uses median-based detection: sessions with WPM > median * 3
@@ -128,6 +133,22 @@ export function DashboardPadreDetalle({ data }: Props) {
         rd: data.eloActual.rd,
       }]
     : data.eloEvolucion;
+
+  const rutaMapa = data.techTree.historialTopics.slice(0, 6).reverse();
+  const sugerenciasMapa = data.techTree.sugerencias.slice(0, 4);
+  const rutaPaso = rutaMapa.length > 1 ? 440 / (rutaMapa.length - 1) : 0;
+  const rutaNodes = rutaMapa.map((node, idx) => ({
+    ...node,
+    x: 90 + (idx * rutaPaso),
+    y: 66,
+  }));
+  const currentNode = rutaNodes[rutaNodes.length - 1];
+  const sugerenciaPaso = sugerenciasMapa.length > 1 ? 440 / (sugerenciasMapa.length - 1) : 0;
+  const sugerenciaNodes = sugerenciasMapa.map((node, idx) => ({
+    ...node,
+    x: 90 + (idx * sugerenciaPaso),
+    y: 175,
+  }));
 
   const handleGuardarPerfil = async () => {
     setGuardandoPerfil(true);
@@ -370,6 +391,77 @@ export function DashboardPadreDetalle({ data }: Props) {
           <p className="text-xs text-texto">
             Topics tocados recientemente: <span className="font-bold">{data.techTree.historialTopics.length}</span>
           </p>
+        </div>
+
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-neutro/15 bg-fondo p-3">
+          <div className="min-w-[620px]">
+            <p className="text-[11px] font-semibold text-texto-suave">
+              Mapa visual (ruta reciente + proximas ramas)
+            </p>
+            <svg viewBox="0 0 620 220" className="mt-2 h-[220px] w-full">
+              {rutaNodes.length === 0 && (
+                <text x="310" y="100" textAnchor="middle" fontSize="12" fill="#7a868d">
+                  Aun no hay ruta suficiente. Completa 1-2 lecturas para ver el mapa.
+                </text>
+              )}
+
+              {rutaNodes.map((node, idx) => {
+                const next = rutaNodes[idx + 1];
+                if (!next) return null;
+                return (
+                  <line
+                    key={`ruta-link-${node.slug}-${next.slug}`}
+                    x1={node.x}
+                    y1={node.y}
+                    x2={next.x}
+                    y2={next.y}
+                    stroke="#4ECDC4"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                );
+              })}
+
+              {currentNode && sugerenciaNodes.map((node) => (
+                <line
+                  key={`sug-link-${node.slug}`}
+                  x1={currentNode.x}
+                  y1={currentNode.y + 12}
+                  x2={node.x}
+                  y2={node.y - 14}
+                  stroke="#9AA0A6"
+                  strokeDasharray="5 4"
+                  strokeWidth="1.8"
+                />
+              ))}
+
+              {rutaNodes.map((node) => (
+                <g key={`ruta-node-${node.slug}`}>
+                  <circle cx={node.x} cy={node.y} r="15" fill="#4ECDC4" opacity="0.2" />
+                  <circle cx={node.x} cy={node.y} r="11" fill="#4ECDC4" />
+                  <text x={node.x} y={node.y + 4} textAnchor="middle" fontSize="10" fill="#fff">
+                    {node.emoji}
+                  </text>
+                  <text x={node.x} y={node.y - 22} textAnchor="middle" fontSize="10" fill="#5c6b73">
+                    {recortarLabel(node.nombre, 15)}
+                  </text>
+                </g>
+              ))}
+
+              {sugerenciaNodes.map((node) => (
+                <g key={`sug-node-${node.slug}`}>
+                  <circle cx={node.x} cy={node.y} r="13" fill="#FFE66D" opacity="0.2" />
+                  <circle cx={node.x} cy={node.y} r="9.5" fill="#FFE66D" />
+                  <text x={node.x} y={node.y + 3} textAnchor="middle" fontSize="9.5" fill="#2f3a3f">
+                    {node.emoji}
+                  </text>
+                  <text x={node.x} y={node.y + 24} textAnchor="middle" fontSize="9.5" fill="#5c6b73">
+                    {recortarLabel(node.nombre, 14)}
+                  </text>
+                </g>
+              ))}
+            </svg>
+          </div>
         </div>
 
         <div className="mt-3 overflow-x-auto">

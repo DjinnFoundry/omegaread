@@ -294,7 +294,10 @@ export async function cargarProgresoEstudiante(studentId: string) {
   });
 
   const sesiones = await db.query.sessions.findMany({
-    where: eq(sessions.studentId, validStudentId),
+    where: and(
+      eq(sessions.studentId, validStudentId),
+      eq(sessions.tipoActividad, 'lectura'),
+    ),
     orderBy: [desc(sessions.iniciadaEn)],
   });
 
