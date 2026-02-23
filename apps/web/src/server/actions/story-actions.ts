@@ -53,6 +53,7 @@ import { calcularAjusteDificultad } from './reading-actions';
 import { actualizarProgresoInmediato } from './session-actions';
 import { procesarRespuestasElo, type EloRatings, type RespuestaElo } from '@/lib/elo';
 import type { TipoPregunta } from '@/lib/types/reading';
+import { recomendarSiguientesSkills, type SkillProgressLite } from '@/lib/learning/graph';
 
 const MAX_HISTORIAS_DIA = 20;
 const UMBRAL_SKILL_DOMINADA = 0.85;
@@ -388,6 +389,21 @@ function normalizarSkillSlug(skillId: string): string | null {
   return skillId.startsWith('topic-') ? skillId.slice('topic-'.length) : null;
 }
 
+function extraerHechosPerfilVivo(raw: unknown): string[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const senales = raw as Record<string, unknown>;
+  const perfil = senales.perfilVivo as Record<string, unknown> | undefined;
+  if (!perfil || typeof perfil !== 'object') return [];
+  const hechos = perfil.hechos;
+  if (!Array.isArray(hechos)) return [];
+
+  return hechos
+    .filter((h) => h && typeof h === 'object')
+    .map((h) => (h as Record<string, unknown>).texto)
+    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    .slice(0, 6);
+}
+
 function crearMapaProgresoSkill(rows: SkillProgressRow[]): Map<string, SkillProgressRow> {
   const map = new Map<string, SkillProgressRow>();
   for (const row of rows) {
@@ -418,9 +434,39 @@ function elegirSiguienteSkillTechTree(params: {
   edadAnos: number;
   intereses: string[];
   progresoMap: Map<string, SkillProgressRow>;
+  skillActualSlug?: string;
+  historialReciente?: string[];
 }): SkillDef | undefined {
-  const { edadAnos, intereses, progresoMap } = params;
+  const { edadAnos, intereses, progresoMap, skillActualSlug, historialReciente } = params;
   const skillsEdad = getSkillsPorEdad(edadAnos).sort(ordenarSkillsPorRuta);
+
+  const progresoLite = new Map<string, SkillProgressLite>();
+  for (const [slug, row] of progresoMap.entries()) {
+    progresoLite.set(slug, {
+      totalIntentos: row.totalIntentos,
+      nivelMastery: row.nivelMastery,
+      dominada: row.dominada,
+    });
+  }
+
+  // Prioridad 1: recomendaciones del grafo (profundizar/conectar/aplicar/reforzar)
+  const sugeridas = recomendarSiguientesSkills({
+    edadAnos,
+    intereses,
+    progresoMap: progresoLite,
+    skillActualSlug,
+    recientes: historialReciente,
+    limite: 5,
+    soloDesbloqueadas: true,
+  });
+  for (const s of sugeridas) {
+    const skill = getSkillBySlug(s.slug);
+    if (!skill) continue;
+    if (!skillsEdad.some((x) => x.slug === skill.slug)) continue;
+    if (!skillDesbloqueada(skill, progresoMap)) continue;
+    if (skillDominada(skill.slug, progresoMap)) continue;
+    return skill;
+  }
 
   const poolIntereses = skillsEdad.filter((s) => intereses.includes(s.dominio));
   const pools = poolIntereses.length > 0 ? [poolIntereses, skillsEdad] : [skillsEdad];
@@ -567,6 +613,14 @@ export async function generarHistoria(datos: {
     ),
   });
   const progresoMap = crearMapaProgresoSkill(progresoSkillsTopic);
+  const historiasRecientesNodos = await db.query.generatedStories.findMany({
+    where: eq(generatedStories.studentId, validado.studentId),
+    orderBy: [desc(generatedStories.creadoEn)],
+    limit: 8,
+    columns: { topicSlug: true },
+  });
+  const historialReciente = historiasRecientesNodos.map((h) => h.topicSlug);
+  const skillActualSlug = historialReciente[0];
 
   let topicSlug = validado.topicSlug;
   if (!topicSlug) {
@@ -575,6 +629,8 @@ export async function generarHistoria(datos: {
       edadAnos,
       intereses,
       progresoMap,
+      skillActualSlug,
+      historialReciente,
     });
     if (skillSiguiente) {
       topicSlug = skillSiguiente.slug;
@@ -701,7 +757,13 @@ export async function generarHistoria(datos: {
       .filter((n): n is string => !!n)
       .slice(0, 3),
     personajesFavoritos: estudiante.personajesFavoritos ?? undefined,
-    contextoPersonal: estudiante.contextoPersonal || undefined,
+    contextoPersonal: (() => {
+      const base = (estudiante.contextoPersonal ?? '').trim();
+      const hechos = extraerHechosPerfilVivo(estudiante.senalesDificultad);
+      if (hechos.length === 0) return base || undefined;
+      const memoria = `Hechos recientes del nino: ${hechos.join(' | ')}`;
+      return [base, memoria].filter(Boolean).join('\n');
+    })(),
     historiasAnteriores: titulosPrevios.length > 0 ? titulosPrevios : undefined,
     techTreeContext,
   };

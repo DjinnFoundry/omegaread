@@ -1035,6 +1035,18 @@ const SKILLS_EXTRA: Array<Omit<SkillDef, 'orden'>> = [
     edadMinima: 5,
     edadMaxima: 9,
   },
+  {
+    slug: 'cometa-halley',
+    nombre: 'El cometa Halley',
+    emoji: '🌠',
+    dominio: 'universo',
+    nivel: 2,
+    conceptoNucleo:
+      'El cometa Halley vuelve cerca de la Tierra aproximadamente cada 76 anos. Observar su regreso ayudo a entender que algunos cometas siguen orbitas predecibles.',
+    prerequisitos: ['cometas-y-asteroides', 'sistema-solar'],
+    edadMinima: 7,
+    edadMaxima: 9,
+  },
 
   // =========================================================================
   // CUERPO Y MENTE 🧠 (expansion)
@@ -1111,6 +1123,18 @@ const SKILLS_EXTRA: Array<Omit<SkillDef, 'orden'>> = [
     edadMinima: 5,
     edadMaxima: 9,
   },
+  {
+    slug: 'edmond-halley',
+    nombre: 'Quien fue Edmond Halley',
+    emoji: '🧑‍🔬',
+    dominio: 'tiempo-personas',
+    nivel: 3,
+    conceptoNucleo:
+      'Edmond Halley fue un cientifico que comparo observaciones antiguas y modernas para demostrar que un mismo cometa regresaba periodicamente. Su trabajo conecto historia, matematicas y astronomia.',
+    prerequisitos: ['grandes-exploradores', 'cometa-halley'],
+    edadMinima: 7,
+    edadMaxima: 9,
+  },
 ];
 
 for (const skill of SKILLS_EXTRA) {
@@ -1134,6 +1158,11 @@ export function getSkillsDeDominio(dominioSlug: DominioSlug): SkillDef[] {
 /** Get all skills appropriate for a given age. */
 export function getSkillsPorEdad(edadAnos: number): SkillDef[] {
   return SKILLS.filter((s) => edadAnos >= s.edadMinima && edadAnos <= s.edadMaxima);
+}
+
+/** Get all skills in the catalog (all ages/domains). */
+export function getAllSkills(): SkillDef[] {
+  return [...SKILLS];
 }
 
 // ---------------------------------------------------------------------------

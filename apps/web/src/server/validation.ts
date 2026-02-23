@@ -135,6 +135,24 @@ export const guardarContextoPersonalSchema = z.object({
   contextoPersonal: z.string().max(2000, 'Maximo 2000 caracteres').optional(),
 });
 
+/** Schema: guardarPerfilVivo (iterativo, dashboard padre) */
+export const guardarPerfilVivoSchema = z.object({
+  studentId: uuid,
+  contextoPersonal: z.string().max(2000).optional(),
+  personajesFavoritos: z.string().max(300).optional(),
+  intereses: z.array(z.string().max(50)).max(10).optional(),
+  temasEvitar: z.array(z.string().max(50)).max(10).optional(),
+  nuevoHecho: z.string().max(300).optional(),
+  categoriaHecho: z.enum(['interes', 'fortaleza', 'reto', 'hito', 'contexto']).optional(),
+});
+
+/** Schema: responderMicroPreguntaPerfil */
+export const responderMicroPreguntaPerfilSchema = z.object({
+  studentId: uuid,
+  preguntaId: z.string().min(1).max(100),
+  respuesta: z.string().min(1).max(120),
+});
+
 // ─────────────────────────────────────────────
 // BASELINE ACTIONS (Sprint 1)
 // ─────────────────────────────────────────────

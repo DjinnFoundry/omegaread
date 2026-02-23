@@ -12,12 +12,14 @@ import {
   generatedStories,
   topics,
   eloSnapshots,
+  skillProgress,
   eq,
   and,
   desc,
   asc,
   inArray,
   type InferSelectModel,
+  type PerfilVivoState,
 } from '@omegaread/db';
 import { requireStudentOwnership } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
@@ -28,6 +30,9 @@ import {
   generarRecomendaciones,
   construirNormativaLectura,
 } from './dashboard-utils';
+import { seleccionarPreguntaPerfilActiva } from '@/lib/profile/micro-profile';
+import { recomendarSiguientesSkills, type SkillProgressLite } from '@/lib/learning/graph';
+import { DOMINIOS, getSkillBySlug, getSkillsDeDominio } from '@/lib/data/skills';
 
 // ─────────────────────────────────────────────
 // TIPOS
@@ -69,6 +74,7 @@ export interface DashboardNinoData {
 }
 
 export interface DashboardPadreData {
+  studentId: string;
   /** Evolucion semanal de comprension (4-8 semanas) */
   evolucionSemanal: Array<{
     semana: string;
@@ -178,6 +184,51 @@ export interface DashboardPadreData {
       p50: number;
       p75: number;
       p90: number;
+    }>;
+  };
+  perfilVivo: {
+    contextoPersonal: string;
+    personajesFavoritos: string;
+    intereses: string[];
+    temasEvitar: string[];
+    hechosRecientes: Array<{
+      id: string;
+      texto: string;
+      categoria: string;
+      fuente: string;
+      createdAt: string;
+    }>;
+    totalHechos: number;
+    microPreguntaActiva: {
+      id: string;
+      categoria: string;
+      pregunta: string;
+      opciones: string[];
+    } | null;
+  };
+  techTree: {
+    historialTopics: Array<{
+      slug: string;
+      nombre: string;
+      emoji: string;
+      dominio: string;
+      fecha: string;
+      veces: number;
+    }>;
+    dominiosTocados: Array<{
+      dominio: string;
+      nombre: string;
+      emoji: string;
+      tocados: number;
+      total: number;
+    }>;
+    sugerencias: Array<{
+      slug: string;
+      nombre: string;
+      emoji: string;
+      dominio: string;
+      tipo: 'profundizar' | 'conectar' | 'aplicar' | 'reforzar';
+      motivo: string;
     }>;
   };
 }
@@ -311,6 +362,14 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
   });
   const topicMap = new Map(allTopics.map(t => [t.slug, t]));
   const storyMap = new Map(historias.map(h => [h.id, h]));
+
+  const progresoSkillsTopic = await db.query.skillProgress.findMany({
+    where: and(
+      eq(skillProgress.studentId, estudianteId),
+      eq(skillProgress.categoria, 'topic'),
+    ),
+  });
+  const progresoMap = crearMapaProgresoSkill(progresoSkillsTopic);
 
   // Ajustes de dificultad
   const ajustes = await db.query.difficultyAdjustments.findMany({
@@ -448,7 +507,47 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     eloPorTipo: eloTipoMap,
   });
 
+  const senales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
+  const perfil = extraerPerfilVivo(senales.perfilVivo);
+  const microPreguntaActiva = seleccionarPreguntaPerfilActiva({
+    studentId: estudianteId,
+    preguntasRespondidas: Object.keys(perfil.microRespuestas),
+  });
+
+  const historialTopics = construirHistorialTopics(todasSesiones, storyMap, topicMap);
+  const recientes = historialTopics.slice(0, 8).map((t) => t.slug);
+  const ultimoSlug = historialTopics[0]?.slug;
+  const sugerencias = recomendarSiguientesSkills({
+    edadAnos,
+    intereses: estudiante.intereses ?? [],
+    progresoMap,
+    skillActualSlug: ultimoSlug,
+    recientes,
+    limite: 5,
+    soloDesbloqueadas: true,
+  }).map((s) => ({
+    slug: s.slug,
+    nombre: s.nombre,
+    emoji: s.emoji,
+    dominio: s.dominio,
+    tipo: s.tipo,
+    motivo: s.motivo,
+  }));
+
+  const dominiosTocados = DOMINIOS.map((d) => {
+    const tocados = historialTopics.filter((t) => t.dominio === d.slug).length;
+    const total = getSkillsDeDominio(d.slug).filter((s) => edadAnos >= s.edadMinima && edadAnos <= s.edadMaxima).length;
+    return {
+      dominio: d.slug,
+      nombre: d.nombre,
+      emoji: d.emoji,
+      tocados,
+      total: Math.max(total, tocados),
+    };
+  });
+
   return {
+    studentId: estudiante.id,
     evolucionSemanal,
     evolucionDificultad,
     desgloseTipos: desgloseTiposConElo,
@@ -462,6 +561,25 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     eloEvolucion,
     wpmEvolucion,
     normativa,
+    perfilVivo: {
+      contextoPersonal: estudiante.contextoPersonal ?? '',
+      personajesFavoritos: estudiante.personajesFavoritos ?? '',
+      intereses: estudiante.intereses ?? [],
+      temasEvitar: estudiante.temasEvitar ?? [],
+      hechosRecientes: perfil.hechos.slice(0, 8),
+      totalHechos: perfil.hechos.length,
+      microPreguntaActiva: microPreguntaActiva ? {
+        id: microPreguntaActiva.id,
+        categoria: microPreguntaActiva.categoria,
+        pregunta: microPreguntaActiva.pregunta,
+        opciones: microPreguntaActiva.opciones,
+      } : null,
+    },
+    techTree: {
+      historialTopics: historialTopics.slice(0, 18),
+      dominiosTocados,
+      sugerencias,
+    },
   };
 }
 
@@ -473,6 +591,89 @@ type SessionRow = InferSelectModel<typeof sessions>;
 type ResponseRow = InferSelectModel<typeof responses>;
 type StoryRow = InferSelectModel<typeof generatedStories>;
 type TopicRow = InferSelectModel<typeof topics>;
+
+function extraerPerfilVivo(raw: unknown): PerfilVivoState {
+  if (!raw || typeof raw !== 'object') {
+    return { version: 1, hechos: [], microRespuestas: {} };
+  }
+  const pv = raw as Record<string, unknown>;
+  const hechos = Array.isArray(pv.hechos)
+    ? pv.hechos
+      .filter((h) => h && typeof h === 'object')
+      .map((h) => h as PerfilVivoState['hechos'][number])
+      .slice(0, 80)
+    : [];
+
+  const microRespuestas = (pv.microRespuestas && typeof pv.microRespuestas === 'object')
+    ? (pv.microRespuestas as PerfilVivoState['microRespuestas'])
+    : {};
+
+  return {
+    version: 1,
+    hechos,
+    microRespuestas,
+  };
+}
+
+function normalizarSkillSlug(skillId: string): string | null {
+  return skillId.startsWith('topic-') ? skillId.slice('topic-'.length) : null;
+}
+
+function crearMapaProgresoSkill(
+  rows: Array<InferSelectModel<typeof skillProgress>>,
+): Map<string, SkillProgressLite> {
+  const map = new Map<string, SkillProgressLite>();
+  for (const row of rows) {
+    const slug = normalizarSkillSlug(row.skillId);
+    if (!slug) continue;
+    map.set(slug, {
+      totalIntentos: row.totalIntentos,
+      nivelMastery: row.nivelMastery,
+      dominada: row.dominada,
+    });
+  }
+  return map;
+}
+
+function construirHistorialTopics(
+  sesiones: SessionRow[],
+  storyMap: Map<string, StoryRow>,
+  topicMap: Map<string, TopicRow>,
+) {
+  const bySlug = new Map<string, {
+    slug: string;
+    nombre: string;
+    emoji: string;
+    dominio: string;
+    fecha: string;
+    veces: number;
+  }>();
+
+  for (const s of sesiones) {
+    if (!s.storyId) continue;
+    const story = storyMap.get(s.storyId);
+    if (!story) continue;
+    const skill = getSkillBySlug(story.topicSlug);
+    const topic = topicMap.get(story.topicSlug);
+    const existente = bySlug.get(story.topicSlug);
+    const fecha = s.iniciadaEn.toISOString().split('T')[0] ?? '';
+    if (existente) {
+      existente.veces += 1;
+      if (fecha > existente.fecha) existente.fecha = fecha;
+    } else {
+      bySlug.set(story.topicSlug, {
+        slug: story.topicSlug,
+        nombre: topic?.nombre ?? skill?.nombre ?? story.topicSlug,
+        emoji: topic?.emoji ?? skill?.emoji ?? '📖',
+        dominio: skill?.dominio ?? topic?.categoria ?? 'general',
+        fecha,
+        veces: 1,
+      });
+    }
+  }
+
+  return Array.from(bySlug.values()).sort((a, b) => b.fecha.localeCompare(a.fecha));
+}
 
 async function obtenerRespuestasDeSesiones(sessionIds: string[]) {
   const db = await getDb();

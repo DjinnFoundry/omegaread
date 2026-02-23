@@ -470,6 +470,28 @@ export type SenalesDificultad = {
   vocabulario?: boolean;
   frustracion?: boolean;
   otroDetalle?: string;
+  perfilVivo?: PerfilVivoState;
+  [key: string]: unknown;
+};
+
+export type PerfilVivoFact = {
+  id: string;
+  texto: string;
+  categoria: 'interes' | 'fortaleza' | 'reto' | 'hito' | 'contexto';
+  fuente: 'padre' | 'micro-pregunta';
+  createdAt: string;
+};
+
+export type PerfilVivoMicroRespuesta = {
+  preguntaId: string;
+  respuesta: string;
+  answeredAt: string;
+};
+
+export type PerfilVivoState = {
+  version: 1;
+  hechos: PerfilVivoFact[];
+  microRespuestas: Record<string, PerfilVivoMicroRespuesta>;
 };
 
 export type BaselineRespuesta = {

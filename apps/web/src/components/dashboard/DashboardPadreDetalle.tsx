@@ -5,8 +5,10 @@
  * Elo-centric: muestra rating global, evolucion, desglose por tipo y WPM.
  */
 import { useState, lazy, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import type { DashboardPadreData } from '@/server/actions/dashboard-actions';
 import { clasificarElo } from '@/lib/elo';
+import { guardarPerfilVivo, responderMicroPreguntaPerfil } from '@/server/actions/profile-actions';
 
 const LineaEvolucion = lazy(() =>
   import('@/components/charts/LineaEvolucion').then(m => ({ default: m.LineaEvolucion }))
@@ -56,6 +58,14 @@ function getEloTendencia(eloEvolucion: DashboardPadreData['eloEvolucion'], curre
   return 'stable';
 }
 
+function categoriaHechoLabel(cat: string): string {
+  if (cat === 'interes') return 'Interes';
+  if (cat === 'fortaleza') return 'Fortaleza';
+  if (cat === 'reto') return 'Reto';
+  if (cat === 'hito') return 'Hito';
+  return 'Contexto';
+}
+
 /**
  * Filters WPM data to remove outlier sessions where the child likely skipped
  * without reading. Uses median-based detection: sessions with WPM > median * 3
@@ -90,8 +100,18 @@ interface Props {
 }
 
 export function DashboardPadreDetalle({ data }: Props) {
+  const router = useRouter();
   const [historialExpandido, setHistorialExpandido] = useState<string | null>(null);
   const [tipoExpandido, setTipoExpandido] = useState<string | null>(null);
+  const [guardandoPerfil, setGuardandoPerfil] = useState(false);
+  const [respondiendoMicro, setRespondiendoMicro] = useState(false);
+  const [mensajePerfil, setMensajePerfil] = useState<string | null>(null);
+  const [errorPerfil, setErrorPerfil] = useState<string | null>(null);
+  const [contextoEdit, setContextoEdit] = useState(data.perfilVivo.contextoPersonal);
+  const [personajesEdit, setPersonajesEdit] = useState(data.perfilVivo.personajesFavoritos);
+  const [temasEvitarEdit, setTemasEvitarEdit] = useState((data.perfilVivo.temasEvitar ?? []).join(', '));
+  const [nuevoHecho, setNuevoHecho] = useState('');
+  const [categoriaHecho, setCategoriaHecho] = useState<'interes' | 'fortaleza' | 'reto' | 'hito' | 'contexto'>('contexto');
 
   const tendencia = getEloTendencia(data.eloEvolucion, data.eloActual.global);
   const wpmValidos = filtrarWpmValidos(data.wpmEvolucion);
@@ -108,6 +128,65 @@ export function DashboardPadreDetalle({ data }: Props) {
         rd: data.eloActual.rd,
       }]
     : data.eloEvolucion;
+
+  const handleGuardarPerfil = async () => {
+    setGuardandoPerfil(true);
+    setErrorPerfil(null);
+    setMensajePerfil(null);
+    try {
+      const temasEvitar = temasEvitarEdit
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 10);
+
+      const result = await guardarPerfilVivo({
+        studentId: data.studentId,
+        contextoPersonal: contextoEdit,
+        personajesFavoritos: personajesEdit,
+        temasEvitar,
+        nuevoHecho: nuevoHecho.trim() || undefined,
+        categoriaHecho,
+      });
+
+      if (!result.ok) {
+        setErrorPerfil(result.error ?? 'No se pudo guardar el perfil');
+        return;
+      }
+
+      setMensajePerfil('Perfil actualizado');
+      setNuevoHecho('');
+      router.refresh();
+    } catch {
+      setErrorPerfil('No se pudo guardar el perfil');
+    } finally {
+      setGuardandoPerfil(false);
+    }
+  };
+
+  const handleResponderMicro = async (respuesta: string) => {
+    if (!data.perfilVivo.microPreguntaActiva) return;
+    setRespondiendoMicro(true);
+    setErrorPerfil(null);
+    setMensajePerfil(null);
+    try {
+      const result = await responderMicroPreguntaPerfil({
+        studentId: data.studentId,
+        preguntaId: data.perfilVivo.microPreguntaActiva.id,
+        respuesta,
+      });
+      if (!result.ok) {
+        setErrorPerfil(result.error ?? 'No se pudo guardar la respuesta');
+        return;
+      }
+      setMensajePerfil('Respuesta guardada');
+      router.refresh();
+    } catch {
+      setErrorPerfil('No se pudo guardar la respuesta');
+    } finally {
+      setRespondiendoMicro(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -173,7 +252,185 @@ export function DashboardPadreDetalle({ data }: Props) {
         </p>
       </SeccionCard>
 
-      {/* ────── b) Tabla normativa (equivalencia + percentiles) ────── */}
+      {/* ────── b) Perfil vivo (Fase 1-2) ────── */}
+      <SeccionCard titulo="Perfil vivo del lector" emoji="🧩">
+        <div className="space-y-3">
+          <div>
+            <label className="text-[11px] font-semibold text-texto-suave">Contexto personal</label>
+            <textarea
+              value={contextoEdit}
+              onChange={(e) => setContextoEdit(e.target.value)}
+              rows={3}
+              className="mt-1 w-full rounded-xl border border-neutro/20 bg-fondo px-3 py-2 text-xs text-texto outline-none focus:border-turquesa"
+              placeholder="Novedades, gustos recientes, objetivos, etc."
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-texto-suave">Personajes favoritos</label>
+            <input
+              value={personajesEdit}
+              onChange={(e) => setPersonajesEdit(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-neutro/20 bg-fondo px-3 py-2 text-xs text-texto outline-none focus:border-turquesa"
+              placeholder="Ej: Bluey, Messi, Doraemon..."
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-texto-suave">Temas a evitar (coma separada)</label>
+            <input
+              value={temasEvitarEdit}
+              onChange={(e) => setTemasEvitarEdit(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-neutro/20 bg-fondo px-3 py-2 text-xs text-texto outline-none focus:border-turquesa"
+              placeholder="Ej: sustos fuertes, tormentas..."
+            />
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <input
+              value={nuevoHecho}
+              onChange={(e) => setNuevoHecho(e.target.value)}
+              className="w-full rounded-xl border border-neutro/20 bg-fondo px-3 py-2 text-xs text-texto outline-none focus:border-turquesa"
+              placeholder="Nuevo dato util para personalizar historias..."
+            />
+            <select
+              value={categoriaHecho}
+              onChange={(e) => setCategoriaHecho(e.target.value as typeof categoriaHecho)}
+              className="rounded-xl border border-neutro/20 bg-fondo px-3 py-2 text-xs text-texto"
+            >
+              <option value="contexto">Contexto</option>
+              <option value="interes">Interes</option>
+              <option value="fortaleza">Fortaleza</option>
+              <option value="reto">Reto</option>
+              <option value="hito">Hito</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGuardarPerfil}
+            disabled={guardandoPerfil}
+            className="rounded-xl bg-turquesa px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+          >
+            {guardandoPerfil ? 'Guardando...' : 'Guardar perfil vivo'}
+          </button>
+
+          {mensajePerfil && <p className="text-[11px] text-acierto">{mensajePerfil}</p>}
+          {errorPerfil && <p className="text-[11px] text-coral">{errorPerfil}</p>}
+        </div>
+
+        {data.perfilVivo.microPreguntaActiva && (
+          <div className="mt-4 rounded-2xl bg-amarillo/15 p-3">
+            <p className="text-[11px] font-semibold text-texto">
+              Pregunta rapida ({data.perfilVivo.microPreguntaActiva.categoria})
+            </p>
+            <p className="mt-1 text-xs text-texto">
+              {data.perfilVivo.microPreguntaActiva.pregunta}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {data.perfilVivo.microPreguntaActiva.opciones.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => void handleResponderMicro(opt)}
+                  disabled={respondiendoMicro}
+                  className="rounded-full bg-superficie px-2.5 py-1 text-[11px] font-medium text-texto disabled:opacity-50"
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold text-texto-suave">
+            Memoria util ({data.perfilVivo.totalHechos} hechos)
+          </p>
+          <div className="mt-1 space-y-1.5">
+            {data.perfilVivo.hechosRecientes.length === 0 ? (
+              <p className="text-[11px] text-texto-suave">Sin hechos recientes aun.</p>
+            ) : (
+              data.perfilVivo.hechosRecientes.map((h) => (
+                <div key={h.id} className="rounded-xl bg-fondo p-2">
+                  <p className="text-[10px] font-semibold text-texto-suave">
+                    {categoriaHechoLabel(h.categoria)} · {h.fuente}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-texto">{h.texto}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </SeccionCard>
+
+      {/* ────── c) Ruta/Tech Tree visible (Fase 3-5) ────── */}
+      <SeccionCard titulo="Ruta de aprendizaje" emoji="🕸️">
+        <div className="rounded-2xl bg-turquesa/10 p-3">
+          <p className="text-xs text-texto">
+            Topics tocados recientemente: <span className="font-bold">{data.techTree.historialTopics.length}</span>
+          </p>
+        </div>
+
+        <div className="mt-3 overflow-x-auto">
+          <div className="flex gap-2 min-w-max pb-1">
+            {data.techTree.historialTopics.slice(0, 12).map((h) => (
+              <div key={h.slug} className="rounded-xl bg-fondo px-2.5 py-2 min-w-28">
+                <p className="text-xs font-semibold text-texto truncate">
+                  {h.emoji} {h.nombre}
+                </p>
+                <p className="text-[10px] text-texto-suave mt-0.5">
+                  {h.veces} veces · {h.fecha}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {data.techTree.dominiosTocados.map((d) => (
+            <div key={d.dominio} className="rounded-xl bg-fondo p-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-texto">
+                  {d.emoji} {d.nombre}
+                </p>
+                <p className="text-[10px] text-texto-suave">
+                  {d.tocados}/{d.total}
+                </p>
+              </div>
+              <div className="mt-1 h-1.5 rounded-full bg-neutro/10">
+                <div
+                  className="h-1.5 rounded-full bg-turquesa"
+                  style={{ width: `${Math.min(100, Math.round((d.tocados / Math.max(1, d.total)) * 100))}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <p className="text-[11px] font-semibold text-texto-suave">Siguientes rutas sugeridas</p>
+          {data.techTree.sugerencias.length === 0 ? (
+            <p className="text-[11px] text-texto-suave">Aun no hay sugerencias (faltan sesiones).</p>
+          ) : (
+            data.techTree.sugerencias.map((sug) => (
+              <div key={sug.slug} className="rounded-xl bg-fondo p-2.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-texto">
+                    {sug.emoji} {sug.nombre}
+                  </p>
+                  <span className="rounded-full bg-neutro/10 px-2 py-0.5 text-[10px] font-semibold text-texto-suave">
+                    {sug.tipo}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-texto-suave">{sug.motivo}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </SeccionCard>
+
+      {/* ────── d) Tabla normativa (equivalencia + percentiles) ────── */}
       <SeccionCard titulo="Normativa y catch-up" emoji="🧭">
         <div className="rounded-2xl bg-amarillo/15 p-3">
           <p className="text-xs text-texto">
