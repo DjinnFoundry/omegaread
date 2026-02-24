@@ -519,4 +519,9 @@ export type StoryMetadata = {
   vocabularioNuevo: string[];
   edadObjetivo: number;
   tiempoEsperadoMs: number;
+  llmUsage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 };

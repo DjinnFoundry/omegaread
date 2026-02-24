@@ -142,6 +142,14 @@ LLM_MAX_TOKENS_REWRITE="1200"
 
 # Opcional en local
 DEV_ADMIN_ENABLED="true"
+
+# Admin interno (/admin)
+ADMIN_USER="juan"
+ADMIN_PASSWORD="juan"
+
+# Opcional: coste estimado en panel admin (USD por 1M tokens)
+LLM_COST_INPUT_USD_PER_1M="0"
+LLM_COST_OUTPUT_USD_PER_1M="0"
 ```
 
 Notas importantes:

@@ -56,6 +56,24 @@ interface CompletionSnapshot {
   totalTokens: number | null;
 }
 
+export interface LLMUsageSnapshot {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+function buildUsageSnapshot(snapshot: CompletionSnapshot): LLMUsageSnapshot {
+  const promptTokens = Math.max(0, snapshot.promptTokens ?? 0);
+  const completionTokens = Math.max(0, snapshot.completionTokens ?? 0);
+  const totalFromUsage = Math.max(0, snapshot.totalTokens ?? 0);
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: totalFromUsage > 0 ? totalFromUsage : promptTokens + completionTokens,
+  };
+}
+
 function buildChatParams(base: ChatParams, overrides: Record<string, unknown>): ChatParams {
   return {
     ...base,
@@ -317,6 +335,7 @@ export interface GeneratedStory {
   modelo: string;
   aprobadaQA: boolean;
   motivoRechazo?: string;
+  llmUsage: LLMUsageSnapshot;
 }
 
 export type StoryGenerationResult =
@@ -428,6 +447,7 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
         modelo: model,
         aprobadaQA: qa.aprobada,
         motivoRechazo: qa.motivo,
+        llmUsage: buildUsageSnapshot(snapshot),
       };
 
       if (!qa.aprobada) {
@@ -469,6 +489,7 @@ export interface GeneratedStoryOnly {
   modelo: string;
   aprobadaQA: boolean;
   motivoRechazo?: string;
+  llmUsage: LLMUsageSnapshot;
 }
 
 export interface GeneratedQuestions {
@@ -483,6 +504,7 @@ export interface GeneratedQuestions {
   modelo: string;
   aprobadaQA: boolean;
   motivoRechazo?: string;
+  llmUsage: LLMUsageSnapshot;
 }
 
 export type StoryOnlyResult =
@@ -600,6 +622,7 @@ export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyRe
         modelo: model,
         aprobadaQA: qa.aprobada,
         motivoRechazo: qa.motivo,
+        llmUsage: buildUsageSnapshot(snapshot),
       };
 
       if (!qa.aprobada) {
@@ -724,6 +747,7 @@ export async function generateQuestions(input: QuestionsPromptInput): Promise<Qu
         modelo: model,
         aprobadaQA: qa.aprobada,
         motivoRechazo: qa.motivo,
+        llmUsage: buildUsageSnapshot(snapshot),
       };
 
       if (!qa.aprobada) {
@@ -846,6 +870,7 @@ export async function rewriteStory(input: RewritePromptInput): Promise<StoryGene
         modelo: model,
         aprobadaQA: qa.aprobada,
         motivoRechazo: qa.motivo,
+        llmUsage: buildUsageSnapshot(snapshot),
       };
 
       if (!qa.aprobada) {

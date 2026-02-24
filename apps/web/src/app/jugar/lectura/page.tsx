@@ -22,6 +22,7 @@ import {
   generarHistoria,
   obtenerProgresoGeneracionHistoria,
   generarPreguntasSesion,
+  registrarLecturaCompletada,
   finalizarSesionLectura,
   analizarLecturaAudio,
   type StoryGenerationTrace,
@@ -251,6 +252,22 @@ export default function LecturaPage() {
     async (tiempoMs: number, wpm: WpmData) => {
       setTiempoLectura(tiempoMs);
       setWpmData(wpm);
+
+      if (estudiante && sesionActiva) {
+        try {
+          await registrarLecturaCompletada({
+            sessionId: sesionActiva.sessionId,
+            studentId: estudiante.id,
+            tiempoLecturaMs: tiempoMs,
+            wpmPromedio: wpm.wpmPromedio ?? null,
+            wpmPorPagina: wpm.wpmPorPagina ?? null,
+            totalPaginas: wpm.totalPaginas ?? null,
+            audioAnalisis: wpm.audioAnalisis ?? undefined,
+          });
+        } catch {
+          // No bloqueamos UX si falla el tracking interno.
+        }
+      }
 
       // Si las preguntas ya estan listas, ir directo
       if (sesionActiva && sesionActiva.preguntas.length > 0) {

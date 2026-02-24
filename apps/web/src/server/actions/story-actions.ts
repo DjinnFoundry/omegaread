@@ -29,6 +29,7 @@ import {
   analizarLecturaAudioSchema,
   generarPreguntasSesionSchema,
   obtenerProgresoGeneracionHistoriaSchema,
+  registrarLecturaCompletadaSchema,
 } from '../validation';
 import { rewriteStory, generateStoryOnly, generateQuestions } from '@/lib/ai/story-generator';
 import { getOpenAIClient, hasLLMKey, OpenAIKeyMissingError } from '@/lib/ai/openai';
@@ -1084,7 +1085,10 @@ export async function generarHistoria(datos: {
         titulo: story.titulo,
         contenido: story.contenido,
         nivel,
-        metadata: story.metadata,
+        metadata: {
+          ...story.metadata,
+          llmUsage: story.llmUsage,
+        },
         modeloGeneracion: story.modelo,
         promptVersion: 'v3-split',
         aprobadaQA: story.aprobadaQA,
@@ -1112,6 +1116,8 @@ export async function generarHistoria(datos: {
           objetivoSesion: techTreeContext?.objetivoSesion,
           estrategiaPedagogica: techTreeContext?.estrategia,
           tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
+          llmStoryModel: story.modelo,
+          llmStoryUsage: story.llmUsage,
         },
       })
       .returning();
@@ -1211,6 +1217,7 @@ export async function generarPreguntasSesion(datos: {
     columns: {
       id: true,
       storyId: true,
+      metadata: true,
     },
   });
 
@@ -1304,6 +1311,17 @@ export async function generarPreguntasSesion(datos: {
     return { ok: false as const, error: result.error, code: result.code };
   }
 
+  await db
+    .update(sessions)
+    .set({
+      metadata: {
+        ...(sesion.metadata as Record<string, unknown>),
+        llmQuestionsModel: result.questions.modelo,
+        llmQuestionsUsage: result.questions.llmUsage,
+      },
+    })
+    .where(eq(sessions.id, validado.sessionId));
+
   // 7. Revalidar por concurrencia (si otra llamada ya inserto preguntas)
   const preguntasExistentes = await db.query.storyQuestions.findMany({
     where: eq(storyQuestions.storyId, validado.storyId),
@@ -1348,6 +1366,83 @@ export async function generarPreguntasSesion(datos: {
       respuestaCorrecta: p.respuestaCorrecta,
       explicacion: p.explicacion,
     })),
+  };
+}
+
+/**
+ * Marca el hito guiding-star de una sesion: lectura completada.
+ * Se dispara al terminar de leer, incluso si aun no responde preguntas.
+ */
+export async function registrarLecturaCompletada(datos: {
+  sessionId: string;
+  studentId: string;
+  tiempoLecturaMs: number;
+  wpmPromedio?: number | null;
+  wpmPorPagina?: Array<{ pagina: number; wpm: number }> | null;
+  totalPaginas?: number | null;
+  audioAnalisis?: AudioAnalisisLectura;
+}) {
+  const db = await getDb();
+  const validado = registrarLecturaCompletadaSchema.parse(datos);
+  await requireStudentOwnership(validado.studentId);
+
+  const sesion = await db.query.sessions.findFirst({
+    where: and(eq(sessions.id, validado.sessionId), eq(sessions.studentId, validado.studentId)),
+  });
+
+  if (!sesion) {
+    return { ok: false as const, error: 'Sesion no encontrada' };
+  }
+
+  const metadataBase = (sesion.metadata as Record<string, unknown>) ?? {};
+  const yaMarcada = metadataBase.lecturaCompletada === true;
+  const lecturaCompletadaEnExistente =
+    typeof metadataBase.lecturaCompletadaEn === 'string'
+      ? metadataBase.lecturaCompletadaEn
+      : null;
+  const lecturaCompletadaEn = lecturaCompletadaEnExistente ?? new Date().toISOString();
+
+  const usarAudioParaWpm =
+    !!validado.audioAnalisis?.confiable && validado.audioAnalisis.wpmUtil > 0;
+  const wpmPromedioFinal = usarAudioParaWpm
+    ? (validado.audioAnalisis?.wpmUtil ?? null)
+    : (validado.wpmPromedio ?? null);
+
+  await db
+    .update(sessions)
+    .set({
+      wpmPromedio: wpmPromedioFinal ?? sesion.wpmPromedio ?? null,
+      wpmPorPagina: validado.wpmPorPagina ?? sesion.wpmPorPagina ?? null,
+      totalPaginas: validado.totalPaginas ?? sesion.totalPaginas ?? null,
+      metadata: {
+        ...metadataBase,
+        lecturaCompletada: true,
+        lecturaCompletadaEn,
+        tiempoLecturaMs: validado.tiempoLecturaMs,
+        fuenteWpm: usarAudioParaWpm ? 'audio' : 'pagina',
+        audioAnalisis: validado.audioAnalisis
+          ? {
+              wpmUtil: validado.audioAnalisis.wpmUtil,
+              precisionLectura: validado.audioAnalisis.precisionLectura,
+              coberturaTexto: validado.audioAnalisis.coberturaTexto,
+              pauseRatio: validado.audioAnalisis.pauseRatio,
+              qualityScore: validado.audioAnalisis.qualityScore,
+              confiable: validado.audioAnalisis.confiable,
+              motivoNoConfiable: validado.audioAnalisis.motivoNoConfiable ?? null,
+              motor: validado.audioAnalisis.motor,
+              tiempoVozActivaMs: validado.audioAnalisis.tiempoVozActivaMs,
+              totalPalabrasTranscritas: validado.audioAnalisis.totalPalabrasTranscritas,
+              totalPalabrasAlineadas: validado.audioAnalisis.totalPalabrasAlineadas,
+            }
+          : (metadataBase.audioAnalisis ?? null),
+      },
+    })
+    .where(eq(sessions.id, validado.sessionId));
+
+  return {
+    ok: true as const,
+    alreadyMarked: yaMarcada,
+    lecturaCompletadaEn,
   };
 }
 
@@ -1437,6 +1532,11 @@ export async function finalizarSesionLectura(datos: {
     ? (validado.audioAnalisis?.wpmUtil ?? null)
     : (validado.wpmPromedio ?? null);
   const fuenteWpm = usarAudioParaWpm ? 'audio' : 'pagina';
+  const metadataPrev = (sesion.metadata as Record<string, unknown>) ?? {};
+  const lecturaCompletadaEn =
+    typeof metadataPrev.lecturaCompletadaEn === 'string'
+      ? metadataPrev.lecturaCompletadaEn
+      : new Date().toISOString();
 
   await db
     .update(sessions)
@@ -1449,7 +1549,9 @@ export async function finalizarSesionLectura(datos: {
       wpmPorPagina: validado.wpmPorPagina ?? null,
       totalPaginas: validado.totalPaginas ?? null,
       metadata: {
-        ...(sesion.metadata as Record<string, unknown>),
+        ...metadataPrev,
+        lecturaCompletada: true,
+        lecturaCompletadaEn,
         comprensionScore,
         aciertos,
         totalPreguntas,
@@ -1713,7 +1815,10 @@ export async function reescribirHistoria(datos: {
       titulo: story.titulo,
       contenido: story.contenido,
       nivel: nivelNuevo,
-      metadata: story.metadata,
+      metadata: {
+        ...story.metadata,
+        llmUsage: story.llmUsage,
+      },
       modeloGeneracion: story.modelo,
       promptVersion: 'v1-rewrite',
       aprobadaQA: story.aprobadaQA,
@@ -1764,6 +1869,8 @@ export async function reescribirHistoria(datos: {
         tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
         ajusteManual: validado.direccion,
         storyIdOriginal: validado.storyId,
+        llmStoryModel: story.modelo,
+        llmStoryUsage: story.llmUsage,
       },
     })
     .where(eq(sessions.id, validado.sessionId));
