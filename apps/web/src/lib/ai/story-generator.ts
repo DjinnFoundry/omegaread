@@ -323,6 +323,9 @@ export interface GeneratedStory {
     vocabularioNuevo: string[];
     edadObjetivo: number;
     tiempoEsperadoMs: number;
+    generationFlags?: {
+      funMode?: boolean;
+    };
   };
   preguntas: Array<{
     tipo: 'literal' | 'inferencia' | 'vocabulario' | 'resumen';
@@ -485,6 +488,9 @@ export interface GeneratedStoryOnly {
     vocabularioNuevo: string[];
     edadObjetivo: number;
     tiempoEsperadoMs: number;
+    generationFlags?: {
+      funMode?: boolean;
+    };
   };
   modelo: string;
   aprobadaQA: boolean;

@@ -42,6 +42,11 @@ interface PantallaLecturaProps {
   titulo: string;
   contenido: string;
   nivel: number;
+  preferenciaFuente?: TipoFuenteLectura;
+  preferenciasAccesibilidad?: {
+    modoTDAH?: boolean;
+    altoContraste?: boolean;
+  };
   onTerminar: (tiempoLecturaMs: number, wpmData: WpmData) => void;
   onAnalizarAudio?: AudioAnalisisHandler;
   fromCache?: boolean;
@@ -166,6 +171,8 @@ export default function PantallaLectura({
   titulo,
   contenido,
   nivel,
+  preferenciaFuente,
+  preferenciasAccesibilidad,
   onTerminar,
   onAnalizarAudio,
   fromCache = false,
@@ -188,9 +195,10 @@ export default function PantallaLectura({
   const [mostrarVersionImpresion, setMostrarVersionImpresion] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [tipoFuente, setTipoFuente] = useState<TipoFuenteLectura>(() => {
-    if (typeof window === 'undefined') return 'libro';
+    if (typeof window === 'undefined') return preferenciaFuente ?? 'libro';
     const stored = window.localStorage.getItem(READING_FONT_STORAGE_KEY);
-    return stored === 'libro' || stored === 'dislexia' ? stored : 'libro';
+    if (stored === 'libro' || stored === 'dislexia') return stored;
+    return preferenciaFuente ?? 'libro';
   });
   const [audioEstado, setAudioEstado] = useState<'idle' | 'recording' | 'unsupported' | 'denied' | 'processing'>('idle');
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -213,6 +221,8 @@ export default function PantallaLectura({
     tipoFuente === 'dislexia'
       ? 'var(--font-lectura-dislexia)'
       : 'var(--font-lectura-normal)';
+  const modoTDAH = preferenciasAccesibilidad?.modoTDAH === true;
+  const altoContraste = preferenciasAccesibilidad?.altoContraste === true;
 
   const detenerAnalisisAudio = useCallback(async () => {
     if (vadRafRef.current !== null) {
@@ -376,6 +386,12 @@ export default function PantallaLectura({
     window.localStorage.setItem(READING_FONT_STORAGE_KEY, tipoFuente);
   }, [tipoFuente]);
 
+  useEffect(() => {
+    if (!preferenciaFuente) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync font default from parent settings
+    setTipoFuente(preferenciaFuente);
+  }, [preferenciaFuente]);
+
   // Reset cuando cambia el contenido
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset required when story changes
@@ -529,7 +545,12 @@ export default function PantallaLectura({
           ? 'Sin permiso'
           : audioEstado === 'unsupported'
             ? 'No disponible'
-            : 'Inactivo';
+          : 'Inactivo';
+  const cardLecturaClass = altoContraste
+    ? 'relative mb-6 rounded-[30px] border border-black bg-white p-6 sm:p-8 shadow-[0_10px_25px_rgba(0,0,0,0.16)]'
+    : 'relative mb-6 rounded-[30px] border border-[#e7dcc7] bg-[linear-gradient(180deg,#fffef9_0%,#fffaf0_100%)] p-6 sm:p-8 shadow-[0_10px_25px_rgba(158,128,77,0.14)]';
+  const lineHeightLectura = modoTDAH ? 2.05 : 1.85;
+  const letterSpacingLectura = modoTDAH ? '0.02em' : 'normal';
 
   return (
     <div className="animate-fade-in w-full max-w-2xl mx-auto">
@@ -638,17 +659,19 @@ export default function PantallaLectura({
       </div>
 
       {/* Pagina de lectura estilo libro */}
-      <div className="relative mb-6 rounded-[30px] border border-[#e7dcc7] bg-[linear-gradient(180deg,#fffef9_0%,#fffaf0_100%)] p-6 sm:p-8 shadow-[0_10px_25px_rgba(158,128,77,0.14)]">
+      <div className={cardLecturaClass}>
         <div className="pointer-events-none absolute left-6 right-6 top-4 h-px bg-[#e8d9bc]" />
 
         <div className="space-y-5 pt-2">
           {parrafos.map((parrafo, i) => (
             <p
               key={i}
-              className="leading-[1.85] text-texto"
+              className={altoContraste ? 'text-black' : 'text-texto'}
               style={{
                 fontFamily: familiaFuenteLectura,
                 fontSize: `${fontSize}px`,
+                lineHeight: lineHeightLectura,
+                letterSpacing: letterSpacingLectura,
                 textIndent: i === 0 ? '0' : '0.8em',
               }}
             >

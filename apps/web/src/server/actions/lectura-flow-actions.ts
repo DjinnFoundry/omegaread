@@ -5,7 +5,7 @@
  * Determina en que paso esta el estudiante: intereses, contexto, o listo.
  */
 import { getDb } from '@/server/db';
-import { students, eq, and } from '@omegaread/db';
+import { students, eq, and, type AccesibilidadConfig } from '@omegaread/db';
 import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
 
@@ -23,6 +23,11 @@ export interface DatosEstudianteLectura {
   baselineCompletado: boolean;
   nivelLectura: number | null;
   baselineConfianza: string | null;
+  accesibilidad: {
+    fuenteDislexia: boolean;
+    modoTDAH: boolean;
+    altoContraste: boolean;
+  };
 }
 
 /**
@@ -43,6 +48,7 @@ export async function obtenerEstadoLectura(studentId: string): Promise<{
   if (!estudiante) return null;
 
   const edadAnos = calcularEdad(estudiante.fechaNacimiento);
+  const accesibilidad = (estudiante.accesibilidad ?? {}) as AccesibilidadConfig;
 
   const datos: DatosEstudianteLectura = {
     id: estudiante.id,
@@ -53,6 +59,11 @@ export async function obtenerEstadoLectura(studentId: string): Promise<{
     baselineCompletado: estudiante.baselineCompletado,
     nivelLectura: estudiante.nivelLectura,
     baselineConfianza: estudiante.baselineConfianza,
+    accesibilidad: {
+      fuenteDislexia: accesibilidad.fuenteDislexia === true,
+      modoTDAH: accesibilidad.modoTDAH === true,
+      altoContraste: accesibilidad.altoContraste === true,
+    },
   };
 
   let estado: EstadoFlujoLectura;

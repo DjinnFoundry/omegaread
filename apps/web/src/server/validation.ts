@@ -153,6 +153,25 @@ export const responderMicroPreguntaPerfilSchema = z.object({
   respuesta: z.string().min(1).max(120),
 });
 
+/** Schema: guardarAjustesLectura (fun mode + accesibilidad) */
+export const guardarAjustesLecturaSchema = z
+  .object({
+    studentId: uuid,
+    funMode: z.boolean().optional(),
+    accesibilidad: z
+      .object({
+        fuenteDislexia: z.boolean().optional(),
+        modoTDAH: z.boolean().optional(),
+        altoContraste: z.boolean().optional(),
+        duracionSesionMin: z.number().int().min(5).max(120).optional(),
+      })
+      .optional(),
+  })
+  .refine(
+    (data) => data.funMode !== undefined || data.accesibilidad !== undefined,
+    'Debes enviar al menos un ajuste para guardar',
+  );
+
 // ─────────────────────────────────────────────
 // BASELINE ACTIONS (Sprint 1)
 // ─────────────────────────────────────────────

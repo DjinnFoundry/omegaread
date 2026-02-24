@@ -1,32 +1,23 @@
 /**
- * Tests de componentes React para Sprint 4.
- * PantallaLectura: botones de ajuste manual, estados de reescritura.
+ * Tests de componentes React para PantallaLectura.
+ * Cubre UX actual: menu compacto, proteccion anti finish instantaneo
+ * y preferencias de accesibilidad.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import PantallaLectura from '@/components/lectura/PantallaLectura';
 
-// Mock del modulo de audio
-vi.mock('@/lib/audio/sonidos', () => ({
-  click: vi.fn(),
-  celebracion: vi.fn(),
-}));
-
-const defaultProps = {
+const baseProps = {
   titulo: 'El viaje de Luna',
   contenido: 'Luna era una gatita curiosa.\n\nUn dia fue al bosque.',
-  topicEmoji: '🐱',
-  topicNombre: 'Animales',
   nivel: 2,
   onTerminar: vi.fn(),
-  onAjusteManual: vi.fn(),
-  reescribiendo: false,
-  ajusteUsado: false,
 };
 
 describe('PantallaLectura', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -34,137 +25,94 @@ describe('PantallaLectura', () => {
     vi.restoreAllMocks();
   });
 
-  it('renderiza titulo y contenido', () => {
-    render(<PantallaLectura {...defaultProps} />);
+  it('renderiza titulo y contenido por parrafos', () => {
+    render(<PantallaLectura {...baseProps} />);
     expect(screen.getByText('El viaje de Luna')).toBeDefined();
     expect(screen.getByText('Luna era una gatita curiosa.')).toBeDefined();
+    expect(screen.getByText('Un dia fue al bosque.')).toBeDefined();
   });
 
-  it('muestra topic y nivel', () => {
-    render(<PantallaLectura {...defaultProps} />);
-    expect(screen.getByText('Animales')).toBeDefined();
-    expect(screen.getByText('Nivel 2')).toBeDefined();
+  it('muestra indicador de pagina y boton de menu', () => {
+    render(<PantallaLectura {...baseProps} />);
+    expect(screen.getAllByText('1 / 1').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Abrir opciones de lectura')).toBeDefined();
   });
 
-  it('no muestra botones de ajuste antes de 10 segundos', () => {
-    render(<PantallaLectura {...defaultProps} />);
-    expect(screen.queryByText('Hazlo mas facil')).toBeNull();
-    expect(screen.queryByText('Hazlo mas desafiante')).toBeNull();
-  });
-
-  it('muestra botones de ajuste despues de 10 segundos', () => {
-    render(<PantallaLectura {...defaultProps} />);
-    act(() => {
-      vi.advanceTimersByTime(10_001);
-    });
-    expect(screen.getByText('Hazlo mas facil')).toBeDefined();
-    expect(screen.getByText('Hazlo mas desafiante')).toBeDefined();
-  });
-
-  it('no muestra botones si ajusteUsado es true', () => {
-    render(<PantallaLectura {...defaultProps} ajusteUsado={true} />);
-    act(() => {
-      vi.advanceTimersByTime(15_000);
-    });
-    expect(screen.queryByText('Hazlo mas facil')).toBeNull();
-    expect(screen.queryByText('Hazlo mas desafiante')).toBeNull();
-  });
-
-  it('muestra indicador "Dificultad ajustada" cuando ajusteUsado', () => {
-    render(<PantallaLectura {...defaultProps} ajusteUsado={true} />);
-    expect(screen.getByText('Dificultad ajustada')).toBeDefined();
-  });
-
-  it('muestra spinner durante reescritura', () => {
-    render(<PantallaLectura {...defaultProps} reescribiendo={true} />);
-    expect(screen.getByText('Reescribiendo tu historia...')).toBeDefined();
-  });
-
-  it('deshabilita boton terminar durante reescritura', () => {
-    render(<PantallaLectura {...defaultProps} reescribiendo={true} />);
-    // Avanzar timer para que aparezca el boton (proteccion lectura instantanea)
-    act(() => { vi.advanceTimersByTime(16_000); });
-    const btn = screen.getByLabelText('He terminado de leer');
-    expect(btn.hasAttribute('disabled')).toBe(true);
-  });
-
-  it('boton terminar funciona normalmente', () => {
-    const onTerminar = vi.fn();
-    render(<PantallaLectura {...defaultProps} onTerminar={onTerminar} />);
-    // Avanzar timer para que aparezca el boton (proteccion lectura instantanea)
-    act(() => { vi.advanceTimersByTime(16_000); });
-    const btn = screen.getByLabelText('He terminado de leer');
-    btn.click();
-    expect(onTerminar).toHaveBeenCalledTimes(1);
-    expect(onTerminar).toHaveBeenCalledWith(expect.any(Number));
-  });
-
-  it('no muestra boton terminar inmediatamente (proteccion lectura instantanea)', () => {
-    render(<PantallaLectura {...defaultProps} />);
+  it('no permite terminar inmediatamente', () => {
+    render(<PantallaLectura {...baseProps} />);
     expect(screen.queryByLabelText('He terminado de leer')).toBeNull();
     expect(screen.getByText('Tomate tu tiempo para leer...')).toBeDefined();
   });
 
-  it('botones de ajuste tienen aria-labels correctos', () => {
-    render(<PantallaLectura {...defaultProps} />);
-    act(() => {
-      vi.advanceTimersByTime(10_001);
-    });
-    expect(screen.getByLabelText('Hazlo mas facil')).toBeDefined();
-    expect(screen.getByLabelText('Hazlo mas desafiante')).toBeDefined();
-  });
+  it('habilita terminar tras el delay y llama onTerminar con wpmData', () => {
+    const calls: Array<[number, unknown]> = [];
+    const onTerminar = (tiempoMs: number, wpmData: unknown) => {
+      calls.push([tiempoMs, wpmData]);
+    };
+    render(<PantallaLectura {...baseProps} onTerminar={onTerminar} />);
 
-  it('boton mas_facil llama onAjusteManual con direccion correcta', () => {
-    const onAjusteManual = vi.fn();
-    render(
-      <PantallaLectura {...defaultProps} onAjusteManual={onAjusteManual} />
+    act(() => {
+      vi.advanceTimersByTime(16_000);
+    });
+
+    fireEvent.click(screen.getByLabelText('He terminado de leer'));
+
+    expect(calls.length).toBe(1);
+    expect(calls[0]?.[0]).toEqual(expect.any(Number));
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        wpmPromedio: expect.any(Number),
+        wpmPorPagina: expect.any(Array),
+        totalPaginas: expect.any(Number),
+      }),
     );
-    act(() => {
-      vi.advanceTimersByTime(10_001);
-    });
-    screen.getByLabelText('Hazlo mas facil').click();
-    expect(onAjusteManual).toHaveBeenCalledWith('mas_facil', expect.any(Number));
   });
 
-  it('boton mas_desafiante llama onAjusteManual con direccion correcta', () => {
-    const onAjusteManual = vi.fn();
-    render(
-      <PantallaLectura {...defaultProps} onAjusteManual={onAjusteManual} />
+  it('abre el menu y permite cambiar fuente', () => {
+    render(<PantallaLectura {...baseProps} />);
+    fireEvent.click(screen.getByLabelText('Abrir opciones de lectura'));
+    expect(screen.getByText('Opciones de lectura')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dislexia' }));
+    expect(window.localStorage.setItem).toHaveBeenCalledWith('omegaread.reading-font', 'dislexia');
+  });
+
+  it('aplica preferencia de fuente dislexia desde perfil', () => {
+    render(<PantallaLectura {...baseProps} preferenciaFuente="dislexia" />);
+    const primerParrafo = screen.getByText('Luna era una gatita curiosa.');
+    expect(primerParrafo.getAttribute('style')).toContain('var(--font-lectura-dislexia)');
+  });
+
+  it('aplica estilos de accesibilidad para modo TDAH y alto contraste', () => {
+    const { container } = render(
+      <PantallaLectura
+        {...baseProps}
+        preferenciasAccesibilidad={{ modoTDAH: true, altoContraste: true }}
+      />,
     );
-    act(() => {
-      vi.advanceTimersByTime(10_001);
-    });
-    screen.getByLabelText('Hazlo mas desafiante').click();
-    expect(onAjusteManual).toHaveBeenCalledWith('mas_desafiante', expect.any(Number));
+
+    const primerParrafo = screen.getByText('Luna era una gatita curiosa.');
+    expect(primerParrafo.getAttribute('style')).toContain('line-height: 2.05');
+    expect(primerParrafo.getAttribute('style')).toContain('letter-spacing: 0.02em');
+
+    const bloqueLectura = container.querySelector('.border-black');
+    expect(bloqueLectura).toBeDefined();
   });
 
-  it('no muestra botones si onAjusteManual no esta definido', () => {
+  it('ya no muestra controles de ajuste manual de dificultad', () => {
     render(
       <PantallaLectura
-        titulo={defaultProps.titulo}
-        contenido={defaultProps.contenido}
-        topicEmoji={defaultProps.topicEmoji}
-        topicNombre={defaultProps.topicNombre}
-        nivel={defaultProps.nivel}
-        onTerminar={defaultProps.onTerminar}
-      />
+        {...baseProps}
+        // Props legacy ignoradas en la UX actual
+        onAjusteManual={vi.fn()}
+        ajusteUsado={false}
+        reescribiendo={false}
+      />,
     );
     act(() => {
-      vi.advanceTimersByTime(15_000);
+      vi.advanceTimersByTime(16_000);
     });
     expect(screen.queryByText('Hazlo mas facil')).toBeNull();
-  });
-
-  it('renderiza multiples parrafos correctamente', () => {
-    const multiParrafo = ['Primer parrafo.', 'Segundo parrafo.', 'Tercer parrafo.'].join('\n\n');
-    render(
-      <PantallaLectura
-        {...defaultProps}
-        contenido={multiParrafo}
-      />
-    );
-    expect(screen.getByText('Primer parrafo.')).toBeDefined();
-    expect(screen.getByText('Segundo parrafo.')).toBeDefined();
-    expect(screen.getByText('Tercer parrafo.')).toBeDefined();
+    expect(screen.queryByText('Hazlo mas desafiante')).toBeNull();
   });
 });

@@ -765,6 +765,7 @@ export interface PromptInput {
   conceptoNucleo?: string;
   dominio?: string;
   modo: ModoHistoria;
+  funMode?: boolean;
   intereses: string[];
   personajesFavoritos?: string;
   contextoPersonal?: string;
@@ -979,6 +980,13 @@ export function buildUserPrompt(
   // Estrategia pedagogica
   partes.push(`\n${getInstruccionesEstrategia(estrategia)}`);
 
+  if (input.funMode) {
+    partes.push(`\nMODO DIVERSION ACTIVADO:`);
+    partes.push(`- Prioriza humor, sorpresa y energia narrativa.`);
+    partes.push(`- Incluye al menos 2 momentos claramente divertidos.`);
+    partes.push(`- Mantener aprendizaje correcto, sin sonar academico.`);
+  }
+
   // Historial
   if (input.historiasAnteriores && input.historiasAnteriores.length > 0) {
     partes.push(`\nNO repitas estas historias ya leidas:\n${input.historiasAnteriores.map(t => `- "${t}"`).join('\n')}\nCrea algo completamente diferente en tono, personaje y situacion.`);
@@ -1031,13 +1039,20 @@ export interface RewritePromptInput {
   topicNombre: string;
 }
 
+function desplazarNivelReescritura(
+  nivelActual: number,
+  direccion: DireccionReescritura,
+): number {
+  const delta = direccion === 'mas_facil' ? -PASO_NIVEL_ANCLA : PASO_NIVEL_ANCLA;
+  const siguiente = clampNivel(nivelActual + delta);
+  return Number(siguiente.toFixed(1));
+}
+
 /**
  * Prompt de reescritura para ajustar dificultad manteniendo personajes, trama y humor.
  */
 export function buildRewritePrompt(input: RewritePromptInput): string {
-  const nivelObjetivo = input.direccion === 'mas_facil'
-    ? desplazarSubnivel(input.nivelActual, 'bajar')
-    : desplazarSubnivel(input.nivelActual, 'subir');
+  const nivelObjetivo = desplazarNivelReescritura(input.nivelActual, input.direccion);
 
   const configNuevo = getNivelConfig(nivelObjetivo);
 
@@ -1069,8 +1084,7 @@ JSON:${JSON_SCHEMA}`;
  * Calcula el nivel objetivo despues de un ajuste manual.
  */
 export function calcularNivelReescritura(nivelActual: number, direccion: DireccionReescritura): number {
-  if (direccion === 'mas_facil') return desplazarSubnivel(nivelActual, 'bajar');
-  return desplazarSubnivel(nivelActual, 'subir');
+  return desplazarNivelReescritura(nivelActual, direccion);
 }
 
 // ─────────────────────────────────────────────
@@ -1172,6 +1186,10 @@ export function buildStoryOnlyUserPrompt(
     partes.push(`Estrategia: concepto central vivido por el personaje, sin tono enciclopedico.`);
   } else {
     partes.push(`Estrategia: equilibrio historia + descubrimiento (50/50).`);
+  }
+
+  if (input.funMode) {
+    partes.push(`Modo diversion activado: subir humor y sorpresa, sin perder exactitud del concepto.`);
   }
 
   // Historial

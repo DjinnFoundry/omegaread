@@ -5,14 +5,23 @@
  * Sprint 1: capturar identidad, contexto e intereses.
  */
 import { getDb } from '@/server/db';
-import { students, eq, and, type PerfilVivoState } from '@omegaread/db';
-import { requireAuth } from '../auth';
+import {
+  parents,
+  students,
+  eq,
+  and,
+  type ParentConfig,
+  type AccesibilidadConfig,
+  type PerfilVivoState,
+} from '@omegaread/db';
+import { requireAuth, requireStudentOwnership } from '../auth';
 import {
   actualizarPerfilSchema,
   guardarInteresesSchema,
   guardarContextoPersonalSchema,
   guardarPerfilVivoSchema,
   responderMicroPreguntaPerfilSchema,
+  guardarAjustesLecturaSchema,
 } from '../validation';
 import {
   MICRO_PREGUNTAS_PERFIL,
@@ -213,6 +222,83 @@ export async function guardarPerfilVivo(datos: {
     .where(eq(students.id, validado.studentId));
 
   return { ok: true as const };
+}
+
+/**
+ * Guarda ajustes de lectura:
+ * - Fun mode (nivel familia / parent.config)
+ * - Accesibilidad por estudiante (students.accesibilidad)
+ */
+export async function guardarAjustesLectura(datos: {
+  studentId: string;
+  funMode?: boolean;
+  accesibilidad?: {
+    fuenteDislexia?: boolean;
+    modoTDAH?: boolean;
+    altoContraste?: boolean;
+    duracionSesionMin?: number;
+  };
+}) {
+  const db = await getDb();
+  const validado = guardarAjustesLecturaSchema.parse(datos);
+  const { padre, estudiante } = await requireStudentOwnership(validado.studentId);
+
+  const parentConfigActual = (padre.config ?? {}) as ParentConfig;
+  const accesibilidadActual = (estudiante.accesibilidad ?? {}) as AccesibilidadConfig;
+  let parentConfigFinal = parentConfigActual;
+  let accesibilidadFinal = accesibilidadActual;
+
+  if (validado.funMode !== undefined) {
+    parentConfigFinal = {
+      ...parentConfigActual,
+      funMode: validado.funMode,
+    };
+
+    await db
+      .update(parents)
+      .set({
+        config: parentConfigFinal,
+        actualizadoEn: new Date(),
+      })
+      .where(eq(parents.id, padre.id));
+  }
+
+  if (validado.accesibilidad) {
+    accesibilidadFinal = { ...accesibilidadActual };
+    if (validado.accesibilidad.fuenteDislexia !== undefined) {
+      accesibilidadFinal.fuenteDislexia = validado.accesibilidad.fuenteDislexia;
+    }
+    if (validado.accesibilidad.modoTDAH !== undefined) {
+      accesibilidadFinal.modoTDAH = validado.accesibilidad.modoTDAH;
+    }
+    if (validado.accesibilidad.altoContraste !== undefined) {
+      accesibilidadFinal.altoContraste = validado.accesibilidad.altoContraste;
+    }
+    if (validado.accesibilidad.duracionSesionMin !== undefined) {
+      accesibilidadFinal.duracionSesionMin = validado.accesibilidad.duracionSesionMin;
+    }
+
+    await db
+      .update(students)
+      .set({
+        accesibilidad: accesibilidadFinal,
+        actualizadoEn: new Date(),
+      })
+      .where(eq(students.id, estudiante.id));
+  }
+
+  return {
+    ok: true as const,
+    ajustes: {
+      funMode: parentConfigFinal.funMode === true,
+      accesibilidad: {
+        fuenteDislexia: accesibilidadFinal.fuenteDislexia === true,
+        modoTDAH: accesibilidadFinal.modoTDAH === true,
+        altoContraste: accesibilidadFinal.altoContraste === true,
+        duracionSesionMin: accesibilidadFinal.duracionSesionMin ?? null,
+      },
+    },
+  };
 }
 
 /**

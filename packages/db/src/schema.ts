@@ -456,6 +456,7 @@ export type ParentConfig = {
   horaInicio?: string;
   horaFin?: string;
   minutosMaxDia?: number;
+  funMode?: boolean;
 };
 
 export type AccesibilidadConfig = {
@@ -519,6 +520,9 @@ export type StoryMetadata = {
   vocabularioNuevo: string[];
   edadObjetivo: number;
   tiempoEsperadoMs: number;
+  generationFlags?: {
+    funMode?: boolean;
+  };
   llmUsage?: {
     promptTokens: number;
     completionTokens: number;

@@ -19,6 +19,8 @@ import {
   gte,
   desc,
   sql,
+  type ParentConfig,
+  type StoryMetadata,
   type InferSelectModel,
 } from '@omegaread/db';
 import { requireStudentOwnership } from '../auth';
@@ -223,6 +225,18 @@ function extraerTraceMetadata(metadata: unknown): StoryGenerationTrace | null {
   if (typeof trace.startedAt !== 'string') return null;
   if (typeof trace.updatedAt !== 'string') return null;
   return traceRaw as StoryGenerationTrace;
+}
+
+function extraerFunModeConfig(rawConfig: unknown): boolean {
+  if (!rawConfig || typeof rawConfig !== 'object') return false;
+  const config = rawConfig as ParentConfig;
+  return config.funMode === true;
+}
+
+function extraerFunModeHistoria(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object') return false;
+  const storyMetadata = metadata as StoryMetadata;
+  return storyMetadata.generationFlags?.funMode === true;
 }
 
 async function persistirStoryGenerationTrace(params: {
@@ -787,7 +801,8 @@ export async function generarHistoria(datos: {
 }) {
   const db = await getDb();
   const validado = generarHistoriaSchema.parse(datos);
-  const { estudiante } = await requireStudentOwnership(validado.studentId);
+  const { estudiante, padre } = await requireStudentOwnership(validado.studentId);
+  const funModeActivo = extraerFunModeConfig(padre.config);
   const traceId = validado.progressTraceId;
   const trace = crearStoryGenerationTrace();
 
@@ -836,6 +851,7 @@ export async function generarHistoria(datos: {
       studentId: validado.studentId,
       topicSlug: validado.topicSlug ?? null,
       forceRegenerate: !!validado.forceRegenerate,
+      funMode: funModeActivo,
     });
 
     await avanzarEtapa('validaciones', 'Comprobando API key y limites de uso');
@@ -916,7 +932,7 @@ export async function generarHistoria(datos: {
     if (!validado.forceRegenerate) {
       const ttlDate = new Date();
       ttlDate.setDate(ttlDate.getDate() - 7);
-      const cached = await db.query.generatedStories.findFirst({
+      const cacheCandidates = await db.query.generatedStories.findMany({
         where: and(
           eq(generatedStories.studentId, validado.studentId),
           eq(generatedStories.topicSlug, topicSlug),
@@ -926,10 +942,15 @@ export async function generarHistoria(datos: {
           gte(generatedStories.creadoEn, ttlDate),
         ),
         orderBy: [desc(generatedStories.creadoEn)],
+        limit: 12,
         with: { questions: true },
       });
+      const cached = cacheCandidates.find((story) =>
+        extraerFunModeHistoria(story.metadata) === funModeActivo &&
+        story.questions.length > 0
+      );
 
-      if (cached && cached.questions.length > 0) {
+      if (cached) {
         await completarEtapa('cache', 'Cache hit, se reutiliza historia');
         completarEtapasRestantesComoOmitidas(
           trace,
@@ -956,6 +977,7 @@ export async function generarHistoria(datos: {
               skillSlug: getSkillBySlug(topicSlug)?.slug ?? topicSlug,
               tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
               fromCache: true,
+              funMode: funModeActivo,
             },
           })
           .returning();
@@ -1024,6 +1046,7 @@ export async function generarHistoria(datos: {
       conceptoNucleo: skill?.conceptoNucleo,
       dominio: dominio?.nombre,
       modo: getModoFromCategoria(topic.categoria),
+      funMode: funModeActivo,
       intereses: intereses
         .map((slug) => CATEGORIAS.find((c) => c.slug === slug)?.nombre)
         .filter((n): n is string => !!n)
@@ -1053,6 +1076,7 @@ export async function generarHistoria(datos: {
       nivel,
       skillSlug: promptInput.techTreeContext?.skillSlug ?? null,
       estrategia: promptInput.techTreeContext?.estrategia ?? null,
+      funMode: promptInput.funMode === true,
     });
     await completarEtapa('prompt', 'Prompt listo');
 
@@ -1087,6 +1111,10 @@ export async function generarHistoria(datos: {
         nivel,
         metadata: {
           ...story.metadata,
+          generationFlags: {
+            ...(story.metadata.generationFlags ?? {}),
+            funMode: funModeActivo,
+          },
           llmUsage: story.llmUsage,
         },
         modeloGeneracion: story.modelo,
@@ -1115,6 +1143,7 @@ export async function generarHistoria(datos: {
           skillSlug: skill?.slug ?? topicSlug,
           objetivoSesion: techTreeContext?.objetivoSesion,
           estrategiaPedagogica: techTreeContext?.estrategia,
+          funMode: funModeActivo,
           tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
           llmStoryModel: story.modelo,
           llmStoryUsage: story.llmUsage,

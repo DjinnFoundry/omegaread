@@ -555,6 +555,11 @@ export default function LecturaPage() {
           titulo={sesionActiva.historia.titulo}
           contenido={sesionActiva.historia.contenido}
           nivel={sesionActiva.historia.nivel}
+          preferenciaFuente={datosEstudiante.accesibilidad.fuenteDislexia ? 'dislexia' : 'libro'}
+          preferenciasAccesibilidad={{
+            modoTDAH: datosEstudiante.accesibilidad.modoTDAH,
+            altoContraste: datosEstudiante.accesibilidad.altoContraste,
+          }}
           onTerminar={handleTerminarLectura}
           onAnalizarAudio={handleAnalizarAudio}
           fromCache={sesionActiva.fromCache}
@@ -635,6 +640,8 @@ export default function LecturaPage() {
         <ResultadoSesion
           resultado={resultadoSesion}
           studentNombre={datosEstudiante.nombre}
+          historiaTitulo={sesionActiva?.historia.titulo}
+          historiaContenido={sesionActiva?.historia.contenido}
           onLeerOtra={handleLeerOtra}
         />
       </main>

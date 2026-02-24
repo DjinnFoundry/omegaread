@@ -19,6 +19,8 @@ import {
   asc,
   inArray,
   type InferSelectModel,
+  type ParentConfig,
+  type AccesibilidadConfig,
   type PerfilVivoState,
 } from '@omegaread/db';
 import { requireStudentOwnership } from '../auth';
@@ -206,6 +208,15 @@ export interface DashboardPadreData {
       opciones: string[];
     } | null;
   };
+  ajustes: {
+    funMode: boolean;
+    accesibilidad: {
+      fuenteDislexia: boolean;
+      modoTDAH: boolean;
+      altoContraste: boolean;
+      duracionSesionMin: number | null;
+    };
+  };
   techTree: {
     historialTopics: Array<{
       slug: string;
@@ -332,7 +343,7 @@ export async function obtenerDashboardNino(estudianteId: string): Promise<Dashbo
 
 export async function obtenerDashboardPadre(estudianteId: string): Promise<DashboardPadreData> {
   const db = await getDb();
-  const { estudiante } = await requireStudentOwnership(estudianteId);
+  const { padre, estudiante } = await requireStudentOwnership(estudianteId);
   const edadAnos = calcularEdad(estudiante.fechaNacimiento);
 
   // Sesiones completadas
@@ -546,6 +557,9 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     };
   });
 
+  const configPadre = (padre.config ?? {}) as ParentConfig;
+  const accesibilidad = (estudiante.accesibilidad ?? {}) as AccesibilidadConfig;
+
   return {
     studentId: estudiante.id,
     evolucionSemanal,
@@ -574,6 +588,15 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
         pregunta: microPreguntaActiva.pregunta,
         opciones: microPreguntaActiva.opciones,
       } : null,
+    },
+    ajustes: {
+      funMode: configPadre.funMode === true,
+      accesibilidad: {
+        fuenteDislexia: accesibilidad.fuenteDislexia === true,
+        modoTDAH: accesibilidad.modoTDAH === true,
+        altoContraste: accesibilidad.altoContraste === true,
+        duracionSesionMin: accesibilidad.duracionSesionMin ?? null,
+      },
     },
     techTree: {
       historialTopics: historialTopics.slice(0, 18),
