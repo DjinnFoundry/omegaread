@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "omegaread",
+  "account_id": "1b095c4e45bd9d6eb547c97958c16899",
   "compatibility_date": "2025-04-01",
   "compatibility_flags": ["nodejs_compat"],
   "main": ".open-next/worker.js",
@@ -20,7 +21,10 @@
     "enabled": true
   },
   "vars": {
+    "ZAI_BASE_URL": "https://api.z.ai/api/coding/paas/v4",
     "LLM_BASE_URL": "https://api.z.ai/api/coding/paas/v4",
-    "LLM_MODEL": "glm-5"
+    "LLM_MODEL": "glm-5",
+    "ZAI_MODEL": "glm-5",
+    "ZAI_THINKING_TYPE": "disabled"
   }
 }
