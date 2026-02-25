@@ -9,6 +9,7 @@ import {
   getLLMRequestOverrides,
   OpenAIKeyMissingError,
 } from './openai';
+import { normalizarTexto } from '@/lib/utils/text';
 import {
   buildSystemPrompt,
   buildUserPrompt,
@@ -164,19 +165,9 @@ function envFlag(name: string, fallback = false): boolean {
   return fallback;
 }
 
-function normalizarTextoPlano(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function normalizarTipoPregunta(value: unknown): TipoPreguntaCanonico | null {
   if (typeof value !== 'string') return null;
-  const tipo = normalizarTextoPlano(value);
+  const tipo = normalizarTexto(value);
   if (!tipo) return null;
   if (tipo.includes('literal') || tipo.includes('explicita') || tipo.includes('texto')) {
     return 'literal';
@@ -233,7 +224,7 @@ function extraerIndiceCorrecto(raw: unknown, opciones: string[]): number | null 
   if (cleaned in letras) return letras[cleaned as keyof typeof letras];
 
   const idxTexto = opciones.findIndex(
-    (op) => normalizarTextoPlano(op) === normalizarTextoPlano(cleaned),
+    (op) => normalizarTexto(op) === normalizarTexto(cleaned),
   );
   return idxTexto >= 0 ? idxTexto : null;
 }

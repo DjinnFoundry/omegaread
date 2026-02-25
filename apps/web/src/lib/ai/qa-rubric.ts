@@ -9,6 +9,7 @@
 
 import type { TipoPregunta } from '@/lib/types/reading';
 import { getNivelConfig } from './prompts';
+import { normalizarTexto } from '@/lib/utils/text';
 
 export interface StoryLLMOutput {
   titulo: string;
@@ -81,16 +82,6 @@ const CONECTORES_NARRATIVOS = [
   'despues',
   'por eso',
 ];
-
-function normalizarTexto(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 function tokens(value: string): Set<string> {
   return new Set(

@@ -56,12 +56,31 @@ import { calcularEdad } from '@/lib/utils/fecha';
 import { calcularAjusteDificultad } from './reading-actions';
 import { actualizarProgresoInmediato } from './session-actions';
 import { procesarRespuestasElo, type EloRatings, type RespuestaElo } from '@/lib/elo';
-import type { TipoPregunta } from '@/lib/types/reading';
+import type { TipoPregunta, AudioReadingAnalysis } from '@/lib/types/reading';
 import { recomendarSiguientesSkills, type SkillProgressLite } from '@/lib/learning/graph';
+import { normalizarTexto } from '@/lib/utils/text';
+import {
+  UMBRAL_SKILL_DOMINADA,
+  normalizarSkillSlug,
+  crearMapaProgresoCompleto,
+  esSkillDominada,
+} from '@/lib/skills/progress';
 
 const MAX_HISTORIAS_DIA = 20;
-const UMBRAL_SKILL_DOMINADA = 0.85;
 const INTENTOS_MIN_REFORZAR = 3;
+
+// Numero de dias hacia atras que se considera valida una historia cacheada.
+const CACHE_TTL_DIAS = 7;
+
+// Porcentaje minimo de aciertos para marcar el topic skill como correcto.
+// Un estudiante necesita acertar al menos este porcentaje de las preguntas
+// para que el topic se registre como "bien entendido" en esa sesion.
+const UMBRAL_ACIERTO_TOPIC_SKILL = 0.75;
+
+// Umbrales para asignar estrellas al finalizar una sesion de lectura.
+const UMBRAL_ESTRELLAS_3 = 1.0;   // 100% de aciertos: 3 estrellas
+const UMBRAL_ESTRELLAS_2 = 0.75;  // >= 75%: 2 estrellas
+// Cualquier acierto > 0: 1 estrella
 
 type SkillProgressRow = InferSelectModel<typeof skillProgress>;
 
@@ -286,27 +305,35 @@ interface PalabraTimestamp {
   finSeg?: number;
 }
 
-export interface AudioAnalisisLectura {
-  wpmUtil: number;
-  precisionLectura: number;
-  coberturaTexto: number;
-  pauseRatio: number;
-  tiempoVozActivaMs: number;
-  totalPalabrasTranscritas: number;
-  totalPalabrasAlineadas: number;
-  qualityScore: number;
-  confiable: boolean;
-  motivoNoConfiable: string | null;
-  motor: string;
+// AudioReadingAnalysis is the canonical type for audio analysis results.
+// Imported from @/lib/types/reading.
+
+/**
+ * Serializa el analisis de audio a un objeto plano para almacenar en session.metadata.
+ * Si no hay analisis disponible, devuelve el valor de fallback (por defecto null).
+ */
+function serializarAudioAnalisis(
+  analisis: AudioReadingAnalysis | null | undefined,
+  fallback: unknown = null,
+): unknown {
+  if (!analisis) return fallback;
+  return {
+    wpmUtil: analisis.wpmUtil,
+    precisionLectura: analisis.precisionLectura,
+    coberturaTexto: analisis.coberturaTexto,
+    pauseRatio: analisis.pauseRatio,
+    qualityScore: analisis.qualityScore,
+    confiable: analisis.confiable,
+    motivoNoConfiable: analisis.motivoNoConfiable ?? null,
+    motor: analisis.motor,
+    tiempoVozActivaMs: analisis.tiempoVozActivaMs,
+    totalPalabrasTranscritas: analisis.totalPalabrasTranscritas,
+    totalPalabrasAlineadas: analisis.totalPalabrasAlineadas,
+  };
 }
 
 function normalizarToken(valor: string): string {
-  return valor
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9ñ]+/g, '')
-    .trim();
+  return normalizarTexto(valor, { preservarEnie: true }).replace(/\s+/g, '');
 }
 
 function tokenizarTexto(valor: string): string[] {
@@ -513,7 +540,7 @@ export async function analizarLecturaAudio(datos: {
     (validado.tiempoTotalMs - validado.tiempoVozActivaMs) / validado.tiempoTotalMs,
   );
 
-  let analisis: AudioAnalisisLectura;
+  let analisis: AudioReadingAnalysis;
 
   if (palabrasTranscritas.length >= 12) {
     const alineacion = alinearPalabrasAlTexto({
@@ -604,10 +631,6 @@ export async function analizarLecturaAudio(datos: {
   };
 }
 
-function normalizarSkillSlug(skillId: string): string | null {
-  return skillId.startsWith('topic-') ? skillId.slice('topic-'.length) : null;
-}
-
 function extraerHechosPerfilVivo(raw: unknown): string[] {
   if (!raw || typeof raw !== 'object') return [];
   const senales = raw as Record<string, unknown>;
@@ -625,19 +648,11 @@ function extraerHechosPerfilVivo(raw: unknown): string[] {
 }
 
 function crearMapaProgresoSkill(rows: SkillProgressRow[]): Map<string, SkillProgressRow> {
-  const map = new Map<string, SkillProgressRow>();
-  for (const row of rows) {
-    const slug = normalizarSkillSlug(row.skillId);
-    if (!slug) continue;
-    map.set(slug, row);
-  }
-  return map;
+  return crearMapaProgresoCompleto(rows);
 }
 
 function skillDominada(slug: string, map: Map<string, SkillProgressRow>): boolean {
-  const row = map.get(slug);
-  if (!row) return false;
-  return row.dominada || row.nivelMastery >= UMBRAL_SKILL_DOMINADA;
+  return esSkillDominada(slug, map);
 }
 
 function skillDesbloqueada(skill: SkillDef, map: Map<string, SkillProgressRow>): boolean {
@@ -931,7 +946,7 @@ export async function generarHistoria(datos: {
     );
     if (!validado.forceRegenerate) {
       const ttlDate = new Date();
-      ttlDate.setDate(ttlDate.getDate() - 7);
+      ttlDate.setDate(ttlDate.getDate() - CACHE_TTL_DIAS);
       const cacheCandidates = await db.query.generatedStories.findMany({
         where: and(
           eq(generatedStories.studentId, validado.studentId),
@@ -1409,7 +1424,7 @@ export async function registrarLecturaCompletada(datos: {
   wpmPromedio?: number | null;
   wpmPorPagina?: Array<{ pagina: number; wpm: number }> | null;
   totalPaginas?: number | null;
-  audioAnalisis?: AudioAnalisisLectura;
+  audioAnalisis?: AudioReadingAnalysis;
 }) {
   const db = await getDb();
   const validado = registrarLecturaCompletadaSchema.parse(datos);
@@ -1449,21 +1464,7 @@ export async function registrarLecturaCompletada(datos: {
         lecturaCompletadaEn,
         tiempoLecturaMs: validado.tiempoLecturaMs,
         fuenteWpm: usarAudioParaWpm ? 'audio' : 'pagina',
-        audioAnalisis: validado.audioAnalisis
-          ? {
-              wpmUtil: validado.audioAnalisis.wpmUtil,
-              precisionLectura: validado.audioAnalisis.precisionLectura,
-              coberturaTexto: validado.audioAnalisis.coberturaTexto,
-              pauseRatio: validado.audioAnalisis.pauseRatio,
-              qualityScore: validado.audioAnalisis.qualityScore,
-              confiable: validado.audioAnalisis.confiable,
-              motivoNoConfiable: validado.audioAnalisis.motivoNoConfiable ?? null,
-              motor: validado.audioAnalisis.motor,
-              tiempoVozActivaMs: validado.audioAnalisis.tiempoVozActivaMs,
-              totalPalabrasTranscritas: validado.audioAnalisis.totalPalabrasTranscritas,
-              totalPalabrasAlineadas: validado.audioAnalisis.totalPalabrasAlineadas,
-            }
-          : (metadataBase.audioAnalisis ?? null),
+        audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis, metadataBase.audioAnalisis ?? null),
       },
     })
     .where(eq(sessions.id, validado.sessionId));
@@ -1492,7 +1493,7 @@ export async function finalizarSesionLectura(datos: {
   wpmPromedio?: number | null;
   wpmPorPagina?: Array<{ pagina: number; wpm: number }> | null;
   totalPaginas?: number | null;
-  audioAnalisis?: AudioAnalisisLectura;
+  audioAnalisis?: AudioReadingAnalysis;
 }) {
   const db = await getDb();
   const validado = finalizarSesionLecturaSchema.parse(datos);
@@ -1542,7 +1543,7 @@ export async function finalizarSesionLectura(datos: {
       studentId: validado.studentId,
       skillId: `topic-${topicSlug}`,
       categoria: 'topic',
-      correcto: aciertosTotal >= Math.ceil(validado.respuestas.length * 0.75),
+      correcto: aciertosTotal >= Math.ceil(validado.respuestas.length * UMBRAL_ACIERTO_TOPIC_SKILL),
     });
   }
 
@@ -1554,7 +1555,7 @@ export async function finalizarSesionLectura(datos: {
   // 3. Marcar sesion como completada
   const duracionSegundos = Math.round(validado.tiempoLecturaMs / 1000);
   const ratioAciertos = totalPreguntas > 0 ? aciertos / totalPreguntas : 0;
-  const estrellas = ratioAciertos >= 1 ? 3 : ratioAciertos >= 0.75 ? 2 : ratioAciertos > 0 ? 1 : 0;
+  const estrellas = ratioAciertos >= UMBRAL_ESTRELLAS_3 ? 3 : ratioAciertos >= UMBRAL_ESTRELLAS_2 ? 2 : ratioAciertos > 0 ? 1 : 0;
   const usarAudioParaWpm =
     !!validado.audioAnalisis?.confiable && validado.audioAnalisis.wpmUtil > 0;
   const wpmPromedioFinal = usarAudioParaWpm
@@ -1586,21 +1587,7 @@ export async function finalizarSesionLectura(datos: {
         totalPreguntas,
         tiempoLecturaMs: validado.tiempoLecturaMs,
         fuenteWpm,
-        audioAnalisis: validado.audioAnalisis
-          ? {
-              wpmUtil: validado.audioAnalisis.wpmUtil,
-              precisionLectura: validado.audioAnalisis.precisionLectura,
-              coberturaTexto: validado.audioAnalisis.coberturaTexto,
-              pauseRatio: validado.audioAnalisis.pauseRatio,
-              qualityScore: validado.audioAnalisis.qualityScore,
-              confiable: validado.audioAnalisis.confiable,
-              motivoNoConfiable: validado.audioAnalisis.motivoNoConfiable ?? null,
-              motor: validado.audioAnalisis.motor,
-              tiempoVozActivaMs: validado.audioAnalisis.tiempoVozActivaMs,
-              totalPalabrasTranscritas: validado.audioAnalisis.totalPalabrasTranscritas,
-              totalPalabrasAlineadas: validado.audioAnalisis.totalPalabrasAlineadas,
-            }
-          : null,
+        audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis),
       },
     })
     .where(eq(sessions.id, validado.sessionId));

@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { SignJWT, jwtVerify } from 'jose';
+import { createToken, verifyToken } from '@/server/jwt';
 
 const ADMIN_COOKIE = 'omega-admin';
 const ADMIN_SESSION_SECONDS = 7 * 24 * 60 * 60;
@@ -9,19 +9,6 @@ type AdminTokenPayload = {
   username: string;
 };
 
-function getSecret(): Uint8Array {
-  const raw = process.env.AUTH_SECRET;
-  if (!raw) {
-    throw new Error(
-      'AUTH_SECRET must be set (at least 32 characters). Generate one with: openssl rand -base64 32',
-    );
-  }
-  if (raw.length < 32) {
-    throw new Error('AUTH_SECRET must be at least 32 characters');
-  }
-  return new TextEncoder().encode(raw);
-}
-
 function getAdminCredentials() {
   return {
     username: (process.env.ADMIN_USER ?? 'juan').trim(),
@@ -30,27 +17,19 @@ function getAdminCredentials() {
   };
 }
 
-async function createToken(payload: AdminTokenPayload): Promise<string> {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('7d')
-    .sign(getSecret());
+async function crearTokenAdmin(payload: AdminTokenPayload): Promise<string> {
+  return createToken(payload);
 }
 
-async function verifyToken(token: string): Promise<AdminTokenPayload | null> {
-  try {
-    const { payload } = await jwtVerify(token, getSecret());
-    if (payload.role === 'admin' && typeof payload.username === 'string') {
-      return {
-        role: 'admin',
-        username: payload.username,
-      };
-    }
-    return null;
-  } catch {
-    return null;
+async function verificarTokenAdmin(token: string): Promise<AdminTokenPayload | null> {
+  const payload = await verifyToken(token);
+  if (payload && payload.role === 'admin' && typeof payload.username === 'string') {
+    return {
+      role: 'admin',
+      username: payload.username as string,
+    };
   }
+  return null;
 }
 
 export async function getCurrentAdmin() {
@@ -58,7 +37,7 @@ export async function getCurrentAdmin() {
   const token = store.get(ADMIN_COOKIE)?.value;
   if (!token) return null;
 
-  const data = await verifyToken(token);
+  const data = await verificarTokenAdmin(token);
   if (!data) return null;
 
   return {
@@ -89,7 +68,7 @@ export async function loginAdmin(username: string, password: string) {
   }
 
   const store = await cookies();
-  const token = await createToken({ role: 'admin', username: creds.username });
+  const token = await crearTokenAdmin({ role: 'admin', username: creds.username });
   store.set(ADMIN_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

@@ -21,7 +21,6 @@ import {
   type InferSelectModel,
   type ParentConfig,
   type AccesibilidadConfig,
-  type PerfilVivoState,
 } from '@omegaread/db';
 import { requireStudentOwnership } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
@@ -33,8 +32,10 @@ import {
   construirNormativaLectura,
 } from './dashboard-utils';
 import { seleccionarPreguntaPerfilActiva } from '@/lib/profile/micro-profile';
+import { extraerPerfilVivo } from '@/lib/profile/perfil-vivo';
 import { recomendarSiguientesSkills, type SkillProgressLite } from '@/lib/learning/graph';
 import { DOMINIOS, getSkillBySlug, getSkillsDeDominio } from '@/lib/data/skills';
+import { crearMapaProgresoLite } from '@/lib/skills/progress';
 
 // ─────────────────────────────────────────────
 // TIPOS
@@ -615,47 +616,10 @@ type ResponseRow = InferSelectModel<typeof responses>;
 type StoryRow = InferSelectModel<typeof generatedStories>;
 type TopicRow = InferSelectModel<typeof topics>;
 
-function extraerPerfilVivo(raw: unknown): PerfilVivoState {
-  if (!raw || typeof raw !== 'object') {
-    return { version: 1, hechos: [], microRespuestas: {} };
-  }
-  const pv = raw as Record<string, unknown>;
-  const hechos = Array.isArray(pv.hechos)
-    ? pv.hechos
-      .filter((h) => h && typeof h === 'object')
-      .map((h) => h as PerfilVivoState['hechos'][number])
-      .slice(0, 80)
-    : [];
-
-  const microRespuestas = (pv.microRespuestas && typeof pv.microRespuestas === 'object')
-    ? (pv.microRespuestas as PerfilVivoState['microRespuestas'])
-    : {};
-
-  return {
-    version: 1,
-    hechos,
-    microRespuestas,
-  };
-}
-
-function normalizarSkillSlug(skillId: string): string | null {
-  return skillId.startsWith('topic-') ? skillId.slice('topic-'.length) : null;
-}
-
 function crearMapaProgresoSkill(
   rows: Array<InferSelectModel<typeof skillProgress>>,
 ): Map<string, SkillProgressLite> {
-  const map = new Map<string, SkillProgressLite>();
-  for (const row of rows) {
-    const slug = normalizarSkillSlug(row.skillId);
-    if (!slug) continue;
-    map.set(slug, {
-      totalIntentos: row.totalIntentos,
-      nivelMastery: row.nivelMastery,
-      dominada: row.dominada,
-    });
-  }
-  return map;
+  return crearMapaProgresoLite(rows);
 }
 
 function construirHistorialTopics(

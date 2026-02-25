@@ -7,43 +7,24 @@ import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
 import { getDb } from '@/server/db';
 import { parents, students, eq, and } from '@omegaread/db';
-import { SignJWT, jwtVerify } from 'jose';
+import { createToken, verifyToken } from '@/server/jwt';
 
 const AUTH_COOKIE = 'omega-auth';
-
-function getSecret(): Uint8Array {
-  const raw = process.env.AUTH_SECRET;
-  if (!raw) {
-    throw new Error(
-      'AUTH_SECRET must be set (at least 32 characters). Generate one with: openssl rand -base64 32',
-    );
-  }
-  return new TextEncoder().encode(raw);
-}
 
 // ─── Helpers de JWT ───
 
 /** Crea un token JWT firmado con HS256 */
 async function crearToken(payload: { parentId: string; email: string }): Promise<string> {
-  const secret = getSecret();
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('7d')
-    .sign(secret);
+  return createToken(payload);
 }
 
 /** Verifica y decodifica un token JWT */
 async function verificarToken(token: string): Promise<{ parentId: string; email: string } | null> {
-  try {
-    const { payload } = await jwtVerify(token, getSecret());
-    if (typeof payload.parentId === 'string' && typeof payload.email === 'string') {
-      return { parentId: payload.parentId, email: payload.email };
-    }
-    return null;
-  } catch {
-    return null;
+  const payload = await verifyToken(token);
+  if (payload && typeof payload.parentId === 'string' && typeof payload.email === 'string') {
+    return { parentId: payload.parentId, email: payload.email };
   }
+  return null;
 }
 
 // ─── API pública ───

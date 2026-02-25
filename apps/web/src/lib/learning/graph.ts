@@ -10,6 +10,7 @@ import {
   type DominioSlug,
   type SkillDef,
 } from '@/lib/data/skills';
+import { UMBRAL_SKILL_DOMINADA } from '@/lib/skills/progress';
 
 export interface SkillProgressLite {
   totalIntentos: number;
@@ -55,7 +56,7 @@ function keyRecent(recientes: string[]): Set<string> {
 function skillDominada(slug: string, progresoMap: Map<string, SkillProgressLite>): boolean {
   const row = progresoMap.get(slug);
   if (!row) return false;
-  return row.dominada || row.nivelMastery >= 0.85;
+  return row.dominada || row.nivelMastery >= UMBRAL_SKILL_DOMINADA;
 }
 
 function skillDesbloqueada(skill: SkillDef, progresoMap: Map<string, SkillProgressLite>): boolean {

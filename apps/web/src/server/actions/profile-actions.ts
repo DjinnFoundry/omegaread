@@ -12,7 +12,6 @@ import {
   and,
   type ParentConfig,
   type AccesibilidadConfig,
-  type PerfilVivoState,
 } from '@omegaread/db';
 import { requireAuth, requireStudentOwnership } from '../auth';
 import {
@@ -27,38 +26,8 @@ import {
   MICRO_PREGUNTAS_PERFIL,
   crearHechoDesdeMicroRespuesta,
 } from '@/lib/profile/micro-profile';
+import { extraerPerfilVivo, crearPerfilVivoVacio } from '@/lib/profile/perfil-vivo';
 
-function crearPerfilVivoVacio(): PerfilVivoState {
-  return {
-    version: 1,
-    hechos: [],
-    microRespuestas: {},
-  };
-}
-
-function extraerPerfilVivo(raw: unknown): PerfilVivoState {
-  if (!raw || typeof raw !== 'object') return crearPerfilVivoVacio();
-  const senales = raw as Record<string, unknown>;
-  const pv = senales.perfilVivo as Record<string, unknown> | undefined;
-  if (!pv || typeof pv !== 'object') return crearPerfilVivoVacio();
-
-  const hechos = Array.isArray(pv.hechos)
-    ? pv.hechos
-      .filter((h) => h && typeof h === 'object')
-      .map((h) => h as PerfilVivoState['hechos'][number])
-      .slice(0, 80)
-    : [];
-
-  const microRespuestas = (pv.microRespuestas && typeof pv.microRespuestas === 'object')
-    ? (pv.microRespuestas as PerfilVivoState['microRespuestas'])
-    : {};
-
-  return {
-    version: 1,
-    hechos,
-    microRespuestas,
-  };
-}
 
 /**
  * Actualizar perfil del estudiante con contexto (formulario del padre).
@@ -191,7 +160,8 @@ export async function guardarPerfilVivo(datos: {
     return { ok: false as const, error: 'Estudiante no encontrado' };
   }
 
-  const perfilVivo = extraerPerfilVivo(estudiante.senalesDificultad);
+  const senalesActuales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
+  const perfilVivo = extraerPerfilVivo(senalesActuales.perfilVivo);
   if (validado.nuevoHecho?.trim()) {
     perfilVivo.hechos.unshift({
       id: crypto.randomUUID(),
@@ -202,8 +172,6 @@ export async function guardarPerfilVivo(datos: {
     });
     perfilVivo.hechos = perfilVivo.hechos.slice(0, 80);
   }
-
-  const senalesActuales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
   const senalesNuevas = {
     ...senalesActuales,
     perfilVivo,
@@ -328,7 +296,8 @@ export async function responderMicroPreguntaPerfil(datos: {
     return { ok: false as const, error: 'Respuesta no valida para esta pregunta' };
   }
 
-  const perfilVivo = extraerPerfilVivo(estudiante.senalesDificultad);
+  const senalesActuales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
+  const perfilVivo = extraerPerfilVivo(senalesActuales.perfilVivo);
   perfilVivo.microRespuestas[validado.preguntaId] = {
     preguntaId: validado.preguntaId,
     respuesta: validado.respuesta,
@@ -346,8 +315,6 @@ export async function responderMicroPreguntaPerfil(datos: {
     });
     perfilVivo.hechos = perfilVivo.hechos.slice(0, 80);
   }
-
-  const senalesActuales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
   const senalesNuevas = {
     ...senalesActuales,
     perfilVivo,
