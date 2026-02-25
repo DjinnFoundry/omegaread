@@ -7,7 +7,13 @@ import {
   validarEstructura,
   evaluarHistoria,
   calcularMetadataHistoria,
+  validarEstructuraHistoria,
+  validarEstructuraPreguntas,
+  evaluarHistoriaSinPreguntas,
+  evaluarPreguntas,
   type StoryLLMOutput,
+  type StoryOnlyLLMOutput,
+  type QuestionsLLMOutput,
 } from '@/lib/ai/qa-rubric';
 
 // ─── Fixtures ───
@@ -239,5 +245,357 @@ describe('calcularMetadataHistoria', () => {
     const meta1 = calcularMetadataHistoria('Texto.', 5, 1);
     const meta4 = calcularMetadataHistoria('Texto.', 9, 4);
     expect(meta1.tiempoEsperadoMs).toBeLessThan(meta4.tiempoEsperadoMs);
+  });
+});
+
+// ─────────────────────────────────────────────
+// validarEstructuraHistoria: Flujo dividido
+// ─────────────────────────────────────────────
+
+describe('validarEstructuraHistoria (flujo dividido)', () => {
+  it('acepta estructura valida sin preguntas', () => {
+    const historia: StoryOnlyLLMOutput = {
+      titulo: 'El viaje de Luna',
+      contenido: 'Luna era una gatita curiosa que vivia en un pueblo pequeno. Exploro el bosque y encontro un rio cristalino.',
+      vocabularioNuevo: ['cristalino', 'explorar'],
+    };
+
+    expect(validarEstructuraHistoria(historia)).toBe(true);
+  });
+
+  it('rechaza null', () => {
+    expect(validarEstructuraHistoria(null)).toBe(false);
+  });
+
+  it('rechaza objeto sin titulo', () => {
+    const historia: any = {
+      contenido: 'Texto',
+      vocabularioNuevo: [],
+    };
+
+    expect(validarEstructuraHistoria(historia)).toBe(false);
+  });
+
+  it('rechaza objeto sin contenido', () => {
+    const historia: any = {
+      titulo: 'Titulo',
+      vocabularioNuevo: [],
+    };
+
+    expect(validarEstructuraHistoria(historia)).toBe(false);
+  });
+
+  it('rechaza objeto sin vocabularioNuevo como array', () => {
+    const historia: any = {
+      titulo: 'Titulo',
+      contenido: 'Texto',
+      vocabularioNuevo: 'no-es-array',
+    };
+
+    expect(validarEstructuraHistoria(historia)).toBe(false);
+  });
+
+  it('rechaza titulo vacio', () => {
+    const historia: any = {
+      titulo: '',
+      contenido: 'Texto',
+      vocabularioNuevo: [],
+    };
+
+    expect(validarEstructuraHistoria(historia)).toBe(false);
+  });
+
+  it('rechaza contenido vacio', () => {
+    const historia: any = {
+      titulo: 'Titulo',
+      contenido: '',
+      vocabularioNuevo: [],
+    };
+
+    expect(validarEstructuraHistoria(historia)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────
+// validarEstructuraPreguntas: Flujo dividido
+// ─────────────────────────────────────────────
+
+describe('validarEstructuraPreguntas (flujo dividido)', () => {
+  function crearPreguntaValida(overrides: any = {}) {
+    return {
+      tipo: 'literal',
+      pregunta: 'Donde vivia Luna?',
+      opciones: ['Opcion 1', 'Opcion 2', 'Opcion 3', 'Opcion 4'],
+      respuestaCorrecta: 0,
+      explicacion: 'Explicacion',
+      ...overrides,
+    };
+  }
+
+  it('acepta estructura valida con 4 preguntas', () => {
+    const preguntas: QuestionsLLMOutput = {
+      preguntas: [
+        crearPreguntaValida({ tipo: 'literal' }),
+        crearPreguntaValida({ tipo: 'inferencia' }),
+        crearPreguntaValida({ tipo: 'vocabulario' }),
+        crearPreguntaValida({ tipo: 'resumen' }),
+      ],
+    };
+
+    expect(validarEstructuraPreguntas(preguntas)).toBe(true);
+  });
+
+  it('rechaza si preguntas no son exactamente 4', () => {
+    const preguntasPocos: any = {
+      preguntas: [crearPreguntaValida(), crearPreguntaValida()],
+    };
+
+    expect(validarEstructuraPreguntas(preguntasPocos)).toBe(false);
+
+    const preguntasMany: any = {
+      preguntas: Array.from({ length: 5 }).map(() => crearPreguntaValida()),
+    };
+
+    expect(validarEstructuraPreguntas(preguntasMany)).toBe(false);
+  });
+
+  it('rechaza si falta campo tipo en pregunta', () => {
+    const preguntas: any = {
+      preguntas: [
+        { pregunta: 'P1', opciones: ['a', 'b', 'c', 'd'], respuestaCorrecta: 0, explicacion: 'E' },
+        crearPreguntaValida(),
+        crearPreguntaValida(),
+        crearPreguntaValida(),
+      ],
+    };
+
+    expect(validarEstructuraPreguntas(preguntas)).toBe(false);
+  });
+
+  it('rechaza si respuestaCorrecta esta fuera de rango', () => {
+    const preguntas: any = {
+      preguntas: [
+        crearPreguntaValida({ respuestaCorrecta: 5 }),
+        crearPreguntaValida(),
+        crearPreguntaValida(),
+        crearPreguntaValida(),
+      ],
+    };
+
+    expect(validarEstructuraPreguntas(preguntas)).toBe(false);
+  });
+
+  it('rechaza opciones que no son 4', () => {
+    const preguntas: any = {
+      preguntas: [
+        crearPreguntaValida({ opciones: ['a', 'b'] }),
+        crearPreguntaValida(),
+        crearPreguntaValida(),
+        crearPreguntaValida(),
+      ],
+    };
+
+    expect(validarEstructuraPreguntas(preguntas)).toBe(false);
+  });
+
+  it('rechaza null', () => {
+    expect(validarEstructuraPreguntas(null)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────
+// evaluarHistoriaSinPreguntas: Rubrica flujo dividido
+// ─────────────────────────────────────────────
+
+describe('evaluarHistoriaSinPreguntas (flujo dividido)', () => {
+  function crearHistoriaValida(overrides: Partial<StoryOnlyLLMOutput> = {}): StoryOnlyLLMOutput {
+    return {
+      titulo: 'El viaje de Luna',
+      contenido:
+        'Luna era una gatita curiosa que vivia en un pueblo pequeno. ' +
+        'Un dia decidio explorar el bosque cercano. ' +
+        'Encontro un rio cristalino y vio peces de colores. ' +
+        'Luna se quedo mirando el agua durante un buen rato. ' +
+        'Cuando regreso a casa, su familia la estaba esperando con alegria.',
+      vocabularioNuevo: ['cristalino', 'explorar'],
+      ...overrides,
+    };
+  }
+
+  it('aprueba historia valida sin preguntas', () => {
+    const historia = crearHistoriaValida();
+    const result = evaluarHistoriaSinPreguntas(historia, 1);
+
+    expect(result.aprobada).toBe(true);
+  });
+
+  it('rechaza contenido con palabras prohibidas', () => {
+    const historia = crearHistoriaValida({
+      contenido: 'El nino encontro una pistola en el bosque.',
+    });
+
+    const result = evaluarHistoriaSinPreguntas(historia, 1);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo).toContain('inseguro');
+  });
+
+  it('rechaza contenido demasiado corto', () => {
+    const historia = crearHistoriaValida({
+      contenido: 'Hola mundo.',
+    });
+
+    const result = evaluarHistoriaSinPreguntas(historia, 1);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo).toContain('corta');
+  });
+
+  it('rechaza contenido demasiado largo', () => {
+    const historia = crearHistoriaValida({
+      contenido: Array(200).fill('Esta es una oracion de ejemplo con varias palabras.').join(' '),
+    });
+
+    const result = evaluarHistoriaSinPreguntas(historia, 1);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo).toContain('larga');
+  });
+
+  it('rechaza titulo muy corto', () => {
+    const historia = crearHistoriaValida({
+      titulo: 'ab',
+    });
+
+    const result = evaluarHistoriaSinPreguntas(historia, 1);
+
+    expect(result.aprobada).toBe(false);
+  });
+
+  it('rechaza apertura plana tipo texto escolar', () => {
+    const historia = crearHistoriaValida({
+      contenido: 'En este texto aprenderemos como funciona el viento. ' +
+        'El viento es aire en movimiento. Sopla desde el norte y del sur. ' +
+        'En las montanas hace mas viento. El viento mueve las hojas de los arboles. ' +
+        'Cuando hay tormenta el viento es muy fuerte. A los ninos les encanta jugar con el viento.',
+    });
+
+    const result = evaluarHistoriaSinPreguntas(historia, 1);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo?.toLowerCase()).toContain('apertura plana');
+  });
+
+  it('rechaza cuando faltan conectores narrativos', () => {
+    const historia = crearHistoriaValida({
+      contenido: 'Los cohetes son maquinas. Los cohetes tienen motor. Los cohetes usan combustible. ' +
+        'Los cohetes salen de la Tierra. Los cohetes llegan al espacio. ' +
+        'Los astronautas viajas en cohetes. Los cohetes son muy veloces. ' +
+        'Los cohetes pueden llevar satelites. Los cohetes son importantes para la ciencia.',
+    });
+
+    const result = evaluarHistoriaSinPreguntas(historia, 1);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo?.toLowerCase()).toContain('plana');
+  });
+});
+
+// ─────────────────────────────────────────────
+// evaluarPreguntas: Rubrica flujo dividido
+// ─────────────────────────────────────────────
+
+describe('evaluarPreguntas (flujo dividido)', () => {
+  function crearPreguntaValida(overrides: any = {}) {
+    return {
+      tipo: 'literal',
+      pregunta: 'Donde vivia Luna?',
+      opciones: ['Opcion 1', 'Opcion 2', 'Opcion 3', 'Opcion 4'],
+      respuestaCorrecta: 0,
+      explicacion: 'Explicacion',
+      ...overrides,
+    };
+  }
+
+  function crearPreguntasValidas(): QuestionsLLMOutput {
+    return {
+      preguntas: [
+        crearPreguntaValida({ tipo: 'literal' }),
+        crearPreguntaValida({ tipo: 'inferencia' }),
+        crearPreguntaValida({ tipo: 'vocabulario' }),
+        crearPreguntaValida({ tipo: 'resumen' }),
+      ],
+    };
+  }
+
+  it('aprueba preguntas estructuralmente validas', () => {
+    const preguntas = crearPreguntasValidas();
+    const result = evaluarPreguntas(preguntas);
+
+    expect(result.aprobada).toBe(true);
+  });
+
+  it('rechaza si falta un tipo requerido', () => {
+    const preguntas: QuestionsLLMOutput = {
+      preguntas: [
+        crearPreguntaValida({ tipo: 'literal' }),
+        crearPreguntaValida({ tipo: 'literal' }), // duplicado, falta inferencia
+        crearPreguntaValida({ tipo: 'vocabulario' }),
+        crearPreguntaValida({ tipo: 'resumen' }),
+      ],
+    };
+
+    const result = evaluarPreguntas(preguntas);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo).toContain('inferencia');
+  });
+
+  it('rechaza opciones vacias', () => {
+    const preguntas: QuestionsLLMOutput = {
+      preguntas: [
+        crearPreguntaValida({ opciones: ['Opcion 1', '', 'Opcion 3', 'Opcion 4'] }),
+        crearPreguntaValida({ tipo: 'inferencia' }),
+        crearPreguntaValida({ tipo: 'vocabulario' }),
+        crearPreguntaValida({ tipo: 'resumen' }),
+      ],
+    };
+
+    const result = evaluarPreguntas(preguntas);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo).toContain('vacia');
+  });
+
+  it('rechaza respuestaCorrecta fuera de rango', () => {
+    const preguntas: QuestionsLLMOutput = {
+      preguntas: [
+        crearPreguntaValida({ respuestaCorrecta: 5 }),
+        crearPreguntaValida({ tipo: 'inferencia' }),
+        crearPreguntaValida({ tipo: 'vocabulario' }),
+        crearPreguntaValida({ tipo: 'resumen' }),
+      ],
+    };
+
+    const result = evaluarPreguntas(preguntas);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo).toContain('invalido');
+  });
+
+  it('rechaza opciones duplicadas/ambiguas', () => {
+    const preguntas: QuestionsLLMOutput = {
+      preguntas: [
+        crearPreguntaValida({ opciones: ['En el bosque', 'En el bosque', 'En la casa', 'En la ciudad'] }),
+        crearPreguntaValida({ tipo: 'inferencia' }),
+        crearPreguntaValida({ tipo: 'vocabulario' }),
+        crearPreguntaValida({ tipo: 'resumen' }),
+      ],
+    };
+
+    const result = evaluarPreguntas(preguntas);
+
+    expect(result.aprobada).toBe(false);
+    expect(result.motivo?.toLowerCase()).toContain('ambiguas');
   });
 });

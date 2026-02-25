@@ -23,13 +23,13 @@ interface ResultadoSesionProps {
 const MENSAJES: Record<string, string[]> = {
   excelente: [
     'Increible, {nombre}! Eres una estrella!',
-    'Genial! Entendiste todo!',
+    'Genial, {nombre}! Entendiste todo!',
     'Fantastico, {nombre}!',
   ],
   bien: [
     'Muy bien, {nombre}! Vas genial!',
     'Buen trabajo, {nombre}!',
-    'Bien hecho! Sigue asi!',
+    'Bien hecho, {nombre}! Sigue asi!',
   ],
   regular: [
     'Bien intentado, {nombre}!',

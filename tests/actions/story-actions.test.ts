@@ -193,17 +193,39 @@ describe('story-actions', () => {
   // GENERAR HISTORIA
   // ────────────────────────────────────────────────────
 
-  it('debería generar historia nueva exitosamente', async () => {
-    // This test is complex due to the multiple interdependent mocks required
-    // Instead, test that the validation works
+  it('debería generar historia nueva exitosamente con cache valida', async () => {
+    // This test validates the happy path through cache retrieval
+    // Mock count query (under limit)
+    mockWhereSelect.mockResolvedValueOnce([{ count: 5 }]);
+    // Mock skillProgress
+    mockFindMany.mockResolvedValueOnce([]);
+    // Mock recent stories
+    mockFindMany.mockResolvedValueOnce([]);
+    // Mock cache candidates - return a cached story
+    mockFindMany.mockResolvedValueOnce([
+      {
+        id: '00000000-0000-4000-8000-000000000040',
+        titulo: 'Cached Story',
+        contenido: 'Cached content',
+        nivel: 2.0,
+        reutilizable: true,
+        aprobadaQA: true,
+        questions: [{ id: 'q1', orden: 0 }],
+        metadata: { generationFlags: { funMode: false } },
+      },
+    ]);
+    // Queue session insert returning
+    returningQueue.push([{ id: '00000000-0000-4000-8000-000000000030' }]);
+
     const result = await generarHistoria({
       studentId: '00000000-0000-4000-8000-000000000020',
       topicSlug: 'animales',
     });
 
-    // Should at least not throw - the internal error handling catches issues
-    expect(result).toBeDefined();
-    expect(result).toHaveProperty('ok');
+    expect(result.ok).toBe(true);
+    expect(result.storyId).toBe('00000000-0000-4000-8000-000000000040');
+    expect(result.sessionId).toBeDefined();
+    expect(result.fromCache).toBe(true);
   });
 
   it('debería retornar error si no hay API key configurada', async () => {
@@ -383,6 +405,8 @@ describe('story-actions', () => {
     });
 
     expect(result.ok).toBe(true);
+    expect(result.alreadyMarked).toBe(false);
+    expect(result.lecturaCompletadaEn).toBeDefined();
   });
 
   it('debería usar wpm de audio si es confiable', async () => {
@@ -413,6 +437,8 @@ describe('story-actions', () => {
     });
 
     expect(result.ok).toBe(true);
+    expect(result.alreadyMarked).toBe(false);
+    expect(result.lecturaCompletadaEn).toBeDefined();
   });
 
   // ────────────────────────────────────────────────────
@@ -585,6 +611,7 @@ describe('story-actions', () => {
     });
 
     expect(result.ok).toBe(false);
+    expect(result.error).toContain('Ya se realizo un ajuste');
   });
 
   it('debería fallar si no hay API key', async () => {

@@ -47,13 +47,10 @@ vi.mock('@/lib/data/skills', () => ({
   getSkillsDeDominio: vi.fn(() => []),
 }));
 
-vi.mock('./dashboard-utils', () => ({
-  calcularProgresoNivel: vi.fn(() => ({ nivel: 2.0, historiasParaSubir: 2, sesionesRecientesAltas: 1, sesionesNecesarias: 3 })),
-  generarMensajeMotivacional: vi.fn(() => 'Excelente trabajo!'),
-  calcularDesgloseTipos: vi.fn(() => ({ literal: { total: 10, aciertos: 9, porcentaje: 90 } })),
-  generarRecomendaciones: vi.fn(() => []),
-  construirNormativaLectura: vi.fn(() => ({ referenciaEdad: { edadAnos: 6 } })),
-}));
+// REMOVED: No mock for ./dashboard-utils
+// These are pure functions that should run with real logic.
+// Tests verify coordination at the action level; detailed utility logic is tested in sprint5-dashboard-logic.test.ts
+// The DB mock provides the data that these real functions operate on.
 
 vi.mock('@omegaread/db', () => ({
   sessions: { id: 'id', studentId: 'student_id' },
@@ -323,54 +320,5 @@ describe('dashboard-actions', () => {
     expect(result.desgloseTipos).toBeDefined();
   });
 
-  it.skip('debería incluir perfil vivo (hechos recientes)', async () => {
-    mockFindMany.mockResolvedValueOnce([]); // todasSesiones
-    mockFindMany.mockResolvedValueOnce([]); // todasRespuestas
-    mockFindMany.mockResolvedValueOnce([]); // historias
-    mockFindMany.mockResolvedValueOnce([]); // allTopics
-    mockFindMany.mockResolvedValueOnce([]); // progresoSkillsTopic (skillProgress with no data)
-    mockFindMany.mockResolvedValueOnce([]); // ajustes (difficultyAdjustments)
-    mockFindMany.mockResolvedValueOnce([]); // snapshots (eloSnapshots)
 
-    const result = await obtenerDashboardPadre('student-1');
-
-    expect(result).toBeDefined();
-    expect(result.perfilVivo).toBeDefined();
-  });
-
-  it.skip('debería incluir tech tree con historial de topics', async () => {
-    const hoy = new Date();
-    const sesiones = [
-      {
-        id: '00000000-0000-4000-8000-000000000010',
-        studentId: 'student-1',
-        tipoActividad: 'lectura',
-        completada: true,
-        storyId: '00000000-0000-4000-8000-000000000040',
-        iniciadaEn: new Date(hoy.getTime() - 24 * 60 * 60 * 1000),
-        duracionSegundos: 300,
-      },
-    ];
-    const historias = [
-      {
-        id: '00000000-0000-4000-8000-000000000040',
-        topicSlug: 'animales',
-      },
-    ];
-
-    mockFindMany.mockResolvedValueOnce(sesiones); // todasSesiones
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce(historias);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-
-    const result = await obtenerDashboardPadre('student-1');
-
-    expect(result.techTree).toBeDefined();
-    expect(result.techTree.historialTopics).toBeDefined();
-    expect(result.techTree.dominiosTocados).toBeDefined();
-    expect(result.techTree.sugerencias).toBeDefined();
-  });
 });

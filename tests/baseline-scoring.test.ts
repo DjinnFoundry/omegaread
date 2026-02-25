@@ -182,3 +182,127 @@ describe('determinarAjuste', () => {
     expect(determinarAjuste(0.599)).toBe('bajar');
   });
 });
+
+// ─────────────────────────────────────────────
+// calcularSessionScore: Legacy fields support
+// ─────────────────────────────────────────────
+
+describe('calcularSessionScore - Legacy fields support', () => {
+  it('usa ritmoNormalizado cuando se pasa', () => {
+    const score = calcularSessionScore({
+      comprension: 0.8,
+      ritmoNormalizado: 0.6,
+      estabilidad: 0.5,
+    });
+
+    const esperado = 0.65 * 0.8 + 0.25 * 0.6 + 0.10 * 0.5;
+    expect(score).toBe(Math.round(esperado * 100) / 100);
+  });
+
+  it('usa ritmo como fallback cuando ritmoNormalizado no esta', () => {
+    const score = calcularSessionScore({
+      comprension: 0.8,
+      ritmo: 0.6,
+      estabilidad: 0.5,
+    });
+
+    const esperado = 0.65 * 0.8 + 0.25 * 0.6 + 0.10 * 0.5;
+    expect(score).toBe(Math.round(esperado * 100) / 100);
+  });
+
+  it('usa wpmRatio como fallback legacy', () => {
+    const score = calcularSessionScore({
+      comprension: 0.8,
+      wpmRatio: 0.6,
+      estabilidad: 0.5,
+    });
+
+    const esperado = 0.65 * 0.8 + 0.25 * 0.6 + 0.10 * 0.5;
+    expect(score).toBe(Math.round(esperado * 100) / 100);
+  });
+
+  it('usa ritmoMejora como fallback legacy', () => {
+    const score = calcularSessionScore({
+      comprension: 0.8,
+      ritmoMejora: 0.6,
+      estabilidad: 0.5,
+    });
+
+    const esperado = 0.65 * 0.8 + 0.25 * 0.6 + 0.10 * 0.5;
+    expect(score).toBe(Math.round(esperado * 100) / 100);
+  });
+
+  it('ritmoNormalizado toma prioridad sobre wpmRatio', () => {
+    const score = calcularSessionScore({
+      comprension: 0.8,
+      ritmoNormalizado: 0.7,
+      wpmRatio: 0.5,
+      estabilidad: 0.5,
+    });
+
+    // Deberia usar ritmoNormalizado (0.7), no wpmRatio (0.5)
+    const esperado = 0.65 * 0.8 + 0.25 * 0.7 + 0.10 * 0.5;
+    expect(score).toBe(Math.round(esperado * 100) / 100);
+  });
+
+  it('ritmo toma prioridad sobre wpmRatio cuando ritmoNormalizado no esta', () => {
+    const score = calcularSessionScore({
+      comprension: 0.8,
+      ritmo: 0.7,
+      wpmRatio: 0.5,
+      estabilidad: 0.5,
+    });
+
+    // Deberia usar ritmo (0.7), no wpmRatio (0.5)
+    const esperado = 0.65 * 0.8 + 0.25 * 0.7 + 0.10 * 0.5;
+    expect(score).toBe(Math.round(esperado * 100) / 100);
+  });
+});
+
+// ─────────────────────────────────────────────
+// calcularBaseline: Casos extremos de accuracy
+// ─────────────────────────────────────────────
+
+describe('calcularBaseline - Casos extremos de accuracy', () => {
+  it('mantiene nivel 1 cuando TODOS los textos tienen < 60% accuracy', () => {
+    const result = calcularBaseline([
+      { nivelTexto: 1, totalPreguntas: 4, aciertos: 2, aciertosPorTipo: { literal: 1, inferencia: 1 } },
+      { nivelTexto: 2, totalPreguntas: 4, aciertos: 2, aciertosPorTipo: { literal: 1, inferencia: 1 } },
+      { nivelTexto: 3, totalPreguntas: 4, aciertos: 2, aciertosPorTipo: { literal: 1, inferencia: 1 } },
+      { nivelTexto: 4, totalPreguntas: 4, aciertos: 2, aciertosPorTipo: { literal: 1, inferencia: 1 } },
+    ]);
+
+    // Todos tienen 50% accuracy, el maximo aprobado sigue siendo nivel 1
+    expect(result.nivelLectura).toBe(1);
+  });
+
+  it('se queda en nivel alcanzado aunque haya visto textos mas dificiles', () => {
+    const result = calcularBaseline([
+      { nivelTexto: 1, totalPreguntas: 4, aciertos: 3, aciertosPorTipo: { literal: 1, inferencia: 1, vocabulario: 1 } },
+      { nivelTexto: 2, totalPreguntas: 4, aciertos: 3, aciertosPorTipo: { literal: 1, inferencia: 1, vocabulario: 1 } },
+      { nivelTexto: 3, totalPreguntas: 4, aciertos: 2, aciertosPorTipo: { literal: 1, inferencia: 1 } },
+      { nivelTexto: 4, totalPreguntas: 4, aciertos: 0, aciertosPorTipo: {} },
+    ]);
+
+    // El maximo donde acierto >= 60% es nivel 2
+    expect(result.nivelLectura).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────
+// calcularBaseline: Capping en nivel 4
+// ─────────────────────────────────────────────
+
+describe('calcularBaseline - Capping en nivel 4', () => {
+  it('esta capeado en nivel 4 aunque acierte 100% en nivel 4', () => {
+    const result = calcularBaseline([
+      { nivelTexto: 1, totalPreguntas: 3, aciertos: 3, aciertosPorTipo: { literal: 1, inferencia: 1, vocabulario: 1 } },
+      { nivelTexto: 2, totalPreguntas: 3, aciertos: 3, aciertosPorTipo: { literal: 1, inferencia: 1, vocabulario: 1 } },
+      { nivelTexto: 3, totalPreguntas: 4, aciertos: 4, aciertosPorTipo: { literal: 1, inferencia: 1, vocabulario: 1, resumen: 1 } },
+      { nivelTexto: 4, totalPreguntas: 4, aciertos: 4, aciertosPorTipo: { literal: 1, inferencia: 1, vocabulario: 1, resumen: 1 } },
+    ]);
+
+    // Aunque acierte 100% en nivel 4, el resultado esta capeado a nivel 4 (o 4.5)
+    expect(result.nivelLectura).toBeLessThanOrEqual(4);
+  });
+});

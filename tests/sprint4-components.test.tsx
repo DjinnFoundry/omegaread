@@ -17,7 +17,16 @@ const baseProps = {
 describe('PantallaLectura', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {});
+    // Mock localStorage globally for jsdom
+    const localStorageMock = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      length: 0,
+      key: vi.fn(() => null),
+    };
+    vi.stubGlobal('localStorage', localStorageMock);
   });
 
   afterEach(() => {

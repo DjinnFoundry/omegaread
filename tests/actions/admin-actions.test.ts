@@ -343,8 +343,14 @@ describe('admin-actions', () => {
   });
 
   it('debería requerir autenticación de admin', async () => {
+    // Import the mocked requireAdminAuth
     const { requireAdminAuth } = await vi.importMock('@/server/admin-auth');
-    expect(requireAdminAuth).toBeDefined();
+
+    // Configure it to throw an error
+    (requireAdminAuth as any).mockRejectedValueOnce(new Error('Admin no autenticado'));
+
+    // Call the actual action and expect it to reject with the auth error
+    await expect(obtenerAdminDashboard()).rejects.toThrow('Admin no autenticado');
   });
 
   it('debería parsear question tokens de metadata de sesiones', async () => {

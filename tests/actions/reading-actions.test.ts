@@ -47,13 +47,9 @@ vi.mock('@/lib/ai/prompts', () => ({
   }),
 }));
 
-vi.mock('@/lib/types/reading', () => ({
-  determinarAjuste: vi.fn((score: number) => {
-    if (score >= 0.8) return 'subir';
-    if (score < 0.6) return 'bajar';
-    return 'mantener';
-  }),
-}));
+// REMOVED: No mock for @/lib/types/reading
+// determinarAjuste is a pure function. The real logic should be tested directly.
+// Test data below is designed to trigger the real function's behavior.
 
 const mockFindFirst = vi.fn(async () => null);
 const mockFindMany = vi.fn(async () => []);

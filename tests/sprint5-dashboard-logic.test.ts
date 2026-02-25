@@ -9,6 +9,7 @@ import {
   generarMensajeMotivacional,
   calcularDesgloseTipos,
   generarRecomendaciones,
+  construirNormativaLectura,
 } from '@/server/actions/dashboard-utils';
 
 // ─────────────────────────────────────────────
@@ -327,5 +328,281 @@ describe('generarRecomendaciones', () => {
 
     const recs = generarRecomendaciones(desglose, [], sesiones);
     expect(recs.length).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────
+// generarMensajeMotivacional: Edge case con 2 sesiones
+// ─────────────────────────────────────────────
+
+describe('generarMensajeMotivacional - Edge case exactamente 2 sesiones', () => {
+  it('genera mensaje apropiado con exactamente 2 sesiones', () => {
+    const tendencia = [
+      { sessionId: '1', fecha: '2026-01-01', porcentajeAcierto: 70, topicEmoji: '📚' },
+      { sessionId: '2', fecha: '2026-01-02', porcentajeAcierto: 75, topicEmoji: '📚' },
+    ];
+
+    const msg = generarMensajeMotivacional(tendencia);
+
+    expect(typeof msg).toBe('string');
+    expect(msg.length).toBeGreaterThan(0);
+  });
+
+  it('retorna mensaje positivo cuando 2 sesiones tienen alto score', () => {
+    const tendencia = [
+      { sessionId: '1', fecha: '2026-01-01', porcentajeAcierto: 85, topicEmoji: '📚' },
+      { sessionId: '2', fecha: '2026-01-02', porcentajeAcierto: 90, topicEmoji: '📚' },
+    ];
+
+    const msg = generarMensajeMotivacional(tendencia);
+
+    expect(msg).toContain('genial');
+  });
+});
+
+// ─────────────────────────────────────────────
+// calcularDesgloseTipos: Solo un tipo presente
+// ─────────────────────────────────────────────
+
+describe('calcularDesgloseTipos - Solo un tipo presente', () => {
+  it('calcula correctamente cuando solo hay respuestas literal', () => {
+    const respuestas = [
+      { id: 'r1', sessionId: 's1', ejercicioId: 'e1', tipoEjercicio: 'literal', pregunta: '', respuesta: '', respuestaCorrecta: '', correcta: true, tiempoRespuestaMs: 5000, intentoNumero: 1, metadata: {}, creadaEn: new Date() },
+      { id: 'r2', sessionId: 's1', ejercicioId: 'e2', tipoEjercicio: 'literal', pregunta: '', respuesta: '', respuestaCorrecta: '', correcta: false, tiempoRespuestaMs: 3000, intentoNumero: 1, metadata: {}, creadaEn: new Date() },
+    ];
+
+    const result = calcularDesgloseTipos(respuestas);
+
+    expect(result.literal.total).toBe(2);
+    expect(result.literal.aciertos).toBe(1);
+    expect(result.literal.porcentaje).toBe(50);
+    expect(result.inferencia.total).toBe(0);
+    expect(result.vocabulario.total).toBe(0);
+    expect(result.resumen.total).toBe(0);
+  });
+
+  it('initializa correctamente tipos sin respuestas', () => {
+    const respuestas = [
+      { id: 'r1', sessionId: 's1', ejercicioId: 'e1', tipoEjercicio: 'inferencia', pregunta: '', respuesta: '', respuestaCorrecta: '', correcta: true, tiempoRespuestaMs: 5000, intentoNumero: 1, metadata: {}, creadaEn: new Date() },
+    ];
+
+    const result = calcularDesgloseTipos(respuestas);
+
+    expect(result.literal).toBeDefined();
+    expect(result.literal.porcentaje).toBe(0);
+    expect(result.vocabulario).toBeDefined();
+    expect(result.resumen).toBeDefined();
+  });
+});
+
+// ─────────────────────────────────────────────
+// generarRecomendaciones: Especificas de tipo vocabulario
+// ─────────────────────────────────────────────
+
+describe('generarRecomendaciones - Recomendacion vocabulario', () => {
+  it('genera recomendacion vocabulario cuando es el tipo mas debil', () => {
+    const desglose = {
+      literal: { total: 10, aciertos: 8, porcentaje: 80 },
+      inferencia: { total: 10, aciertos: 7, porcentaje: 70 },
+      vocabulario: { total: 10, aciertos: 3, porcentaje: 30 },
+      resumen: { total: 10, aciertos: 9, porcentaje: 90 },
+    };
+
+    const recs = generarRecomendaciones(desglose, [], []);
+    const vocabRec = recs.find(r => r.tipo === 'vocabulario');
+
+    expect(vocabRec).toBeDefined();
+    expect(vocabRec?.mensaje).toContain('vocabulario');
+  });
+});
+
+// ─────────────────────────────────────────────
+// generarRecomendaciones: Sin recomendacion frecuencia
+// ─────────────────────────────────────────────
+
+describe('generarRecomendaciones - Sin frecuencia cuando hay 5+ sesiones', () => {
+  it('no genera recomendacion frecuencia con 5+ sesiones en ultima semana', () => {
+    const desglose = {
+      literal: { total: 5, aciertos: 5, porcentaje: 100 },
+      inferencia: { total: 5, aciertos: 5, porcentaje: 100 },
+      vocabulario: { total: 5, aciertos: 5, porcentaje: 100 },
+      resumen: { total: 5, aciertos: 5, porcentaje: 100 },
+    };
+
+    const ahora = new Date();
+    const sesiones = Array.from({ length: 5 }).map((_, i) => ({
+      id: `s${i}`,
+      studentId: 'st1',
+      tipoActividad: 'lectura' as const,
+      modulo: 'lectura-adaptativa' as const,
+      duracionSegundos: 300,
+      completada: true,
+      estrellasGanadas: 2,
+      stickerGanado: null,
+      storyId: null,
+      metadata: {},
+      iniciadaEn: new Date(ahora.getTime() - i * 86400000),
+      finalizadaEn: new Date(ahora.getTime() - i * 86400000),
+    }));
+
+    const recs = generarRecomendaciones(desglose, [], sesiones);
+    const freqRec = recs.find(r => r.tipo === 'frecuencia');
+
+    expect(freqRec).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────
+// construirNormativaLectura: Validacion de estructura
+// ─────────────────────────────────────────────
+
+describe('construirNormativaLectura - Estructura y validacion', () => {
+  it('retorna percentil valido para estudiante promedio', () => {
+    const normativa = construirNormativaLectura({
+      edadAnos: 7,
+      eloGlobal: 1000,
+      eloPorTipo: {
+        literal: 1000,
+        inferencia: 1000,
+        vocabulario: 1000,
+        resumen: 1000,
+      },
+    });
+
+    expect(normativa.equivalenciaGlobal.percentil).toBeGreaterThan(0);
+    expect(normativa.equivalenciaGlobal.percentil).toBeLessThanOrEqual(99);
+  });
+
+  it('retorna percentil alto para estudiante avanzado', () => {
+    const normativa = construirNormativaLectura({
+      edadAnos: 8,
+      eloGlobal: 1350,
+      eloPorTipo: {
+        literal: 1350,
+        inferencia: 1350,
+        vocabulario: 1350,
+        resumen: 1350,
+      },
+    });
+
+    expect(normativa.equivalenciaGlobal.percentil).toBeGreaterThan(50);
+  });
+
+  it('retorna percentil bajo para estudiante rezagado', () => {
+    const normativa = construirNormativaLectura({
+      edadAnos: 7,
+      eloGlobal: 800,
+      eloPorTipo: {
+        literal: 800,
+        inferencia: 800,
+        vocabulario: 800,
+        resumen: 800,
+      },
+    });
+
+    expect(normativa.equivalenciaGlobal.percentil).toBeLessThan(50);
+  });
+
+  it('estructura correcta con campos requeridos', () => {
+    const normativa = construirNormativaLectura({
+      edadAnos: 7,
+      eloGlobal: 1000,
+      eloPorTipo: {
+        literal: 1000,
+        inferencia: 1000,
+        vocabulario: 1000,
+        resumen: 1000,
+      },
+    });
+
+    expect(normativa).toHaveProperty('referenciaEdad');
+    expect(normativa).toHaveProperty('equivalenciaGlobal');
+    expect(normativa).toHaveProperty('porTipo');
+    expect(normativa).toHaveProperty('tabla');
+
+    expect(normativa.referenciaEdad).toHaveProperty('edadAnos');
+    expect(normativa.referenciaEdad).toHaveProperty('cursoEsperado');
+
+    expect(normativa.equivalenciaGlobal).toHaveProperty('curso');
+    expect(normativa.equivalenciaGlobal).toHaveProperty('percentil');
+    expect(normativa.equivalenciaGlobal).toHaveProperty('estado');
+    expect(normativa.equivalenciaGlobal).toHaveProperty('necesitaApoyo');
+    expect(normativa.equivalenciaGlobal).toHaveProperty('recomendacion');
+  });
+
+  it('porTipo entries tienen estructura correcta', () => {
+    const normativa = construirNormativaLectura({
+      edadAnos: 7,
+      eloGlobal: 1000,
+      eloPorTipo: {
+        literal: 950,
+        inferencia: 1050,
+        vocabulario: 1000,
+        resumen: 1000,
+      },
+    });
+
+    for (const [tipo, data] of Object.entries(normativa.porTipo)) {
+      expect(data).toHaveProperty('curso');
+      expect(data).toHaveProperty('percentil');
+      expect(data).toHaveProperty('estado');
+      expect(data).toHaveProperty('necesitaApoyo');
+      expect(data).toHaveProperty('recomendacion');
+      expect(typeof data.percentil).toBe('number');
+      expect(typeof data.necesitaApoyo).toBe('boolean');
+    }
+  });
+
+  it('tabla contiene todos los cursos normalizados', () => {
+    const normativa = construirNormativaLectura({
+      edadAnos: 7,
+      eloGlobal: 1000,
+      eloPorTipo: {
+        literal: 1000,
+        inferencia: 1000,
+        vocabulario: 1000,
+        resumen: 1000,
+      },
+    });
+
+    expect(normativa.tabla.length).toBeGreaterThan(0);
+    for (const row of normativa.tabla) {
+      expect(row).toHaveProperty('curso');
+      expect(row).toHaveProperty('p10');
+      expect(row).toHaveProperty('p25');
+      expect(row).toHaveProperty('p50');
+      expect(row).toHaveProperty('p75');
+      expect(row).toHaveProperty('p90');
+    }
+  });
+
+  it('necesitaApoyo es true para percentiles bajos', () => {
+    const normativa = construirNormativaLectura({
+      edadAnos: 7,
+      eloGlobal: 700,
+      eloPorTipo: {
+        literal: 700,
+        inferencia: 700,
+        vocabulario: 700,
+        resumen: 700,
+      },
+    });
+
+    expect(normativa.equivalenciaGlobal.necesitaApoyo).toBe(true);
+  });
+
+  it('necesitaApoyo es false para percentiles altos', () => {
+    const normativa = construirNormativaLectura({
+      edadAnos: 7,
+      eloGlobal: 1400,
+      eloPorTipo: {
+        literal: 1400,
+        inferencia: 1400,
+        vocabulario: 1400,
+        resumen: 1400,
+      },
+    });
+
+    expect(normativa.equivalenciaGlobal.necesitaApoyo).toBe(false);
   });
 });
