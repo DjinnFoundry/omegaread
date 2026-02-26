@@ -341,6 +341,12 @@ export const generarPreguntasSesionSchema = z.object({
   storyId: uuid,
 });
 
+/** Schema: cargarHistoriaExistente */
+export const cargarHistoriaExistenteSchema = z.object({
+  storyId: uuid,
+  studentId: uuid,
+});
+
 /** Schema: registrarAjusteManual */
 export const registrarAjusteManualSchema = z.object({
   studentId: uuid,

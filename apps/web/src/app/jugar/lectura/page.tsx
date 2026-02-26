@@ -22,6 +22,7 @@ import {
   generarHistoria,
   obtenerProgresoGeneracionHistoria,
   generarPreguntasSesion,
+  cargarHistoriaExistente,
   registrarLecturaCompletada,
   finalizarSesionLectura,
   analizarLecturaAudio,
@@ -82,6 +83,7 @@ export default function LecturaPage() {
   const searchParams = useSearchParams();
   const { estudiante, autoSelecting, recargarProgreso } = useStudentProgress();
   const topicFromQuery = searchParams.get('topic');
+  const storyIdFromQuery = searchParams.get('storyId');
   const autoStartedRef = useRef(false);
   const [estado, setEstado] = useState<EstadoFlujoLectura | null>(null);
   const [datosEstudiante, setDatosEstudiante] = useState<DatosEstudianteLectura | null>(null);
@@ -147,6 +149,22 @@ export default function LecturaPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicFromQuery, estado, pasoSesion, generando, estudiante]);
+
+  // Auto-load when ?storyId=UUID is present (re-read from historial)
+  useEffect(() => {
+    if (
+      storyIdFromQuery &&
+      !autoStartedRef.current &&
+      estado?.paso === 'listo' &&
+      pasoSesion === 'elegir-topic' &&
+      !generando &&
+      estudiante
+    ) {
+      autoStartedRef.current = true;
+      void handleReRead(storyIdFromQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storyIdFromQuery, estado, pasoSesion, generando, estudiante]);
 
   // ─── Handlers de sesion ───
 
@@ -267,6 +285,53 @@ export default function LecturaPage() {
       }
     },
     [estudiante, generando, cargarPreguntasDeSesion, iniciarPollingProgreso],
+  );
+
+  const handleReRead = useCallback(
+    async (storyId: string) => {
+      if (!estudiante || generando) return;
+      setGenerando(true);
+      setErrorGeneracion(null);
+      setPasoSesion('generando');
+
+      try {
+        const result = await cargarHistoriaExistente({
+          storyId,
+          studentId: estudiante.id,
+        });
+
+        if (!result.ok) {
+          setErrorGeneracion(result.error);
+          setPasoSesion('elegir-topic');
+          return;
+        }
+
+        const tienePreguntas = result.preguntas && result.preguntas.length > 0;
+
+        setSesionActiva({
+          sessionId: result.sessionId,
+          storyId: result.storyId,
+          fromCache: true,
+          historia: result.historia,
+          preguntas: tienePreguntas ? result.preguntas : [],
+        });
+        setErrorPreguntas(null);
+        if (tienePreguntas) {
+          setPreguntasGenerandoPara(null);
+        }
+        setPasoSesion('leyendo');
+
+        if (!tienePreguntas) {
+          void cargarPreguntasDeSesion(result.sessionId, result.storyId, estudiante.id);
+        }
+      } catch {
+        setErrorGeneracion('No pudimos cargar la historia. Intentalo de nuevo.');
+        setPasoSesion('elegir-topic');
+      } finally {
+        setGenerando(false);
+      }
+    },
+    [estudiante, generando, cargarPreguntasDeSesion],
   );
 
   const handleTerminarLectura = useCallback(

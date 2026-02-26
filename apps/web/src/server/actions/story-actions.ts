@@ -18,6 +18,7 @@ export {
   generarHistoria,
   obtenerProgresoGeneracionHistoria,
   generarPreguntasSesion,
+  cargarHistoriaExistente,
 } from './story-generation-actions';
 
 export {

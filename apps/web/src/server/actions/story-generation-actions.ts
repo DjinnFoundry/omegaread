@@ -27,6 +27,7 @@ import {
   generarHistoriaSchema,
   generarPreguntasSesionSchema,
   obtenerProgresoGeneracionHistoriaSchema,
+  cargarHistoriaExistenteSchema,
 } from '../validation';
 import { generateStoryOnly, generateQuestions } from '@/lib/ai/story-generator';
 import { hasLLMKey } from '@/lib/ai/openai';
@@ -688,5 +689,75 @@ export async function generarPreguntasSesion(datos: {
   return {
     ok: true as const,
     preguntas: preguntasRows.map(mapPreguntaToDTO),
+  };
+}
+
+/**
+ * Loads an existing story for re-reading.
+ * Creates a new session and returns the story + questions without LLM calls.
+ */
+export async function cargarHistoriaExistente(datos: {
+  storyId: string;
+  studentId: string;
+}) {
+  const db = await getDb();
+  const validado = cargarHistoriaExistenteSchema.parse(datos);
+  await requireStudentOwnership(validado.studentId);
+
+  const { nivel } = await getStudentContext(validado.studentId);
+
+  const historia = await db.query.generatedStories.findFirst({
+    where: and(
+      eq(generatedStories.id, validado.storyId),
+      eq(generatedStories.studentId, validado.studentId),
+    ),
+    with: { questions: true },
+  });
+
+  if (!historia) {
+    return { ok: false as const, error: 'Historia no encontrada' };
+  }
+
+  const topic = TOPICS_SEED.find((t) => t.slug === historia.topicSlug);
+  const nivelConfig = getNivelConfig(historia.nivel);
+
+  const [sesion] = await db
+    .insert(sessions)
+    .values({
+      studentId: validado.studentId,
+      tipoActividad: 'lectura',
+      modulo: 'lectura-adaptativa',
+      completada: false,
+      estrellasGanadas: 0,
+      storyId: historia.id,
+      metadata: {
+        textoId: historia.id,
+        nivelTexto: historia.nivel,
+        topicSlug: historia.topicSlug,
+        skillSlug: getSkillBySlug(historia.topicSlug)?.slug ?? historia.topicSlug,
+        tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
+        fromCache: true,
+        reRead: true,
+      },
+    })
+    .returning();
+
+  return {
+    ok: true as const,
+    sessionId: sesion.id,
+    storyId: historia.id,
+    fromCache: true,
+    historia: {
+      titulo: historia.titulo,
+      contenido: historia.contenido,
+      nivel: historia.nivel,
+      topicSlug: historia.topicSlug,
+      topicEmoji: topic?.emoji ?? '',
+      topicNombre: topic?.nombre ?? historia.topicSlug,
+      tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
+    },
+    preguntas: historia.questions.length > 0
+      ? historia.questions.sort((a, b) => a.orden - b.orden).map(mapPreguntaToDTO)
+      : [],
   };
 }
