@@ -376,7 +376,7 @@ export default function PantallaLectura({
               <button
                 type="button"
                 onClick={handlePrint}
-                className="w-full text-left rounded-xl px-3 py-2 text-sm text-texto hover:bg-fondo transition-colors"
+                className="w-full text-left rounded-xl px-3 py-2.5 text-sm font-medium text-texto bg-fondo hover:bg-turquesa/10 border border-neutro/15 transition-colors font-datos"
               >
                 Imprimir historia
               </button>
@@ -385,7 +385,7 @@ export default function PantallaLectura({
                 <button
                   type="button"
                   onClick={handleRegenerarDesdeMenu}
-                  className="w-full text-left rounded-xl px-3 py-2 text-sm text-texto hover:bg-fondo transition-colors"
+                  className="mt-1.5 w-full text-left rounded-xl px-3 py-2.5 text-sm font-medium text-texto bg-fondo hover:bg-turquesa/10 border border-neutro/15 transition-colors font-datos"
                 >
                   Quiero otra historia
                 </button>
@@ -439,7 +439,7 @@ export default function PantallaLectura({
                 <button
                   type="button"
                   onClick={handleSalir}
-                  className="mt-2 w-full text-left rounded-xl px-3 py-2 text-sm text-coral hover:bg-coral/10 transition-colors"
+                  className="mt-1.5 w-full text-left rounded-xl px-3 py-2.5 text-sm font-medium text-coral bg-coral/5 hover:bg-coral/10 border border-coral/20 transition-colors font-datos"
                 >
                   Salir de lectura
                 </button>

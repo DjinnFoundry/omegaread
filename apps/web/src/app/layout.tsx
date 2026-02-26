@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
-import { Literata, Special_Elite, Atkinson_Hyperlegible } from 'next/font/google';
+import { Literata, Special_Elite } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 
 const literata = Literata({
@@ -15,11 +16,13 @@ const specialElite = Special_Elite({
   weight: '400',
 });
 
-const atkinson = Atkinson_Hyperlegible({
-  subsets: ['latin'],
+const openDyslexic = localFont({
+  src: [
+    { path: '../../public/fonts/OpenDyslexic-Regular.otf', weight: '400', style: 'normal' },
+    { path: '../../public/fonts/OpenDyslexic-Bold.otf', weight: '700', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-lectura-accesible',
-  weight: ['400', '700'],
 });
 
 export const metadata: Metadata = {
@@ -55,7 +58,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${literata.variable} ${specialElite.variable} ${atkinson.variable}`}>
+    <html lang="es" className={`${literata.variable} ${specialElite.variable} ${openDyslexic.variable}`}>
       <body className="min-h-screen bg-fondo text-texto antialiased">
         {children}
       </body>

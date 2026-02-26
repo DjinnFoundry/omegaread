@@ -32,7 +32,7 @@
   /* Tipografia */
   --font-principal: var(--font-literata), 'Literata', Georgia, serif;
   --font-lectura-normal: var(--font-typewriter), 'Special Elite', 'Courier New', monospace;
-  --font-lectura-dislexia: var(--font-lectura-accesible), 'Atkinson Hyperlegible', Arial, sans-serif;
+  --font-lectura-dislexia: var(--font-lectura-accesible), 'OpenDyslexic', Arial, sans-serif;
   --font-datos: var(--font-typewriter), 'Special Elite', 'Courier New', monospace;
   /* Lectura dinamica */
   --reading-font-size: 20px;
