@@ -5,6 +5,26 @@
 
 import type { PerfilVivoState } from '@omegaread/db';
 
+/**
+ * Extrae hasta 3 hechos de texto del perfil vivo embebido en senalesDificultad.
+ * Acepta el objeto `senalesDificultad` completo (no solo perfilVivo).
+ */
+export function extraerHechosPerfilVivo(raw: unknown): string[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const senales = raw as Record<string, unknown>;
+  const perfil = senales.perfilVivo as Record<string, unknown> | undefined;
+  if (!perfil || typeof perfil !== 'object') return [];
+  const hechos = perfil.hechos;
+  if (!Array.isArray(hechos)) return [];
+
+  return hechos
+    .filter((h) => h && typeof h === 'object')
+    .map((h) => (h as Record<string, unknown>).texto)
+    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    .map((t) => t.trim().slice(0, 90))
+    .slice(0, 3);
+}
+
 /** Crea un perfil vivo vacio con valores por defecto seguros. */
 export function crearPerfilVivoVacio(): PerfilVivoState {
   return {

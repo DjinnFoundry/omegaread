@@ -304,16 +304,8 @@ describe('story-actions', () => {
       questions: [],
     });
 
-    mockFindFirst.mockResolvedValueOnce({
-      id: '00000000-0000-4000-8000-000000000020',
-      fechaNacimiento: new Date('2018-05-15'),
-      eloGlobal: 1000,
-      eloLiteral: 1000,
-      eloInferencia: 1000,
-      eloVocabulario: 1000,
-      eloResumen: 1000,
-      eloRd: 350,
-    });
+    // Student data is now obtained via getStudentContext -> requireStudentOwnership (mocked globally).
+    // No additional db.query.students.findFirst call needed.
 
     // Mock for checking existing questions
     mockFindMany.mockResolvedValueOnce([]);

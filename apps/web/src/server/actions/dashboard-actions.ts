@@ -22,8 +22,7 @@ import {
   type ParentConfig,
   type AccesibilidadConfig,
 } from '@omegaread/db';
-import { requireStudentOwnership } from '../auth';
-import { calcularEdad } from '@/lib/utils/fecha';
+import { getStudentContext } from '../student-context';
 import {
   calcularProgresoNivel,
   generarMensajeMotivacional,
@@ -251,7 +250,7 @@ export interface DashboardPadreData {
 
 export async function obtenerDashboardNino(estudianteId: string): Promise<DashboardNinoData> {
   const db = await getDb();
-  const { estudiante } = await requireStudentOwnership(estudianteId);
+  const { estudiante, nivel } = await getStudentContext(estudianteId);
 
   // Obtener sesiones de lectura completadas
   const todasSesiones = await db.query.sessions.findMany({
@@ -309,7 +308,7 @@ export async function obtenerDashboardNino(estudianteId: string): Promise<Dashbo
 
   // ─── Nivel actual y progreso ───
   const nivelActual = calcularProgresoNivel(
-    estudiante.nivelLectura ?? 1,
+    nivel,
     todasSesiones,
     todasRespuestas,
   );
@@ -344,8 +343,7 @@ export async function obtenerDashboardNino(estudianteId: string): Promise<Dashbo
 
 export async function obtenerDashboardPadre(estudianteId: string): Promise<DashboardPadreData> {
   const db = await getDb();
-  const { padre, estudiante } = await requireStudentOwnership(estudianteId);
-  const edadAnos = calcularEdad(estudiante.fechaNacimiento);
+  const { padre, estudiante, edadAnos, nivel } = await getStudentContext(estudianteId);
 
   // Sesiones completadas
   const todasSesiones = await db.query.sessions.findMany({
@@ -381,7 +379,7 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
       eq(skillProgress.categoria, 'topic'),
     ),
   });
-  const progresoMap = crearMapaProgresoSkill(progresoSkillsTopic);
+  const progresoMap = crearMapaProgresoLite(progresoSkillsTopic);
 
   // Ajustes de dificultad
   const ajustes = await db.query.difficultyAdjustments.findMany({
@@ -570,7 +568,7 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     historialSesiones,
     recomendaciones,
     timelineCambiosNivel,
-    nivelActual: estudiante.nivelLectura ?? 1,
+    nivelActual: nivel,
     nombreEstudiante: estudiante.nombre,
     eloActual,
     eloEvolucion,
@@ -615,12 +613,6 @@ type SessionRow = InferSelectModel<typeof sessions>;
 type ResponseRow = InferSelectModel<typeof responses>;
 type StoryRow = InferSelectModel<typeof generatedStories>;
 type TopicRow = InferSelectModel<typeof topics>;
-
-function crearMapaProgresoSkill(
-  rows: Array<InferSelectModel<typeof skillProgress>>,
-): Map<string, SkillProgressLite> {
-  return crearMapaProgresoLite(rows);
-}
 
 function construirHistorialTopics(
   sesiones: SessionRow[],
