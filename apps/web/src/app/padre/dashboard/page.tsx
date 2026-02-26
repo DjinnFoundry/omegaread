@@ -19,9 +19,6 @@ export default function ResumenPage() {
         <h1 className="text-2xl font-bold text-texto">
           Hola, {nombrePadre}
         </h1>
-        <p className="text-sm text-texto-suave">
-          Panel de seguimiento familiar
-        </p>
       </div>
 
       {/* Resumen rapido de hijos */}

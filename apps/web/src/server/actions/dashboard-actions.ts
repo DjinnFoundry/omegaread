@@ -594,7 +594,7 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
       progresoMap,
       skillActualSlug: topic.slug,
       recientes,
-      limite: 3,
+      limite: 4,
       soloDesbloqueadas: true,
     });
     suggestionEdgeMap[topic.slug] = topicSugs.map((s) => s.slug);
