@@ -1,38 +1,31 @@
 'use client';
 
 /**
- * Página de registro para padres
+ * Página de registro para padres.
+ * Usa form POST nativo a /api/auth/registro.
+ * Validacion de contraseñas client-side, el resto es server-side via redirect.
  */
-import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { actionRegistro } from '@/server/actions/auth-actions';
 
-export default function RegistroPage() {
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+function RegistroForm() {
+  const searchParams = useSearchParams();
+  const serverError = searchParams.get('error');
+  const [clientError, setClientError] = useState('');
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  const error = clientError || serverError;
 
-    const formData = new FormData(e.currentTarget);
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const form = e.currentTarget;
+    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+    const confirmar = (form.elements.namedItem('confirmar') as HTMLInputElement).value;
 
-    // Validar contraseñas coinciden
-    const password = formData.get('password') as string;
-    const confirmar = formData.get('confirmar') as string;
     if (password !== confirmar) {
-      setError('Las contraseñas no coinciden');
-      setLoading(false);
-      return;
+      e.preventDefault();
+      setClientError('Las contraseñas no coinciden');
     }
-
-    const result = await actionRegistro(formData);
-
-    if (result?.error) {
-      setError(result.error);
-      setLoading(false);
-    }
+    // Si coinciden, deja que el form haga POST nativo
   }
 
   return (
@@ -48,7 +41,12 @@ export default function RegistroPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          method="POST"
+          action="/api/auth/registro"
+          onSubmit={handleSubmit}
+          className="space-y-4"
+        >
           {error && (
             <div className="rounded-2xl bg-error-suave p-4 text-sm text-red-800">
               {error}
@@ -118,10 +116,9 @@ export default function RegistroPage() {
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full rounded-2xl bg-coral px-6 py-4 text-lg font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
+            className="w-full rounded-2xl bg-coral px-6 py-4 text-lg font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
           >
-            {loading ? 'Creando cuenta...' : 'Crear cuenta'}
+            Crear cuenta
           </button>
         </form>
 
@@ -140,5 +137,13 @@ export default function RegistroPage() {
         </Link>
       </div>
     </main>
+  );
+}
+
+export default function RegistroPage() {
+  return (
+    <Suspense>
+      <RegistroForm />
+    </Suspense>
   );
 }

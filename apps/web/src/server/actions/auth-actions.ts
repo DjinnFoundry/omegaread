@@ -3,7 +3,6 @@
 /**
  * Server Actions para autenticación de padres
  */
-import { redirect } from 'next/navigation';
 import { registrarPadre, loginPadre } from '../auth';
 
 export type AuthResult = {
@@ -43,7 +42,10 @@ export async function actionRegistro(formData: FormData): Promise<AuthResult> {
     return { ok: false, error: `Error al crear la cuenta: ${message}` };
   }
 
-  redirect('/padre/dashboard');
+  // No usar redirect() aqui. Safari/WebKit no procesa el Set-Cookie de
+  // fetch() responses a tiempo si el redirect va en la misma response.
+  // El client hace router.push() despues de recibir {ok: true}.
+  return { ok: true };
 }
 
 /** Acción: Iniciar sesión */
@@ -64,5 +66,5 @@ export async function actionLogin(formData: FormData): Promise<AuthResult> {
     return { ok: false, error: 'Email o contraseña incorrectos' };
   }
 
-  redirect('/padre/dashboard');
+  return { ok: true };
 }

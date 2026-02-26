@@ -1,30 +1,17 @@
 'use client';
 
 /**
- * Página de login para padres
+ * Página de login para padres.
+ * Usa form POST nativo a /api/auth/login (no fetch).
+ * La API setea la cookie via 302 redirect, que funciona en todos los browsers.
  */
-import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { actionLogin } from '@/server/actions/auth-actions';
 
-export default function LoginPage() {
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    const formData = new FormData(e.currentTarget);
-    const result = await actionLogin(formData);
-
-    if (result?.error) {
-      setError(result.error);
-      setLoading(false);
-    }
-    // Si no hay error, el server action redirige automáticamente
-  }
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const error = searchParams.get('error');
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-fondo">
@@ -39,7 +26,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form method="POST" action="/api/auth/login" className="space-y-4">
           {error && (
             <div className="rounded-2xl bg-error-suave p-4 text-sm text-red-800">
               {error}
@@ -78,10 +65,9 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full rounded-2xl bg-turquesa px-6 py-4 text-lg font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
+            className="w-full rounded-2xl bg-turquesa px-6 py-4 text-lg font-bold text-white shadow-md hover:opacity-90 active:scale-[0.98] transition-all"
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            Entrar
           </button>
         </form>
 
@@ -100,5 +86,13 @@ export default function LoginPage() {
         </Link>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

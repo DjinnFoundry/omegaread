@@ -100,15 +100,25 @@ export async function obtenerPadreActual() {
   const db = await getDb();
   const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE)?.value;
-  if (!token) return null;
+  if (!token) {
+    console.log('[auth] No cookie found:', AUTH_COOKIE);
+    return null;
+  }
 
   const datos = await verificarToken(token);
-  if (!datos) return null;
+  if (!datos) {
+    console.log('[auth] Token verification failed');
+    return null;
+  }
 
   const padre = await db.query.parents.findFirst({
     where: eq(parents.id, datos.parentId),
     with: { students: true },
   });
+
+  if (!padre) {
+    console.log('[auth] Parent not found for id:', datos.parentId);
+  }
 
   return padre;
 }
