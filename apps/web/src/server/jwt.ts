@@ -12,10 +12,9 @@ import { SignJWT, jwtVerify } from 'jose';
  * Por eso usamos getCloudflareContext() como fuente primaria y process.env como fallback (dev).
  */
 let _cachedSecret: Uint8Array | null = null;
+let _cachedRawSecret: string | null = null;
 
 export async function getSecret(): Promise<Uint8Array> {
-  if (_cachedSecret) return _cachedSecret;
-
   let raw = process.env.AUTH_SECRET;
 
   if (!raw) {
@@ -36,6 +35,13 @@ export async function getSecret(): Promise<Uint8Array> {
   if (raw.length < 32) {
     throw new Error('AUTH_SECRET must be at least 32 characters');
   }
+
+  // Reuse only if the actual secret value is unchanged.
+  if (_cachedSecret && _cachedRawSecret === raw) {
+    return _cachedSecret;
+  }
+
+  _cachedRawSecret = raw;
   _cachedSecret = new TextEncoder().encode(raw);
   return _cachedSecret;
 }

@@ -102,6 +102,7 @@ vi.mock('@/lib/ai/prompts', () => ({
 vi.mock('@/lib/data/skills', () => ({
   TOPICS_SEED: [
     { slug: 'animales', nombre: 'Animales', categoria: 'naturaleza', emoji: '🦁', edadMinima: 3, edadMaxima: 10, descripcion: 'Animals' },
+    { slug: 'sistema-solar', nombre: 'Sistema Solar', categoria: 'universo', emoji: '🪐', edadMinima: 5, edadMaxima: 10, descripcion: 'Space' },
   ],
   CATEGORIAS: [],
   getSkillBySlug: vi.fn(() => ({ slug: 'animales', nombre: 'Animales', dominio: 'naturaleza' })),
@@ -124,14 +125,19 @@ vi.mock('@/server/actions/reading-actions', () => ({
   })),
 }));
 
+const { mockActualizarProgresoInmediato } = vi.hoisted(() => ({
+  mockActualizarProgresoInmediato: vi.fn(async () => ({ ok: true })),
+}));
+
 vi.mock('@/server/actions/session-actions', () => ({
-  actualizarProgresoInmediato: vi.fn(async () => ({ ok: true })),
+  actualizarProgresoInmediato: mockActualizarProgresoInmediato,
 }));
 
 vi.mock('@/lib/elo', () => ({
   procesarRespuestasElo: vi.fn(() => ({
     nuevoElo: { global: 1050, literal: 1040, inferencia: 1030, vocabulario: 1020, resumen: 1010, rd: 360 },
   })),
+  inflarRdPorInactividad: vi.fn((elo) => elo),
 }));
 
 vi.mock('@/lib/learning/graph', () => ({
@@ -140,6 +146,7 @@ vi.mock('@/lib/learning/graph', () => ({
 
 const mockFindFirst = vi.fn(async () => null);
 const mockFindMany = vi.fn(async () => []);
+const mockResponsesFindMany = vi.fn(async () => []);
 const mockWhereSelect = vi.fn(async () => [{ count: 0 }]);
 const mockFrom = vi.fn(() => ({ where: mockWhereSelect }));
 const mockSelect = vi.fn(() => ({ from: mockFrom }));
@@ -166,6 +173,7 @@ const createMockDbShape = () => ({
   query: {
     generatedStories: { findMany: mockFindMany, findFirst: mockFindFirst },
     sessions: { findFirst: mockFindFirst, findMany: mockFindMany },
+    responses: { findMany: mockResponsesFindMany },
     storyQuestions: { findMany: mockFindMany },
     students: { findFirst: mockFindFirst },
     skillProgress: { findMany: mockFindMany },
@@ -204,6 +212,7 @@ describe('story-actions', () => {
     // Reset shared mocks explicitly and restore their default implementations.
     mockFindFirst.mockReset().mockImplementation(async () => null);
     mockFindMany.mockReset().mockImplementation(async () => []);
+    mockResponsesFindMany.mockReset().mockImplementation(async () => []);
     mockWhereSelect.mockReset().mockImplementation(async () => [{ count: 0 }]);
     mockInsert.mockReset().mockImplementation(() => ({ values: mockValues }));
     mockValues.mockReset().mockImplementation(() => ({ returning: mockReturning }));
@@ -311,6 +320,39 @@ describe('story-actions', () => {
 
     expect(result.ok).toBe(true);
     expect(result.fromCache).toBe(true);
+  });
+
+  it('debería remapear slugs legacy al generar desde ruta de aprendizaje', async () => {
+    // Mock count query
+    mockWhereSelect.mockResolvedValueOnce([{ count: 5 }]);
+    // Mock skillProgress
+    mockFindMany.mockResolvedValueOnce([]);
+    // Mock recent stories
+    mockFindMany.mockResolvedValueOnce([]);
+    // Mock cache candidates
+    mockFindMany.mockResolvedValueOnce([
+      {
+        id: '00000000-0000-4000-8000-000000000041',
+        titulo: 'Solar Story',
+        contenido: 'Cached solar content',
+        nivel: 2.0,
+        reutilizable: true,
+        aprobadaQA: true,
+        questions: [{ id: 'q1', orden: 0 }],
+        metadata: { generationFlags: { funMode: false } },
+      },
+    ]);
+    // Queue session insert returning
+    returningQueue.push([{ id: '00000000-0000-4000-8000-000000000031' }]);
+
+    const result = await generarHistoria({
+      studentId: '00000000-0000-4000-8000-000000000020',
+      topicSlug: 'espacio',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.fromCache).toBe(true);
+    expect(result.historia.topicSlug).toBe('sistema-solar');
   });
 
   // ────────────────────────────────────────────────────
@@ -526,6 +568,40 @@ describe('story-actions', () => {
     expect(result.resultado?.estrellas).toBe(3);
   });
 
+  it('debería reutilizar respuestas persistidas para evitar duplicados en reintentos', async () => {
+    mockFindFirst.mockResolvedValueOnce({
+      id: '00000000-0000-4000-8000-000000000030',
+      studentId: '00000000-0000-4000-8000-000000000020',
+      completada: false,
+      metadata: { nivelTexto: 2.0, tiempoEsperadoMs: 180000 },
+      storyId: null, // No story -> Elo block is skipped entirely
+    });
+
+    mockResponsesFindMany.mockResolvedValueOnce([
+      {
+        pregunta: 'q1',
+        tipoEjercicio: 'literal',
+        respuesta: '0',
+        correcta: true,
+        tiempoRespuestaMs: 5000,
+      },
+    ]);
+
+    const result = await finalizarSesionLectura({
+      sessionId: '00000000-0000-4000-8000-000000000030',
+      studentId: '00000000-0000-4000-8000-000000000020',
+      tiempoLecturaMs: 300000,
+      respuestas: [
+        { preguntaId: 'q1', tipo: 'literal', respuestaSeleccionada: 0, correcta: true, tiempoMs: 5000 },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.resultado?.estrellas).toBe(3);
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockActualizarProgresoInmediato).not.toHaveBeenCalled();
+  });
+
   it('debería fallar si sesión ya está completada', async () => {
     mockFindFirst.mockResolvedValueOnce({
       id: '00000000-0000-4000-8000-000000000030',
@@ -545,6 +621,36 @@ describe('story-actions', () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain('ya fue finalizada');
+  });
+
+  it('debería devolver error si falla la persistencia final en transacción', async () => {
+    const dbModule = await vi.importMock<any>('@/server/db');
+    dbModule.getDb.mockImplementationOnce(async () => ({
+      ...createMockDbShape(),
+      transaction: vi.fn(async () => {
+        throw new Error('tx failed');
+      }),
+    }));
+
+    mockFindFirst.mockResolvedValueOnce({
+      id: '00000000-0000-4000-8000-000000000030',
+      studentId: '00000000-0000-4000-8000-000000000020',
+      completada: false,
+      metadata: { nivelTexto: 2.0, tiempoEsperadoMs: 180000 },
+      storyId: null,
+    });
+
+    const result = await finalizarSesionLectura({
+      sessionId: '00000000-0000-4000-8000-000000000030',
+      studentId: '00000000-0000-4000-8000-000000000020',
+      tiempoLecturaMs: 300000,
+      respuestas: [
+        { preguntaId: 'q1', tipo: 'literal', respuestaSeleccionada: 0, correcta: true, tiempoMs: 5000 },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('No se pudo finalizar la sesion');
   });
 
   // ────────────────────────────────────────────────────

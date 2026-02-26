@@ -25,7 +25,7 @@ export function SeccionRecomendaciones({ data }: Props) {
   return (
     <SeccionCard titulo="Recomendaciones para casa" icon={<Lightbulb size={18} className="text-ambar" />}>
       <div className="space-y-3">
-        {visible.map((rec, i) => (
+        {visible.map((rec) => (
           <div key={rec.tipo} className="relative rounded-2xl bg-amarillo/15 p-3 pr-8">
             <button
               type="button"

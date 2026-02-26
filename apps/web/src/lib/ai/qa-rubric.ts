@@ -56,6 +56,10 @@ export interface QAContext {
 const PALABRAS_PROHIBIDAS = [
   'sexo', 'sexy', 'desnudo',
   'droga',
+  'arma', 'armas', 'pistola', 'rifle', 'disparo',
+  'muerte', 'matar', 'asesino', 'asesinato',
+  'sangre', 'violencia', 'guerra',
+  'odio', 'demonio',
   'suicidio', 'suicida',
 ];
 
