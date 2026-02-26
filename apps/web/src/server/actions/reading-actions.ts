@@ -214,7 +214,14 @@ export async function calcularAjusteDificultad(datos: {
 
     // Logica de sesiones consecutivas para evitar cambios bruscos de nivel.
     // Usa sessionScore compuesto (con fallback a comprensionScore para datos legacy).
+    //
+    // Cold-start bypass: si hay menos de 3 sesiones historicas, estamos
+    // calibrando. Permitimos subidas/bajadas inmediatas con un score
+    // contundente (>=90% para subir, <50% para bajar) para converger
+    // rapido al nivel real del nino sin hacerle leer cosas demasiado
+    // faciles durante muchas sesiones.
     let direccion: DireccionAjuste = direccionCandidata;
+    const esColdStart = sesionesRecientes.length < 3;
 
     const getSessionScorePrevio = (s: typeof sesionesRecientes[number]): number | null => {
       const meta = s.metadata as Record<string, unknown> | null;
@@ -225,22 +232,32 @@ export async function calcularAjusteDificultad(datos: {
     };
 
     if (direccionCandidata === 'subir') {
-      const scoresPrevios = sesionesRecientes
-        .slice(0, 1)
-        .map(getSessionScorePrevio)
-        .filter((sc): sc is number => sc !== null);
-      if (scoresPrevios.filter(sc => sc >= 0.80).length < 1) {
-        direccion = 'mantener';
+      if (esColdStart) {
+        // Cold start: subir inmediatamente si score >= 90%
+        if (sessionScore < 0.90) direccion = 'mantener';
+      } else {
+        const scoresPrevios = sesionesRecientes
+          .slice(0, 1)
+          .map(getSessionScorePrevio)
+          .filter((sc): sc is number => sc !== null);
+        if (scoresPrevios.filter(sc => sc >= 0.80).length < 1) {
+          direccion = 'mantener';
+        }
       }
     }
 
     if (direccionCandidata === 'bajar') {
-      const scoresPrevios = sesionesRecientes
-        .slice(0, 1)
-        .map(getSessionScorePrevio)
-        .filter((sc): sc is number => sc !== null);
-      if (scoresPrevios.filter(sc => sc < 0.60).length < 1) {
-        direccion = 'mantener';
+      if (esColdStart) {
+        // Cold start: bajar inmediatamente si score < 50%
+        if (sessionScore >= 0.50) direccion = 'mantener';
+      } else {
+        const scoresPrevios = sesionesRecientes
+          .slice(0, 1)
+          .map(getSessionScorePrevio)
+          .filter((sc): sc is number => sc !== null);
+        if (scoresPrevios.filter(sc => sc < 0.60).length < 1) {
+          direccion = 'mantener';
+        }
       }
     }
 
@@ -250,9 +267,13 @@ export async function calcularAjusteDificultad(datos: {
 
     const scorePct = Math.round(sessionScore * 100);
     const RAZONES: Record<DireccionAjuste, string> = {
-      subir: `Score ${scorePct}% (>=80%) en 2 sesiones consecutivas. Subimos dificultad.`,
+      subir: esColdStart
+        ? `Score ${scorePct}% (>=90%) en calibracion inicial. Subimos dificultad.`
+        : `Score ${scorePct}% (>=80%) en 2 sesiones consecutivas. Subimos dificultad.`,
       mantener: `Score ${scorePct}% (60-79%). Mantenemos nivel actual.`,
-      bajar: `Score ${scorePct}% (<60%) en 2 sesiones consecutivas. Bajamos dificultad para consolidar.`,
+      bajar: esColdStart
+        ? `Score ${scorePct}% (<50%) en calibracion inicial. Bajamos dificultad.`
+        : `Score ${scorePct}% (<60%) en 2 sesiones consecutivas. Bajamos dificultad para consolidar.`,
     };
 
     const razonFinal = ajusteManualTipo

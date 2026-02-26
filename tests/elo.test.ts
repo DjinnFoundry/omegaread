@@ -441,6 +441,24 @@ describe('procesarRespuestasElo - Flujos realistas', () => {
     expect(result.nuevoElo.rd).toBeLessThan(elo.rd);
   });
 
+  it('cold-start: nino con RD alto sube significativamente al acertar todo', () => {
+    // Simula un nino nuevo (RD=350) que lee nivel 1 y acierta todo.
+    // El sistema debe mover el ELO agresivamente para calibrar rapido.
+    const eloNuevo = crearEloBase({ global: 1000, rd: 350 });
+    const respuestas = [
+      crearRespuesta({ tipo: 'literal', correcta: true, dificultadPregunta: 3 }),
+      crearRespuesta({ tipo: 'inferencia', correcta: true, dificultadPregunta: 3 }),
+      crearRespuesta({ tipo: 'vocabulario', correcta: true, dificultadPregunta: 3 }),
+      crearRespuesta({ tipo: 'resumen', correcta: true, dificultadPregunta: 3 }),
+    ];
+
+    const result = procesarRespuestasElo(eloNuevo, respuestas, 1.0);
+
+    // Con RD=350, acertar 4/4 deberia mover al menos +30 puntos en total
+    const cambioGlobal = result.nuevoElo.global - eloNuevo.global;
+    expect(cambioGlobal).toBeGreaterThan(30);
+  });
+
   it('racha de fallos baja rating y puede subir RD', () => {
     const elo = crearEloBase({ rd: 120 });
     const racha = Array.from({ length: 5 }).map(() =>

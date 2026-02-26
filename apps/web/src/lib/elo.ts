@@ -164,12 +164,18 @@ function ajustarRdPorConsistencia(
  *
  * Objetivo: evitar que una racha de aciertos en preguntas faciles
  * infle artificialmente el Elo.
+ *
+ * IMPORTANTE: cuando el RD es alto (sistema calibrando), el anti-farming
+ * se atenua. Las preguntas son "faciles" no porque el nino haga farming,
+ * sino porque el sistema aun no conoce su nivel real.
+ * Con RD>=300 el anti-farming apenas actua; con RD<=100 actua al 100%.
  */
 function factorAntiFarming(
   playerRating: number,
   questionRating: number,
   score: number,
   expected: number,
+  rd: number,
 ): number {
   const sorpresa = Math.abs(score - expected); // 0..1
   const factorSorpresa = 0.2 + (0.8 * sorpresa); // 0.2..1
@@ -179,7 +185,13 @@ function factorAntiFarming(
     const gap = playerRating - questionRating;
     // Gap >= 500 => penalizacion maxima (pero nunca 0 para no congelar del todo).
     const penalizacionFacil = Math.max(0.05, 1 - (gap / 500));
-    return Math.max(0.02, factorSorpresa * penalizacionFacil);
+    const rawFactor = Math.max(0.02, factorSorpresa * penalizacionFacil);
+
+    // Atenuar anti-farming segun incertidumbre (RD).
+    // RD>=300 -> calibrando, bypass ~95% del anti-farming (factor ~1.0)
+    // RD<=100 -> rating estable, anti-farming completo (factor = rawFactor)
+    const rdNorm = Math.min(1, Math.max(0, (rd - 100) / 200)); // 0..1
+    return rawFactor + rdNorm * (1 - rawFactor);
   }
 
   return factorSorpresa;
@@ -258,7 +270,7 @@ export function procesarRespuestasElo(
     // Aplicamos damping anti-farming al delta de rating, no al RD.
     const globalUpdate = glickoUpdate(prevGlobal, rd, qRating, QUESTION_RD, score);
     const rawDeltaGlobal = globalUpdate.newRating - prevGlobal;
-    const factorGlobal = factorAntiFarming(prevGlobal, qRating, score, E);
+    const factorGlobal = factorAntiFarming(prevGlobal, qRating, score, E, rd);
     global = Math.round((prevGlobal + (rawDeltaGlobal * factorGlobal)) * 10) / 10;
     rd = globalUpdate.newRd;
 
