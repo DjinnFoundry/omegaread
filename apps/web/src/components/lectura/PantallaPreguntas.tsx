@@ -6,6 +6,7 @@
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { click as sonidoClick, celebracion as sonidoCelebracion } from '@/lib/audio/sonidos';
+import { useTTS } from '@/hooks/useTTS';
 
 interface Pregunta {
   id: string;
@@ -57,14 +58,16 @@ export default function PantallaPreguntas({
   const [respuestasAcumuladas, setRespuestasAcumuladas] = useState<RespuestaPregunta[]>([]);
   const [mostrarHistoria, setMostrarHistoria] = useState(false);
   const inicioRef = useRef(0);
+  const { speak, stop, speakingId, supported: ttsSupported } = useTTS();
 
   const pregunta = preguntas[preguntaActual];
   const esCorrecta = respuestaSeleccionada === pregunta?.respuestaCorrecta;
 
-  // Set/reset timer on mount and on new question
+  // Set/reset timer on mount and on new question, stop any TTS
   useEffect(() => {
     inicioRef.current = Date.now();
-  }, [preguntaActual]);
+    stop();
+  }, [preguntaActual, stop]);
 
   const handleSeleccion = useCallback((indice: number) => {
     if (mostrandoFeedback || !pregunta) return;
@@ -169,9 +172,29 @@ export default function PantallaPreguntas({
 
       {/* Pregunta */}
       <div className="bg-superficie rounded-3xl p-5 shadow-sm border border-neutro/10 mb-5">
-        <p className="text-lg font-semibold text-texto leading-relaxed font-datos">
-          {pregunta.pregunta}
-        </p>
+        <div className="flex items-start gap-3">
+          {ttsSupported && (
+            <button
+              type="button"
+              onClick={() => speak(pregunta.pregunta, `q-${pregunta.id}`)}
+              className={`
+                shrink-0 w-9 h-9 mt-0.5 rounded-full flex items-center justify-center
+                transition-all duration-200 touch-manipulation
+                ${speakingId === `q-${pregunta.id}`
+                  ? 'bg-turquesa text-white scale-110 animate-pulse'
+                  : 'bg-turquesa/10 text-turquesa hover:bg-turquesa/20'}
+              `}
+              aria-label="Escuchar pregunta"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                <path d="M11.383 3.07A1 1 0 0112 4v16a1 1 0 01-1.617.784L5.132 16H2a1 1 0 01-1-1V9a1 1 0 011-1h3.132l5.251-4.784A1 1 0 0111.383 3.07zM14.025 5.88a.75.75 0 011.06-.04 8.5 8.5 0 010 12.32.75.75 0 11-1.02-1.1 7 7 0 000-10.12.75.75 0 01-.04-1.06zm.92 3.58a.75.75 0 011.06-.02 4.5 4.5 0 010 5.12.75.75 0 01-1.18-.93 3 3 0 000-3.18.75.75 0 01.12-1z" />
+              </svg>
+            </button>
+          )}
+          <p className="text-lg font-semibold text-texto leading-relaxed font-datos">
+            {pregunta.pregunta}
+          </p>
+        </div>
       </div>
 
       {/* Opciones */}
@@ -192,27 +215,51 @@ export default function PantallaPreguntas({
             }
           }
 
+          const opcionTtsId = `o-${pregunta.id}-${idx}`;
+
           return (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handleSeleccion(idx)}
-              disabled={mostrandoFeedback}
-              className={`
-                w-full text-left p-4 rounded-2xl
-                transition-all duration-200
-                active:scale-[0.98] touch-manipulation
-                disabled:cursor-default
-                ${estiloOpcion}
-              `}
-            >
-              <div className="flex items-start gap-3">
-                <span className="shrink-0 w-7 h-7 rounded-full bg-turquesa/10 flex items-center justify-center text-sm font-bold text-turquesa">
-                  {iconoOpcion ?? String.fromCharCode(65 + idx)}
-                </span>
-                <span className="text-base text-texto leading-snug">{opcion}</span>
-              </div>
-            </button>
+            <div key={idx} className="flex items-start gap-2">
+              {ttsSupported && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    speak(opcion, opcionTtsId);
+                  }}
+                  className={`
+                    shrink-0 w-8 h-8 mt-3 rounded-full flex items-center justify-center
+                    transition-all duration-200 touch-manipulation
+                    ${speakingId === opcionTtsId
+                      ? 'bg-turquesa text-white scale-110 animate-pulse'
+                      : 'bg-turquesa/10 text-turquesa hover:bg-turquesa/20'}
+                  `}
+                  aria-label={`Escuchar opcion ${String.fromCharCode(65 + idx)}`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                    <path d="M11.383 3.07A1 1 0 0112 4v16a1 1 0 01-1.617.784L5.132 16H2a1 1 0 01-1-1V9a1 1 0 011-1h3.132l5.251-4.784A1 1 0 0111.383 3.07zM14.025 5.88a.75.75 0 011.06-.04 8.5 8.5 0 010 12.32.75.75 0 11-1.02-1.1 7 7 0 000-10.12.75.75 0 01-.04-1.06zm.92 3.58a.75.75 0 011.06-.02 4.5 4.5 0 010 5.12.75.75 0 01-1.18-.93 3 3 0 000-3.18.75.75 0 01.12-1z" />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleSeleccion(idx)}
+                disabled={mostrandoFeedback}
+                className={`
+                  flex-1 text-left p-4 rounded-2xl
+                  transition-all duration-200
+                  active:scale-[0.98] touch-manipulation
+                  disabled:cursor-default
+                  ${estiloOpcion}
+                `}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="shrink-0 w-7 h-7 rounded-full bg-turquesa/10 flex items-center justify-center text-sm font-bold text-turquesa">
+                    {iconoOpcion ?? String.fromCharCode(65 + idx)}
+                  </span>
+                  <span className="text-base text-texto leading-snug">{opcion}</span>
+                </div>
+              </button>
+            </div>
           );
         })}
       </div>
@@ -226,13 +273,36 @@ export default function PantallaPreguntas({
         >
           <div className="flex items-start gap-2">
             <span className="text-xl shrink-0">{esCorrecta ? '🎉' : '💪'}</span>
-            <div>
+            <div className="flex-1">
               <p className="font-bold text-sm text-texto mb-1">
                 {esCorrecta ? 'Correcto!' : 'Casi! No te preocupes.'}
               </p>
-              <p className="text-sm text-texto-suave leading-relaxed">
-                {pregunta.explicacion}
-              </p>
+              <div className="flex items-start gap-2">
+                {ttsSupported && pregunta.explicacion && (
+                  <button
+                    type="button"
+                    onClick={() => speak(
+                      `${esCorrecta ? 'Correcto!' : 'Casi, no te preocupes.'} ${pregunta.explicacion}`,
+                      `fb-${pregunta.id}`
+                    )}
+                    className={`
+                      shrink-0 w-7 h-7 mt-0.5 rounded-full flex items-center justify-center
+                      transition-all duration-200 touch-manipulation
+                      ${speakingId === `fb-${pregunta.id}`
+                        ? 'bg-turquesa text-white scale-110 animate-pulse'
+                        : 'bg-turquesa/10 text-turquesa hover:bg-turquesa/20'}
+                    `}
+                    aria-label="Escuchar explicacion"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M11.383 3.07A1 1 0 0112 4v16a1 1 0 01-1.617.784L5.132 16H2a1 1 0 01-1-1V9a1 1 0 011-1h3.132l5.251-4.784A1 1 0 0111.383 3.07zM14.025 5.88a.75.75 0 011.06-.04 8.5 8.5 0 010 12.32.75.75 0 11-1.02-1.1 7 7 0 000-10.12.75.75 0 01-.04-1.06zm.92 3.58a.75.75 0 011.06-.02 4.5 4.5 0 010 5.12.75.75 0 01-1.18-.93 3 3 0 000-3.18.75.75 0 01.12-1z" />
+                    </svg>
+                  </button>
+                )}
+                <p className="text-sm text-texto-suave leading-relaxed">
+                  {pregunta.explicacion}
+                </p>
+              </div>
             </div>
           </div>
         </div>
