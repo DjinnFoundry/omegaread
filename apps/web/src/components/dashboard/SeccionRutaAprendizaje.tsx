@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * Interactive zoomable learning map - full-screen layout.
- * CSS-transform zoom: a single wrapper div is GPU-composited, so panning
- * and pinch-zoom only mutate one DOM element per frame (instead of every node).
+ * Interactive zoomable learning map - SVG-native rendering.
+ * Uses SVG viewBox for pan/zoom so all elements (circles, text, lines)
+ * render as crisp vectors at any zoom level (no CSS transform pixelation).
  * Dynamic suggestion edges originate from the focused (clicked) completed topic.
  *
  * Below the map: compact domain progress bars, suggested routes.
@@ -12,7 +12,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import Link from 'next/link';
 import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import type { DashboardPadreData } from '@/server/actions/dashboard-actions';
-import { usePanZoom, type PanZoomState } from '@/hooks/usePanZoom';
+import { usePanZoom } from '@/hooks/usePanZoom';
 import {
   computeGraphLayout,
   getDomainColor,
@@ -26,19 +26,40 @@ import {
 
 function truncateLabel(value: string, max = 12): string {
   if (value.length <= max) return value;
-  return `${value.slice(0, max - 1)}...`;
+  return `${value.slice(0, max - 1)}\u2026`;
 }
 
-/** Convert graph-space coords to screen-space (only for overlays outside the transform wrapper). */
-function toScreen(
-  nodeX: number,
-  nodeY: number,
-  pz: PanZoomState,
-): { x: number; y: number } {
-  return {
-    x: nodeX * pz.scale + pz.x,
-    y: nodeY * pz.scale + pz.y,
-  };
+/** Split text into lines that fit within maxChars per line (max 2 lines). */
+function wrapText(text: string, maxChars: number): string[] {
+  if (text.length <= maxChars) return [text];
+
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const test = currentLine ? `${currentLine} ${word}` : word;
+    if (test.length > maxChars && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+      if (lines.length >= 2) break;
+    } else {
+      currentLine = test;
+    }
+  }
+  if (currentLine && lines.length < 2) {
+    lines.push(currentLine);
+  }
+
+  // Truncate last line if it overflows
+  if (lines.length > 0) {
+    const last = lines[lines.length - 1];
+    if (last.length > maxChars) {
+      lines[lines.length - 1] = `${last.slice(0, maxChars - 1)}\u2026`;
+    }
+  }
+
+  return lines;
 }
 
 // ─────────────────────────────────────────────
@@ -58,17 +79,19 @@ interface SuggestedPopover {
 type PopoverData = CompletedPopover | SuggestedPopover;
 
 // ─────────────────────────────────────────────
-// NodePopover (screen-space, OUTSIDE the transform wrapper)
+// NodePopover (screen-space HTML, OUTSIDE the SVG)
 // ─────────────────────────────────────────────
 
 function NodePopover({
   data,
   onClose,
-  pz,
+  toScreenPoint,
+  scale,
 }: {
   data: PopoverData;
   onClose: () => void;
-  pz: PanZoomState;
+  toScreenPoint: (gx: number, gy: number) => { x: number; y: number };
+  scale: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -88,12 +111,12 @@ function NodePopover({
   }, [onClose]);
 
   const { node } = data;
-  const screen = toScreen(node.x, node.y, pz);
+  const screen = toScreenPoint(node.x, node.y);
 
   const style: React.CSSProperties = {
     position: 'absolute',
     left: `${screen.x}px`,
-    top: `${screen.y - node.radius * pz.scale - 8}px`,
+    top: `${screen.y - node.radius * scale - 8}px`,
     transform: 'translate(-50%, -100%)',
     transformOrigin: 'bottom center',
     zIndex: 50,
@@ -154,7 +177,7 @@ function NodePopover({
 }
 
 // ─────────────────────────────────────────────
-// Graph node (graph-space positioned, inside transform wrapper)
+// SVG Graph node (circle + emoji text)
 // ─────────────────────────────────────────────
 
 const GraphNode = memo(function GraphNode({
@@ -171,69 +194,214 @@ const GraphNode = memo(function GraphNode({
   isDimmed: boolean;
 }) {
   const color = getDomainColor(node.dominio);
-  const size = node.radius * 2;
   const isSuggestion = node.isSuggestion;
 
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onNodeClick(node);
+    },
+    [node, onNodeClick],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
         onNodeClick(node);
-      }}
-      className={[
-        'absolute flex flex-col items-center justify-center rounded-full',
-        'min-h-0 min-w-0',
-        isActive ? 'ring-2 ring-offset-2 ring-offset-fondo' : '',
-        isFocused && !isActive ? 'ring-2 ring-offset-1 ring-offset-fondo ring-turquesa/60' : '',
-        isSuggestion && !isDimmed ? 'animate-pulse-suggestion' : '',
-      ].join(' ')}
-      style={{
-        left: `${node.x - node.radius}px`,
-        top: `${node.y - node.radius}px`,
-        width: `${size}px`,
-        height: `${size}px`,
-        backgroundColor: isSuggestion ? '#FFE66D' : color,
-        opacity: isDimmed ? 0.35 : 1,
-        boxShadow: isDimmed ? 'none' : isSuggestion
-          ? '0 0 12px rgba(255, 230, 109, 0.5)'
-          : `0 2px 8px ${color}44`,
-        border: isSuggestion ? '2px dashed #D4880B' : `2px solid ${color}`,
-        '--tw-ring-color': color,
-      } as React.CSSProperties}
-      aria-label={`${node.emoji} ${node.nombre}${isSuggestion ? ' (sugerido)' : ''}`}
-    >
-      <span className="text-base leading-none" style={{ fontSize: `${Math.max(12, node.radius * 0.65)}px` }}>
-        {node.emoji}
-      </span>
-    </button>
+      }
+    },
+    [node, onNodeClick],
   );
-});
 
-// ─────────────────────────────────────────────
-// Node label (graph-space positioned, inside transform wrapper)
-// ─────────────────────────────────────────────
-
-const NodeLabel = memo(function NodeLabel({ node }: { node: PositionedNode }) {
   return (
-    <div
-      className="absolute pointer-events-none text-center"
-      style={{
-        left: `${node.x}px`,
-        top: `${node.y + node.radius + 4}px`,
-        transform: 'translateX(-50%)',
-        width: `${Math.max(60, node.radius * 3)}px`,
-      }}
+    <g
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      aria-label={`${node.emoji} ${node.nombre}${isSuggestion ? ' (sugerido)' : ''}`}
+      style={{ cursor: 'pointer' }}
     >
-      <span className="text-[10px] font-semibold text-texto leading-tight block truncate">
-        {truncateLabel(node.nombre)}
-      </span>
-    </div>
+      {/* Main circle */}
+      <circle
+        cx={node.x}
+        cy={node.y}
+        r={node.radius}
+        fill={isSuggestion ? '#FFE66D' : color}
+        stroke={isSuggestion ? '#D4880B' : color}
+        strokeWidth={2}
+        strokeDasharray={isSuggestion ? '6 4' : undefined}
+        opacity={isDimmed ? 0.35 : 1}
+        filter={isDimmed ? undefined : isSuggestion ? 'url(#suggestion-shadow)' : 'url(#node-shadow)'}
+      />
+
+      {/* Focus/active ring */}
+      {(isActive || isFocused) && (
+        <circle
+          cx={node.x}
+          cy={node.y}
+          r={node.radius + 4}
+          fill="none"
+          stroke={isActive ? color : 'rgba(78, 205, 196, 0.6)'}
+          strokeWidth={2}
+        />
+      )}
+
+      {/* Suggestion pulse animation */}
+      {isSuggestion && !isDimmed && (
+        <circle
+          cx={node.x}
+          cy={node.y}
+          r={node.radius}
+          fill="none"
+          stroke="rgba(255, 230, 109, 0.4)"
+          strokeWidth={1}
+        >
+          <animate
+            attributeName="r"
+            from={String(node.radius)}
+            to={String(node.radius + 8)}
+            dur="2.5s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            from="0.6"
+            to="0"
+            dur="2.5s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      )}
+
+      {/* Emoji */}
+      <text
+        x={node.x}
+        y={node.y}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={Math.max(12, node.radius * 0.65)}
+        style={{ pointerEvents: 'none' }}
+      >
+        {node.emoji}
+      </text>
+    </g>
   );
 });
 
 // ─────────────────────────────────────────────
-// SVG connection lines layer (graph-space coordinates)
+// SVG Node label (zoom-responsive: full text at high zoom)
+// ─────────────────────────────────────────────
+
+const NodeLabel = memo(function NodeLabel({
+  node,
+  scale,
+}: {
+  node: PositionedNode;
+  scale: number;
+}) {
+  const fontSize = 10;
+  const maxWidth = Math.max(60, node.radius * 3);
+  const charWidth = fontSize * 0.55;
+  const maxChars = Math.floor(maxWidth / charWidth);
+
+  const showFull = scale >= 1.3;
+  const text = showFull ? node.nombre : truncateLabel(node.nombre);
+
+  const y = node.y + node.radius + 4 + fontSize;
+
+  if (showFull && text.length > maxChars) {
+    const lines = wrapText(text, maxChars);
+    return (
+      <text
+        x={node.x}
+        y={y}
+        textAnchor="middle"
+        fontSize={fontSize}
+        fontWeight={600}
+        fill="var(--color-texto)"
+        style={{ pointerEvents: 'none' }}
+      >
+        {lines.map((line, i) => (
+          <tspan key={i} x={node.x} dy={i === 0 ? 0 : fontSize * 1.2}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    );
+  }
+
+  return (
+    <text
+      x={node.x}
+      y={y}
+      textAnchor="middle"
+      fontSize={fontSize}
+      fontWeight={600}
+      fill="var(--color-texto)"
+      style={{ pointerEvents: 'none' }}
+    >
+      {text}
+    </text>
+  );
+});
+
+// ─────────────────────────────────────────────
+// SVG Cluster label (pill background + text)
+// ─────────────────────────────────────────────
+
+const ClusterLabel = memo(function ClusterLabel({
+  cluster,
+}: {
+  cluster: GraphLayout['clusters'][number];
+}) {
+  if (cluster.nodes.length === 0) return null;
+
+  let minY = Infinity;
+  for (const n of cluster.nodes) {
+    const top = n.y - n.radius;
+    if (top < minY) minY = top;
+  }
+
+  const labelText = `${cluster.emoji} ${cluster.nombre}`;
+  const fontSize = 12;
+  const charWidth = fontSize * 0.6;
+  const textWidth = labelText.length * charWidth;
+  const paddingX = 8;
+  const paddingY = 4;
+  const rectWidth = textWidth + paddingX * 2;
+  const rectHeight = fontSize + paddingY * 2;
+  const cy = minY - 28;
+
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <rect
+        x={cluster.centerX - rectWidth / 2}
+        y={cy - rectHeight / 2}
+        width={rectWidth}
+        height={rectHeight}
+        rx={rectHeight / 2}
+        fill={`${cluster.color}15`}
+      />
+      <text
+        x={cluster.centerX}
+        y={cy}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={fontSize}
+        fontWeight={700}
+        fill={cluster.color}
+        fontFamily="var(--font-datos)"
+      >
+        {labelText}
+      </text>
+    </g>
+  );
+});
+
+// ─────────────────────────────────────────────
+// SVG Connection lines + cluster backgrounds
 // ─────────────────────────────────────────────
 
 const ConnectionLines = memo(function ConnectionLines({
@@ -250,13 +418,7 @@ const ConnectionLines = memo(function ConnectionLines({
   }, [layout.nodes]);
 
   return (
-    <svg
-      className="absolute inset-0 pointer-events-none"
-      width={layout.width}
-      height={layout.height}
-      viewBox={`0 0 ${layout.width} ${layout.height}`}
-      style={{ overflow: 'visible' }}
-    >
+    <g>
       {/* Domain cluster background circles */}
       {layout.clusters.map((cluster) => {
         if (cluster.nodes.length === 0) return null;
@@ -322,51 +484,12 @@ const ConnectionLines = memo(function ConnectionLines({
           strokeLinecap="round"
         />
       ))}
-    </svg>
+    </g>
   );
 });
 
 // ─────────────────────────────────────────────
-// Cluster label (graph-space positioned, inside transform wrapper)
-// ─────────────────────────────────────────────
-
-const ClusterLabel = memo(function ClusterLabel({
-  cluster,
-}: {
-  cluster: GraphLayout['clusters'][number];
-}) {
-  if (cluster.nodes.length === 0) return null;
-
-  let minY = Infinity;
-  for (const n of cluster.nodes) {
-    const top = n.y - n.radius;
-    if (top < minY) minY = top;
-  }
-
-  return (
-    <div
-      className="absolute pointer-events-none text-center"
-      style={{
-        left: `${cluster.centerX}px`,
-        top: `${minY - 32}px`,
-        transform: 'translateX(-50%)',
-      }}
-    >
-      <span
-        className="text-xs font-bold font-datos px-2 py-0.5 rounded-full whitespace-nowrap"
-        style={{
-          color: cluster.color,
-          backgroundColor: `${cluster.color}15`,
-        }}
-      >
-        {cluster.emoji} {cluster.nombre}
-      </span>
-    </div>
-  );
-});
-
-// ─────────────────────────────────────────────
-// Zoom controls overlay
+// Zoom controls overlay (HTML, screen-space)
 // ─────────────────────────────────────────────
 
 function ZoomControls({
@@ -426,7 +549,6 @@ export function SeccionRutaAprendizaje({ data }: Props) {
   const [focusedSlug, setFocusedSlug] = useState<string | null>(
     () => data.techTree.historialTopics[0]?.slug ?? null,
   );
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // Compute graph layout (memoized)
   const layout = useMemo(
@@ -439,50 +561,13 @@ export function SeccionRutaAprendizaje({ data }: Props) {
     [data.techTree.historialTopics, data.techTree.sugerencias, data.techTree.dominiosTocados],
   );
 
-  // Compute initial transform so the graph fits within the visible area
-  const initialTransform = useMemo(() => {
-    const containerW = containerSize.width || 350;
-    const containerH = containerSize.height || 500;
-    if (layout.width === 0 || layout.height === 0) {
-      return { scale: 1, x: 0, y: 0 };
-    }
-    const scaleX = containerW / layout.width;
-    const scaleY = containerH / layout.height;
-    const scale = Math.min(scaleX, scaleY, 1);
-    const scaledW = layout.width * scale;
-    const scaledH = layout.height * scale;
-    return {
-      scale: Math.max(0.3, scale),
-      x: (containerW - scaledW) / 2,
-      y: (containerH - scaledH) / 2,
-    };
-  }, [layout.width, layout.height, containerSize.width, containerSize.height]);
-
-  const { containerRef, state, resetView, zoomTo } = usePanZoom({
+  // SVG viewBox pan/zoom (handles ResizeObserver internally)
+  const { containerRef, viewBox, scale, resetView, zoomTo, toScreenPoint } = usePanZoom({
     minScale: 0.3,
     maxScale: 3,
-    initialScale: initialTransform.scale,
-    initialX: initialTransform.x,
-    initialY: initialTransform.y,
+    graphWidth: layout.width,
+    graphHeight: layout.height,
   });
-
-  // Track container size via ResizeObserver
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        setContainerSize({ width, height });
-      }
-    });
-    observer.observe(el);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [containerRef]);
 
   // Dynamic suggestion edges from the focused completed topic (per-node map)
   const edgeMap = data.techTree.suggestionEdgeMap;
@@ -518,12 +603,12 @@ export function SeccionRutaAprendizaje({ data }: Props) {
   const closePopover = useCallback(() => setPopover(null), []);
 
   const handleZoomIn = useCallback(() => {
-    zoomTo(state.scale * 1.3);
-  }, [state.scale, zoomTo]);
+    zoomTo(scale * 1.3);
+  }, [scale, zoomTo]);
 
   const handleZoomOut = useCallback(() => {
-    zoomTo(state.scale * 0.75);
-  }, [state.scale, zoomTo]);
+    zoomTo(scale * 0.75);
+  }, [scale, zoomTo]);
 
   const isEmpty = layout.nodes.length === 0;
 
@@ -535,7 +620,7 @@ export function SeccionRutaAprendizaje({ data }: Props) {
           Topics explorados: <span className="font-bold">{data.techTree.historialTopics.length}</span>
           {data.techTree.sugerencias.length > 0 && (
             <span className="text-texto-suave">
-              {' '}· {data.techTree.sugerencias.length} sugeridos
+              {' '}&middot; {data.techTree.sugerencias.length} sugeridos
             </span>
           )}
         </p>
@@ -570,7 +655,7 @@ export function SeccionRutaAprendizaje({ data }: Props) {
           </div>
         ) : (
           <>
-            {/* Pan/Zoom container */}
+            {/* Pan/Zoom container (captures gestures) */}
             <div
               ref={containerRef}
               className="relative w-full overflow-hidden"
@@ -580,55 +665,65 @@ export function SeccionRutaAprendizaje({ data }: Props) {
                 touchAction: 'none',
               }}
             >
-              {/* GPU-composited transform wrapper: only this element's transform
-                  changes during drag, so all children stay perfectly in sync. */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  width: `${layout.width}px`,
-                  height: `${layout.height}px`,
-                  transform: `translate(${state.x}px, ${state.y}px) scale(${state.scale})`,
-                  transformOrigin: '0 0',
-                  willChange: 'transform',
-                }}
+              {/* SVG canvas with viewBox-driven pan/zoom (always crisp vectors) */}
+              <svg
+                viewBox={viewBox}
+                width="100%"
+                height="100%"
+                preserveAspectRatio="none"
+                style={{ display: 'block' }}
               >
-                {/* SVG connection lines (graph-space) */}
+                <defs>
+                  <filter id="node-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.12" />
+                  </filter>
+                  <filter id="suggestion-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor="#FFE66D" floodOpacity="0.5" />
+                  </filter>
+                </defs>
+
+                {/* Layer 1+2: Cluster backgrounds + edges */}
                 <ConnectionLines
                   layout={layout}
                   suggestionEdges={dynamicSuggestionEdges}
                 />
 
-                {/* Cluster labels */}
-                {layout.clusters.map((cluster) => (
-                  <ClusterLabel key={`label-${cluster.dominio}`} cluster={cluster} />
-                ))}
+                {/* Layer 3: Cluster labels */}
+                <g>
+                  {layout.clusters.map((cluster) => (
+                    <ClusterLabel key={`label-${cluster.dominio}`} cluster={cluster} />
+                  ))}
+                </g>
 
-                {/* Node labels */}
-                {layout.nodes.map((node) => (
-                  <NodeLabel key={`label-${node.slug}`} node={node} />
-                ))}
+                {/* Layer 4: Node labels */}
+                <g>
+                  {layout.nodes.map((node) => (
+                    <NodeLabel key={`label-${node.slug}`} node={node} scale={scale} />
+                  ))}
+                </g>
 
-                {/* Interactive nodes */}
-                {layout.nodes.map((node) => (
-                  <GraphNode
-                    key={`node-${node.slug}`}
-                    node={node}
-                    onNodeClick={handleNodeClick}
-                    isActive={popover?.node.slug === node.slug}
-                    isFocused={node.slug === focusedSlug && !node.isSuggestion}
-                    isDimmed={node.isSuggestion && connectedSuggestionSlugs.size > 0 && !connectedSuggestionSlugs.has(node.slug)}
-                  />
-                ))}
-              </div>
+                {/* Layer 5: Interactive nodes */}
+                <g>
+                  {layout.nodes.map((node) => (
+                    <GraphNode
+                      key={`node-${node.slug}`}
+                      node={node}
+                      onNodeClick={handleNodeClick}
+                      isActive={popover?.node.slug === node.slug}
+                      isFocused={node.slug === focusedSlug && !node.isSuggestion}
+                      isDimmed={node.isSuggestion && connectedSuggestionSlugs.size > 0 && !connectedSuggestionSlugs.has(node.slug)}
+                    />
+                  ))}
+                </g>
+              </svg>
 
-              {/* Popover (screen-space, outside transform wrapper) */}
+              {/* Popover (HTML, screen-space, outside SVG) */}
               {popover && (
                 <NodePopover
                   data={popover}
                   onClose={closePopover}
-                  pz={state}
+                  toScreenPoint={toScreenPoint}
+                  scale={scale}
                 />
               )}
             </div>
@@ -638,7 +733,7 @@ export function SeccionRutaAprendizaje({ data }: Props) {
               onZoomIn={handleZoomIn}
               onZoomOut={handleZoomOut}
               onReset={resetView}
-              scale={state.scale}
+              scale={scale}
             />
           </>
         )}

@@ -132,15 +132,6 @@ button, a, [role="button"] {
   animation: float 3s ease-in-out infinite;
 }
 
-/* Learning map: suggestion node pulse */
-@keyframes pulse-suggestion {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 230, 109, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(255, 230, 109, 0); }
-}
-.animate-pulse-suggestion {
-  animation: pulse-suggestion 2.5s ease-in-out infinite;
-}
-
 /* ─────────────────────────────────────────────
    Animaciones de componentes
    ───────────────────────────────────────────── */
