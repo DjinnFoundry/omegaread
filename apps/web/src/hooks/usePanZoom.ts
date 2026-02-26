@@ -32,6 +32,7 @@ interface UsePanZoomReturn {
 // ─────────────────────────────────────────────
 
 function getTouchCenter(touches: TouchList): { x: number; y: number } {
+  if (touches.length === 0) return { x: 0, y: 0 };
   if (touches.length === 1) {
     return { x: touches[0].clientX, y: touches[0].clientY };
   }
@@ -74,6 +75,23 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
     scale: initialScale,
   });
 
+  // Keeps initial values current so resetView and the fit-on-resize effect
+  // always read the latest values passed by the parent (fixes stale closure).
+  const initialRef = useRef({ x: initialX, y: initialY, scale: initialScale });
+  useEffect(() => {
+    initialRef.current = { x: initialX, y: initialY, scale: initialScale };
+  }, [initialX, initialY, initialScale]);
+
+  // Fit the view the first time the parent provides a meaningful initialScale
+  // (i.e. after the ResizeObserver fires and containerSize goes from 0 to real).
+  const hasInitialized = useRef(false);
+  useEffect(() => {
+    if (initialScale > 0 && !hasInitialized.current) {
+      hasInitialized.current = true;
+      setState({ scale: initialScale, x: initialX, y: initialY });
+    }
+  }, [initialScale, initialX, initialY]);
+
   // Refs to track gestures without triggering re-renders
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -110,8 +128,9 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
   );
 
   const resetView = useCallback(() => {
-    setState({ x: initialX, y: initialY, scale: initialScale });
-  }, [initialX, initialY, initialScale]);
+    const init = initialRef.current;
+    setState({ x: init.x, y: init.y, scale: init.scale });
+  }, []);
 
   const zoomTo = useCallback(
     (targetScale: number, centerX?: number, centerY?: number) => {
@@ -140,13 +159,15 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
   // ── Mouse & touch handlers ──
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const elOrNull = containerRef.current;
+    if (!elOrNull) return;
+    // Narrowed to non-null for all closures in this effect.
+    const el: HTMLDivElement = elOrNull;
 
     // Mouse wheel zoom
     function handleWheel(e: WheelEvent) {
       e.preventDefault();
-      const rect = container!.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
@@ -174,7 +195,7 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
       g.startY = e.clientY;
       g.startStateX = stateRef.current.x;
       g.startStateY = stateRef.current.y;
-      container!.style.cursor = 'grabbing';
+      el.style.cursor = 'grabbing';
     }
 
     function handleMouseMove(e: MouseEvent) {
@@ -192,7 +213,7 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
 
     function handleMouseUp() {
       gestureRef.current.isPanning = false;
-      container!.style.cursor = 'grab';
+      el.style.cursor = 'grab';
     }
 
     // ── Touch handlers ──
@@ -213,7 +234,7 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
 
         if (dt < 300 && dx < 30 && dy < 30) {
           e.preventDefault();
-          const rect = container!.getBoundingClientRect();
+          const rect = el.getBoundingClientRect();
           const cx = touch.clientX - rect.left;
           const cy = touch.clientY - rect.top;
           const currentScale = stateRef.current.scale;
@@ -259,7 +280,7 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
         const scaleRatio = newScale / g.startScale;
 
         const center = getTouchCenter(e.touches);
-        const rect = container!.getBoundingClientRect();
+        const rect = el.getBoundingClientRect();
         const cx = g.startX - rect.left;
         const cy = g.startY - rect.top;
 
@@ -303,24 +324,24 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
       }
     }
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    container.addEventListener('mousedown', handleMouseDown);
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    el.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-    container.addEventListener('touchstart', handleTouchStart, { passive: false });
-    container.addEventListener('touchmove', handleTouchMove, { passive: false });
-    container.addEventListener('touchend', handleTouchEnd);
+    el.addEventListener('touchstart', handleTouchStart, { passive: false });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd);
 
-    container.style.cursor = 'grab';
+    el.style.cursor = 'grab';
 
     return () => {
-      container.removeEventListener('wheel', handleWheel);
-      container.removeEventListener('mousedown', handleMouseDown);
+      el.removeEventListener('wheel', handleWheel);
+      el.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      container.removeEventListener('touchstart', handleTouchStart);
-      container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
     };
   }, [clampScale, zoomTo]);
 

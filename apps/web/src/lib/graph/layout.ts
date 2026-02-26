@@ -155,7 +155,6 @@ export function computeGraphLayout(
 
   // Cluster positioning: arrange domains in a radial layout
   // For 1 domain, center it. For 2, side by side. For 3+, radial.
-  const clusterSpacing = 200; // space between cluster centers
   const mapCenterX = 400;
   const mapCenterY = 350;
   const orbitRadius = numDomains <= 1 ? 0 : numDomains <= 3 ? 180 : 160 + numDomains * 20;
@@ -165,8 +164,8 @@ export function computeGraphLayout(
   if (numDomains === 1) {
     clusterCenters.set(domainKeys[0], { x: mapCenterX, y: mapCenterY });
   } else if (numDomains === 2) {
-    clusterCenters.set(domainKeys[0], { x: mapCenterX - clusterSpacing / 2, y: mapCenterY });
-    clusterCenters.set(domainKeys[1], { x: mapCenterX + clusterSpacing / 2, y: mapCenterY });
+    clusterCenters.set(domainKeys[0], { x: mapCenterX - 100, y: mapCenterY });
+    clusterCenters.set(domainKeys[1], { x: mapCenterX + 100, y: mapCenterY });
   } else {
     for (let i = 0; i < numDomains; i++) {
       const angle = (2 * Math.PI * i) / numDomains - Math.PI / 2; // start from top
@@ -266,9 +265,9 @@ export function computeGraphLayout(
   const width = Math.max(600, maxX - minX + 80);
   const height = Math.max(400, maxY - minY + 80);
 
-  // Shift all positions so the top-left is roughly at (40, 40).
-  // Note: positioned[] and clusters[].nodes[] share the same object references,
-  // so we only shift via positioned[] and separately shift cluster centers.
+  // Shift all positions so the top-left is at ~(40,40).
+  // INTENTIONAL: positioned[] and clusters[].nodes[] share object references,
+  // so mutating positioned[] also updates cluster node positions.
   const offsetX = 40 - minX;
   const offsetY = 40 - minY;
   for (const n of positioned) {
@@ -291,8 +290,8 @@ function findNonOverlappingPosition(
   center: { x: number; y: number },
   existing: Array<{ x: number; y: number; radius: number }>,
   radius: number,
-  index: number,
-  total: number,
+  index: number, // Used in fallback placement only
+  total: number, // Used in fallback placement only
   isSuggestion: boolean,
 ): { x: number; y: number } {
   // Suggestions are placed further out

@@ -153,6 +153,12 @@ export const responderMicroPreguntaPerfilSchema = z.object({
   respuesta: z.string().min(1).max(120),
 });
 
+/** Schema: eliminarHecho */
+export const eliminarHechoSchema = z.object({
+  studentId: uuid,
+  hechoId: z.string().uuid(),
+});
+
 /** Schema: guardarAjustesLectura (fun mode + accesibilidad) */
 export const guardarAjustesLecturaSchema = z
   .object({
@@ -224,7 +230,7 @@ export const registrarRespuestaComprensionSchema = z.object({
   studentId: uuid,
   preguntaId: z.string().min(1).max(100),
   tipo: tipoPreguntaValido,
-  respuestaSeleccionada: z.number().int().min(0),
+  respuestaSeleccionada: z.number().int().min(0).max(3),
   correcta: z.boolean(),
   tiempoMs: z.number().int().nonnegative(),
 });
@@ -249,6 +255,21 @@ export const obtenerProgresoGeneracionHistoriaSchema = z.object({
   progressTraceId: uuid,
 });
 
+/** Shared sub-schema for audio analysis data (reused across reading session schemas) */
+const audioAnalisisSchema = z.object({
+  wpmUtil: z.number().nonnegative(),
+  precisionLectura: z.number().min(0).max(1),
+  coberturaTexto: z.number().min(0).max(1),
+  pauseRatio: z.number().min(0).max(1),
+  tiempoVozActivaMs: z.number().int().nonnegative(),
+  totalPalabrasTranscritas: z.number().int().nonnegative(),
+  totalPalabrasAlineadas: z.number().int().nonnegative(),
+  qualityScore: z.number().min(0).max(1),
+  confiable: z.boolean(),
+  motivoNoConfiable: z.string().max(200).nullable().optional().transform(v => v ?? null),
+  motor: z.string().max(100),
+});
+
 /** Schema: finalizarSesionLectura */
 export const finalizarSesionLecturaSchema = z.object({
   sessionId: uuid,
@@ -267,19 +288,7 @@ export const finalizarSesionLecturaSchema = z.object({
     wpm: z.number().nonnegative(),
   })).nullable().optional(),
   totalPaginas: z.number().int().positive().nullable().optional(),
-  audioAnalisis: z.object({
-    wpmUtil: z.number().nonnegative(),
-    precisionLectura: z.number().min(0).max(1),
-    coberturaTexto: z.number().min(0).max(1),
-    pauseRatio: z.number().min(0).max(1),
-    tiempoVozActivaMs: z.number().int().nonnegative(),
-    totalPalabrasTranscritas: z.number().int().nonnegative(),
-    totalPalabrasAlineadas: z.number().int().nonnegative(),
-    qualityScore: z.number().min(0).max(1),
-    confiable: z.boolean(),
-    motivoNoConfiable: z.string().max(200).nullable().optional().transform(v => v ?? null),
-    motor: z.string().max(100),
-  }).optional(),
+  audioAnalisis: audioAnalisisSchema.optional(),
 });
 
 /** Schema: registrarLecturaCompletada */
@@ -293,19 +302,7 @@ export const registrarLecturaCompletadaSchema = z.object({
     wpm: z.number().nonnegative(),
   })).nullable().optional(),
   totalPaginas: z.number().int().positive().nullable().optional(),
-  audioAnalisis: z.object({
-    wpmUtil: z.number().nonnegative(),
-    precisionLectura: z.number().min(0).max(1),
-    coberturaTexto: z.number().min(0).max(1),
-    pauseRatio: z.number().min(0).max(1),
-    tiempoVozActivaMs: z.number().int().nonnegative(),
-    totalPalabrasTranscritas: z.number().int().nonnegative(),
-    totalPalabrasAlineadas: z.number().int().nonnegative(),
-    qualityScore: z.number().min(0).max(1),
-    confiable: z.boolean(),
-    motivoNoConfiable: z.string().max(200).nullable().optional().transform(v => v ?? null),
-    motor: z.string().max(100),
-  }).optional(),
+  audioAnalisis: audioAnalisisSchema.optional(),
 });
 
 /** Schema: analizarLecturaAudio */

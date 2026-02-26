@@ -24,7 +24,7 @@ import {
 import { getNivelConfig } from '@/lib/ai/prompts';
 import { calcularAjusteDificultad } from './reading-actions';
 import { actualizarProgresoInmediato } from './session-actions';
-import { procesarRespuestasElo, inflarRdPorInactividad, type EloRatings, type RespuestaElo } from '@/lib/elo';
+import { procesarRespuestasElo, inflarRdPorInactividad, type EloRatings, type EloUpdateResult, type RespuestaElo } from '@/lib/elo';
 import type { TipoPregunta, AudioReadingAnalysis } from '@/lib/types/reading';
 import { serializarAudioAnalisis } from '@/lib/audio/utils';
 import { parseSessionMetadata, mergeSessionMetadata } from '@/lib/types/session-metadata';
@@ -257,128 +257,138 @@ export async function finalizarSesionLectura(datos: {
     };
   }
 
-  // 3+4 combined: single update writes all session fields and full metadata including sessionScore.
-  await db
-    .update(sessions)
-    .set({
-      completada: true,
-      duracionSegundos,
-      estrellasGanadas: estrellas,
-      finalizadaEn: new Date(),
-      wpmPromedio: wpmPromedioFinal,
-      wpmPorPagina: validado.wpmPorPagina ?? null,
-      totalPaginas: validado.totalPaginas ?? null,
-      metadata: {
-        ...metadataPrev,
-        lecturaCompletada: true,
-        lecturaCompletadaEn,
-        comprensionScore,
-        aciertos,
-        totalPreguntas,
-        tiempoLecturaMs: validado.tiempoLecturaMs,
-        fuenteWpm,
-        audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis),
-        sessionScore: ajuste.sessionScore,
-        wpmRobusto: wpmRobustoFinal ?? undefined,
-        wpmConfianza: wpmConfianzaFinal,
-      },
-    })
-    .where(eq(sessions.id, validado.sessionId));
-
-  // 5. Calcular y guardar Elo
-  let eloResult: { nuevoElo: EloRatings } | null = null;
-  let eloPrevioGlobal: number | null = null;
+  // 3+4+5 combined: single transaction guarantees the session is marked completada
+  // and the student ELO is updated atomically. Without this, concurrent session
+  // finalizations can interleave their read-compute-write cycles and one update
+  // silently overwrites the other.
+  // Assigned inside the transaction callback; TS can't flow-analyze
+  // mutations through async closures, so we use explicit typing to
+  // prevent incorrect narrowing to `never` after the try/catch.
+  let eloResult = null as EloUpdateResult | null;
+  let eloPrevioGlobal = null as number | null;
   try {
-    // Leer dificultad de las preguntas de la story
-    const storyId = sesion.storyId;
-    if (storyId) {
-      const preguntasDB = await db.query.storyQuestions.findMany({
-        where: eq(storyQuestions.storyId, storyId),
-      });
-      const preguntaMap = new Map(preguntasDB.map((p) => [p.id, p]));
+    await db.transaction(async (tx) => {
+      // 3+4: Mark session as completed with all computed fields.
+      await tx
+        .update(sessions)
+        .set({
+          completada: true,
+          duracionSegundos,
+          estrellasGanadas: estrellas,
+          finalizadaEn: new Date(),
+          wpmPromedio: wpmPromedioFinal,
+          wpmPorPagina: validado.wpmPorPagina ?? null,
+          totalPaginas: validado.totalPaginas ?? null,
+          metadata: {
+            ...metadataPrev,
+            lecturaCompletada: true,
+            lecturaCompletadaEn,
+            comprensionScore,
+            aciertos,
+            totalPreguntas,
+            tiempoLecturaMs: validado.tiempoLecturaMs,
+            fuenteWpm,
+            audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis),
+            sessionScore: ajuste.sessionScore,
+            wpmRobusto: wpmRobustoFinal ?? undefined,
+            wpmConfianza: wpmConfianzaFinal,
+          },
+        })
+        .where(eq(sessions.id, validado.sessionId));
 
-      // Leer Elo actual del estudiante
-      const estudianteElo = await db.query.students.findFirst({
-        where: eq(students.id, validado.studentId),
-        columns: {
-          eloGlobal: true,
-          eloLiteral: true,
-          eloInferencia: true,
-          eloVocabulario: true,
-          eloResumen: true,
-          eloRd: true,
-        },
-      });
-
-      if (estudianteElo) {
-        eloPrevioGlobal = estudianteElo.eloGlobal;
-        const eloRaw: EloRatings = {
-          global: estudianteElo.eloGlobal,
-          literal: estudianteElo.eloLiteral,
-          inferencia: estudianteElo.eloInferencia,
-          vocabulario: estudianteElo.eloVocabulario,
-          resumen: estudianteElo.eloResumen,
-          rd: estudianteElo.eloRd,
-        };
-
-        // Inflar RD si hubo inactividad (Glicko standard: uncertainty grows over time)
-        const ultimaSesionPrevia = await db.query.sessions.findFirst({
-          where: and(
-            eq(sessions.studentId, validado.studentId),
-            eq(sessions.completada, true),
-          ),
-          orderBy: [desc(sessions.finalizadaEn)],
-          columns: { finalizadaEn: true },
+      // 5. Calcular y guardar Elo (dentro de la misma transaccion para atomicidad).
+      const storyId = sesion.storyId;
+      if (storyId) {
+        const preguntasDB = await tx.query.storyQuestions.findMany({
+          where: eq(storyQuestions.storyId, storyId),
         });
-        const eloActual = inflarRdPorInactividad(
-          eloRaw,
-          ultimaSesionPrevia?.finalizadaEn ?? null,
-        );
+        const preguntaMap = new Map(preguntasDB.map((p) => [p.id, p]));
 
-        const nivelTexto = metadataPrev.nivelTexto ?? 2;
+        // Leer Elo actual del estudiante (dentro de la tx: lectura consistente)
+        const estudianteElo = await tx.query.students.findFirst({
+          where: eq(students.id, validado.studentId),
+          columns: {
+            eloGlobal: true,
+            eloLiteral: true,
+            eloInferencia: true,
+            eloVocabulario: true,
+            eloResumen: true,
+            eloRd: true,
+          },
+        });
 
-        // Construir respuestas para el motor Elo
-        const respuestasElo: RespuestaElo[] = validado.respuestas.map((r) => {
-          const preguntaDB = preguntaMap.get(r.preguntaId);
-          return {
-            tipo: r.tipo as TipoPregunta,
-            correcta: r.correcta,
-            dificultadPregunta: preguntaDB?.dificultad ?? 3,
+        if (estudianteElo) {
+          eloPrevioGlobal = estudianteElo.eloGlobal;
+          const eloRaw: EloRatings = {
+            global: estudianteElo.eloGlobal,
+            literal: estudianteElo.eloLiteral,
+            inferencia: estudianteElo.eloInferencia,
+            vocabulario: estudianteElo.eloVocabulario,
+            resumen: estudianteElo.eloResumen,
+            rd: estudianteElo.eloRd,
           };
-        });
 
-        eloResult = procesarRespuestasElo(eloActual, respuestasElo, nivelTexto);
+          // Inflar RD si hubo inactividad (Glicko standard: uncertainty grows over time)
+          const ultimaSesionPrevia = await tx.query.sessions.findFirst({
+            where: and(
+              eq(sessions.studentId, validado.studentId),
+              eq(sessions.completada, true),
+            ),
+            orderBy: [desc(sessions.finalizadaEn)],
+            columns: { finalizadaEn: true },
+          });
+          const eloActual = inflarRdPorInactividad(
+            eloRaw,
+            ultimaSesionPrevia?.finalizadaEn ?? null,
+          );
 
-        // Actualizar Elo + RD en students
-        await db
-          .update(students)
-          .set({
+          const nivelTexto = metadataPrev.nivelTexto ?? 2;
+
+          // Construir respuestas para el motor Elo
+          const respuestasElo: RespuestaElo[] = validado.respuestas.map((r) => {
+            const preguntaDB = preguntaMap.get(r.preguntaId);
+            return {
+              tipo: r.tipo as TipoPregunta,
+              correcta: r.correcta,
+              dificultadPregunta: preguntaDB?.dificultad ?? 3,
+            };
+          });
+
+          eloResult = procesarRespuestasElo(eloActual, respuestasElo, nivelTexto);
+
+          // Actualizar Elo + RD en students
+          await tx
+            .update(students)
+            .set({
+              eloGlobal: eloResult.nuevoElo.global,
+              eloLiteral: eloResult.nuevoElo.literal,
+              eloInferencia: eloResult.nuevoElo.inferencia,
+              eloVocabulario: eloResult.nuevoElo.vocabulario,
+              eloResumen: eloResult.nuevoElo.resumen,
+              eloRd: eloResult.nuevoElo.rd,
+            })
+            .where(eq(students.id, validado.studentId));
+
+          // Insertar snapshot con RD
+          await tx.insert(eloSnapshots).values({
+            studentId: validado.studentId,
+            sessionId: validado.sessionId,
             eloGlobal: eloResult.nuevoElo.global,
             eloLiteral: eloResult.nuevoElo.literal,
             eloInferencia: eloResult.nuevoElo.inferencia,
             eloVocabulario: eloResult.nuevoElo.vocabulario,
             eloResumen: eloResult.nuevoElo.resumen,
-            eloRd: eloResult.nuevoElo.rd,
-          })
-          .where(eq(students.id, validado.studentId));
-
-        // Insertar snapshot con RD
-        await db.insert(eloSnapshots).values({
-          studentId: validado.studentId,
-          sessionId: validado.sessionId,
-          eloGlobal: eloResult.nuevoElo.global,
-          eloLiteral: eloResult.nuevoElo.literal,
-          eloInferencia: eloResult.nuevoElo.inferencia,
-          eloVocabulario: eloResult.nuevoElo.vocabulario,
-          eloResumen: eloResult.nuevoElo.resumen,
-          rdGlobal: eloResult.nuevoElo.rd,
-          wpmPromedio: wpmPromedioFinal,
-        });
+            rdGlobal: eloResult.nuevoElo.rd,
+            wpmPromedio: wpmPromedioFinal,
+          });
+        }
       }
-    }
+    });
   } catch (eloError) {
-    // Elo es no-critico: si falla, la sesion sigue siendo valida
-    console.error('[Elo] Error al calcular/guardar Elo:', eloError);
+    // Elo es no-critico: si falla, la sesion sigue siendo valida.
+    // IMPORTANTE: si la transaccion falla, la sesion NO queda marcada como
+    // completada. El cliente puede reintentar de forma segura.
+    console.error('[Elo] Error al calcular/guardar Elo (transaccion revertida):', eloError);
   }
 
   return {

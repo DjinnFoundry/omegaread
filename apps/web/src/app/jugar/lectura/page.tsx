@@ -107,6 +107,12 @@ export default function LecturaPage() {
 
   const preguntasCargando = !!sesionActiva && preguntasGenerandoPara === sesionActiva.sessionId;
 
+  // Ref para leer preguntasGenerandoPara sin capturarlo en closures de callbacks
+  const preguntasGenerandoParaRef = useRef<string | null>(null);
+  useEffect(() => {
+    preguntasGenerandoParaRef.current = preguntasGenerandoPara;
+  }, [preguntasGenerandoPara]);
+
   const cargarEstado = useCallback(async () => {
     if (!estudiante) {
       setCargando(false);
@@ -134,37 +140,26 @@ export default function LecturaPage() {
     void cargarEstado();
   }, [autoSelecting, cargarEstado]);
 
-  // Auto-start when ?topic=SLUG is present (e.g. from tech tree navigation)
+  // Auto-start when ?storyId or ?topic is present (storyId takes precedence over topic)
   useEffect(() => {
     if (
-      topicFromQuery &&
-      !autoStartedRef.current &&
-      estado?.paso === 'listo' &&
-      pasoSesion === 'elegir-topic' &&
-      !generando &&
-      estudiante
-    ) {
+      autoStartedRef.current ||
+      estado?.paso !== 'listo' ||
+      pasoSesion !== 'elegir-topic' ||
+      generando ||
+      !estudiante
+    ) return;
+
+    if (storyIdFromQuery) {
+      autoStartedRef.current = true;
+      void handleReRead(storyIdFromQuery);
+    } else if (topicFromQuery) {
       autoStartedRef.current = true;
       void handleStartReading(topicFromQuery);
     }
+    // Handlers use refs internally; including them would cause infinite re-triggers
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topicFromQuery, estado, pasoSesion, generando, estudiante]);
-
-  // Auto-load when ?storyId=UUID is present (re-read from historial)
-  useEffect(() => {
-    if (
-      storyIdFromQuery &&
-      !autoStartedRef.current &&
-      estado?.paso === 'listo' &&
-      pasoSesion === 'elegir-topic' &&
-      !generando &&
-      estudiante
-    ) {
-      autoStartedRef.current = true;
-      void handleReRead(storyIdFromQuery);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storyIdFromQuery, estado, pasoSesion, generando, estudiante]);
+  }, [storyIdFromQuery, topicFromQuery, estado, pasoSesion, generando, estudiante]);
 
   // ─── Handlers de sesion ───
 
@@ -361,8 +356,12 @@ export default function LecturaPage() {
         return;
       }
 
+      // Leer via ref para evitar valor obsoleto si las preguntas terminaron entre
+      // la creacion del callback y su ejecucion
+      const currentlyLoading = !!sesionActiva && preguntasGenerandoParaRef.current === sesionActiva.sessionId;
+
       // Si las preguntas aun se estan generando en background, esperar
-      if (preguntasCargando) {
+      if (currentlyLoading) {
         setPasoSesion('preguntas');
         return;
       }
@@ -375,7 +374,7 @@ export default function LecturaPage() {
         setPasoSesion('preguntas');
       }
     },
-    [sesionActiva, preguntasCargando, estudiante, cargarPreguntasDeSesion],
+    [sesionActiva, estudiante, cargarPreguntasDeSesion],
   );
 
   const handleAnalizarAudio = useCallback(

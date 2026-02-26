@@ -16,6 +16,7 @@ import {
 import { requireAuth, requireStudentOwnership } from '../auth';
 import {
   actualizarPerfilSchema,
+  eliminarHechoSchema,
   guardarInteresesSchema,
   guardarContextoPersonalSchema,
   guardarPerfilVivoSchema,
@@ -278,10 +279,11 @@ export async function eliminarHecho(datos: {
   hechoId: string;
 }) {
   const db = await getDb();
+  const validado = eliminarHechoSchema.parse(datos);
   const padre = await requireAuth();
 
   const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, datos.studentId), eq(students.parentId, padre.id)),
+    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
   });
   if (!estudiante) {
     return { ok: false as const, error: 'Estudiante no encontrado' };
@@ -289,7 +291,7 @@ export async function eliminarHecho(datos: {
 
   const senalesActuales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
   const perfilVivo = extraerPerfilVivo(senalesActuales.perfilVivo);
-  perfilVivo.hechos = perfilVivo.hechos.filter((h) => h.id !== datos.hechoId);
+  perfilVivo.hechos = perfilVivo.hechos.filter((h) => h.id !== validado.hechoId);
 
   await db
     .update(students)
@@ -297,7 +299,7 @@ export async function eliminarHecho(datos: {
       senalesDificultad: { ...senalesActuales, perfilVivo },
       actualizadoEn: new Date(),
     })
-    .where(eq(students.id, datos.studentId));
+    .where(eq(students.id, validado.studentId));
 
   return { ok: true as const };
 }

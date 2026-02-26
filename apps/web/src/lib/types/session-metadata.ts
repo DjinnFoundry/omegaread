@@ -97,6 +97,7 @@ export interface SessionMetadata {
  */
 export function parseSessionMetadata(raw: unknown): SessionMetadata {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  if (typeof raw !== 'object' || raw === null) return {};
   return raw as SessionMetadata;
 }
 

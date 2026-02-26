@@ -7,7 +7,7 @@
  *
  * Below the map: compact domain progress bars, suggested routes.
  */
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import Link from 'next/link';
 import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import type { DashboardPadreData } from '@/server/actions/dashboard-actions';
@@ -156,7 +156,7 @@ function NodePopover({
 // Graph node (positioned at screen coords, native resolution)
 // ─────────────────────────────────────────────
 
-function GraphNode({
+const GraphNode = memo(function GraphNode({
   node,
   onClick,
   isActive,
@@ -208,13 +208,13 @@ function GraphNode({
       </span>
     </button>
   );
-}
+});
 
 // ─────────────────────────────────────────────
 // Node label (below node, screen-space positioned)
 // ─────────────────────────────────────────────
 
-function NodeLabel({ node, pz }: { node: PositionedNode; pz: PanZoomState }) {
+const NodeLabel = memo(function NodeLabel({ node, pz }: { node: PositionedNode; pz: PanZoomState }) {
   const screen = toScreen(node.x, node.y, pz);
 
   return (
@@ -232,13 +232,13 @@ function NodeLabel({ node, pz }: { node: PositionedNode; pz: PanZoomState }) {
       </span>
     </div>
   );
-}
+});
 
 // ─────────────────────────────────────────────
 // SVG connection lines layer (screen-space coordinates)
 // ─────────────────────────────────────────────
 
-function ConnectionLines({
+const ConnectionLines = memo(function ConnectionLines({
   layout,
   suggestionEdges,
   pz,
@@ -339,13 +339,13 @@ function ConnectionLines({
       })}
     </svg>
   );
-}
+});
 
 // ─────────────────────────────────────────────
 // Cluster label (screen-space positioned)
 // ─────────────────────────────────────────────
 
-function ClusterLabel({
+const ClusterLabel = memo(function ClusterLabel({
   cluster,
   pz,
 }: {
@@ -382,7 +382,7 @@ function ClusterLabel({
       </span>
     </div>
   );
-}
+});
 
 // ─────────────────────────────────────────────
 // Zoom controls overlay
@@ -446,7 +446,6 @@ export function SeccionRutaAprendizaje({ data }: Props) {
     () => data.techTree.historialTopics[0]?.slug ?? null,
   );
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const sizeObserverRef = useRef<ResizeObserver | null>(null);
 
   // Compute graph layout (memoized)
   const layout = useMemo(
@@ -499,7 +498,6 @@ export function SeccionRutaAprendizaje({ data }: Props) {
       }
     });
     observer.observe(el);
-    sizeObserverRef.current = observer;
 
     return () => {
       observer.disconnect();

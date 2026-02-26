@@ -42,8 +42,6 @@ export interface UseReadingTimerReturn {
   finalizar: (totalPaginas: number, paginas: string[], contarPalabras: (texto: string) => number, nivel: number) => ReadingTimerResult;
   /** Get the current max page reached */
   getMaxPagina: () => number;
-  /** Get raw timestamps (needed for sanitization) */
-  getTimestamps: () => number[];
 }
 
 // ─── HOOK ───
@@ -119,17 +117,15 @@ export function useReadingTimer(): UseReadingTimerReturn {
         paginasSanitizadas,
       };
     },
-    [],
+    [], // Deps: refs are stable, imported functions are module-level constants
   );
 
   const getMaxPagina = useCallback(() => maxPaginaRef.current, []);
-  const getTimestamps = useCallback(() => [...timestampsRef.current], []);
 
   return {
     iniciar,
     registrarAvancePagina,
     finalizar,
     getMaxPagina,
-    getTimestamps,
   };
 }

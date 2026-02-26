@@ -19,6 +19,7 @@ function median(values: number[]): number {
     : sorted[mid]!;
 }
 
+/** Winsorized mean (10% trim). Returns 0 for empty input. */
 function winsorizedMean(values: number[], fraction = 0.1): number {
   if (values.length === 0) return 0;
   if (values.length <= 2) return median(values);

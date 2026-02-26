@@ -82,11 +82,14 @@ export function sanitizeFromStoredData(
   nivel: number,
 ): SanitizedPageWpm[] {
   const bounds = getWpmBounds(nivel);
+  const config = getNivelConfig(nivel);
+  // Approximate: actual word count unavailable from stored data.
+  // Using level-aware estimate instead of flat 50.
+  const estimatedPalabras = Math.max(20, Math.min(120, Math.round(config.wpmEsperado * 0.5)));
   return wpmPorPagina.map((page) => {
-    // We don't have exact word counts or timestamps from stored data,
-    // so we flag purely on WPM bounds. This is less precise but sufficient
-    // for retrospective confidence assessment.
-    const estimatedPalabras = 50; // median page word count
+    // We don't have exact timestamps from stored data, so we flag purely on
+    // WPM bounds. This is less precise but sufficient for retrospective
+    // confidence assessment.
     const estimatedTimeMs =
       page.wpm > 0 ? (estimatedPalabras / page.wpm) * 60_000 : 0;
     return {

@@ -22,6 +22,7 @@ import {
   type ParentConfig,
   type AccesibilidadConfig,
 } from '@zetaread/db';
+import { requireStudentOwnership } from '../auth';
 import { getStudentContext } from '../student-context';
 import {
   calcularProgresoNivel,
@@ -257,6 +258,7 @@ export interface DashboardPadreData {
 // ─────────────────────────────────────────────
 
 export async function obtenerDashboardNino(estudianteId: string): Promise<DashboardNinoData> {
+  await requireStudentOwnership(estudianteId);
   const db = await getDb();
   const { nivel } = await getStudentContext(estudianteId);
 
@@ -350,6 +352,7 @@ export async function obtenerDashboardNino(estudianteId: string): Promise<Dashbo
 // ─────────────────────────────────────────────
 
 export async function obtenerDashboardPadre(estudianteId: string): Promise<DashboardPadreData> {
+  await requireStudentOwnership(estudianteId);
   const db = await getDb();
   const { padre, estudiante, edadAnos, nivel } = await getStudentContext(estudianteId);
 
@@ -511,8 +514,12 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
       if (meta.wpmConfianza === 'high' || meta.wpmConfianza === 'medium' || meta.wpmConfianza === 'low') {
         confianza = meta.wpmConfianza;
       } else if (s.wpmPorPagina && Array.isArray(s.wpmPorPagina) && s.wpmPorPagina.length > 0) {
+        const rawWpm = s.wpmPorPagina;
+        const wpmArray = Array.isArray(rawWpm) && rawWpm.every((p: unknown) =>
+          typeof p === 'object' && p !== null && 'pagina' in p && 'wpm' in p
+        ) ? (rawWpm as Array<{ pagina: number; wpm: number }>) : [];
         const sanitized = sanitizeFromStoredData(
-          s.wpmPorPagina as Array<{ pagina: number; wpm: number }>,
+          wpmArray,
           nivelSesion,
         );
         const result = computeSessionWpm(sanitized);

@@ -107,6 +107,28 @@ const NEUTRAL_BRIER = 0.2;
  */
 const RD_SENSITIVITY = 120;
 
+// ─── Per-question delta clamp constants ───
+
+/**
+ * Base maximum delta per question before RD adjustment.
+ * RD=75  -> maxDelta = 8 + 75/50  = 9.5
+ * RD=200 -> maxDelta = 8 + 200/50 = 12
+ * RD=350 -> maxDelta = 8 + 350/50 = 15
+ */
+const BASE_QUESTION_DELTA = 8;
+
+/** RD contribution factor to per-question max delta (divisor). */
+const RD_DELTA_DIVISOR = 50;
+
+/**
+ * K-factor multiplier for sub-type ratings, derived from RD.
+ * K = max(MIN_SUBTYPE_K, rd * SUBTYPE_K_FACTOR)
+ */
+const SUBTYPE_K_FACTOR = 0.15;
+
+/** Minimum effective K-factor floor for sub-type rating updates. */
+const MIN_SUBTYPE_K = 12;
+
 // ─────────────────────────────────────────────
 // FUNCIONES GLICKO INTERNAS
 // ─────────────────────────────────────────────
@@ -291,7 +313,7 @@ export function procesarRespuestasElo(
     // Per-question delta clamp: generous during calibration, tight when stable.
     // Prevents extreme swings (e.g. -256 in a single session) while still
     // allowing fast convergence. RD=350 -> ±15, RD=200 -> ±12, RD=75 -> ±9.5
-    const maxDelta = 8 + (rd / 50);
+    const maxDelta = BASE_QUESTION_DELTA + (rd / RD_DELTA_DIVISOR);
     const clampedDelta = Math.max(-maxDelta, Math.min(maxDelta, adjustedDelta));
 
     global = Math.round((prevGlobal + clampedDelta) * 10) / 10;
@@ -300,7 +322,7 @@ export function procesarRespuestasElo(
     // Para el tipo: K derivado del RD actual.
     // No se aplica anti-farming a sub-tipos: queremos que reflejen skill real
     // rapidamente. Anti-farming solo protege el global (que determina dificultad).
-    const K = Math.max(12, rd * 0.15);
+    const K = Math.max(MIN_SUBTYPE_K, rd * SUBTYPE_K_FACTOR);
     const expectedTipo = 1 / (1 + Math.pow(10, (qRating - prevTipo) / 400));
     const rawDeltaTipo = K * (score - expectedTipo);
     porTipo[resp.tipo] = Math.round((prevTipo + rawDeltaTipo) * 10) / 10;

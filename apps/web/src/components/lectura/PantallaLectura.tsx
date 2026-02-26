@@ -280,8 +280,9 @@ export default function PantallaLectura({
             audioAnalisis = analisisResult.analisis;
           }
         }
-      } catch {
+      } catch (err) {
         // Audio analysis failed; fall back to page-based WPM
+        console.warn('[PantallaLectura] audio analysis failed:', err);
       }
     }
 
