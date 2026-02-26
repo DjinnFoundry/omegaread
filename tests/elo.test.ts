@@ -410,22 +410,22 @@ describe('procesarRespuestasElo - Flujos realistas', () => {
       global: 1200,
       rd: 75, // RD bajo
     });
+    // Use all-correct batch to avoid cancellation effects between correct/wrong
     const respuestas = [
       crearRespuesta({ correcta: true }),
-      crearRespuesta({ correcta: false }),
+      crearRespuesta({ correcta: true }),
+      crearRespuesta({ correcta: true }),
     ];
 
     const result = procesarRespuestasElo(eloVeterano, respuestas, 2.5);
 
-    // Cambios deben ser menores que con RD alto
-    // Comparamos con un resultado de RD alto
     const eloNuevo = crearEloBase({ rd: 350 });
     const resultNuevo = procesarRespuestasElo(eloNuevo, respuestas, 2.5);
 
     const cambioVeterano = Math.abs(result.nuevoElo.global - eloVeterano.global);
     const cambioNuevo = Math.abs(resultNuevo.nuevoElo.global - eloNuevo.global);
 
-    // El RD bajo deberia producir cambios menores
+    // El RD bajo deberia producir cambios menores (lower clamp + lower Glicko delta)
     expect(cambioVeterano).toBeLessThan(cambioNuevo);
   });
 

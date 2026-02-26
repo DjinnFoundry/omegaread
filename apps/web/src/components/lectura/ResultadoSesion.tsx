@@ -125,7 +125,7 @@ export default function ResultadoSesion({
   const hasElo = resultado.eloGlobal != null && resultado.eloPrevio != null;
   const eloPrevio = resultado.eloPrevio ?? 1000;
   const eloNuevo = resultado.eloGlobal ?? 1000;
-  const eloDelta = eloNuevo - eloPrevio;
+  const eloDelta = Math.round(eloNuevo - eloPrevio);
   const animatedElo = useAnimatedNumber(eloPrevio, eloNuevo, 1200, 800);
 
   const handleCompartirWhatsApp = useCallback(async () => {

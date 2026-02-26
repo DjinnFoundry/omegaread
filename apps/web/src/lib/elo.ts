@@ -188,10 +188,10 @@ function factorAntiFarming(
     const rawFactor = Math.max(0.02, factorSorpresa * penalizacionFacil);
 
     // Atenuar anti-farming segun incertidumbre (RD).
-    // RD>=300 -> calibrando, bypass ~95% del anti-farming (factor ~1.0)
+    // RD>=300 -> calibrando, bypass ~50% del anti-farming
     // RD<=100 -> rating estable, anti-farming completo (factor = rawFactor)
     const rdNorm = Math.min(1, Math.max(0, (rd - 100) / 200)); // 0..1
-    return rawFactor + rdNorm * (1 - rawFactor);
+    return rawFactor + (rdNorm * 0.5) * (1 - rawFactor);
   }
 
   return factorSorpresa;
@@ -271,7 +271,15 @@ export function procesarRespuestasElo(
     const globalUpdate = glickoUpdate(prevGlobal, rd, qRating, QUESTION_RD, score);
     const rawDeltaGlobal = globalUpdate.newRating - prevGlobal;
     const factorGlobal = factorAntiFarming(prevGlobal, qRating, score, E, rd);
-    global = Math.round((prevGlobal + (rawDeltaGlobal * factorGlobal)) * 10) / 10;
+    const adjustedDelta = rawDeltaGlobal * factorGlobal;
+
+    // Per-question delta clamp: generous during calibration, tight when stable.
+    // Prevents extreme swings (e.g. -256 in a single session) while still
+    // allowing fast convergence. RD=350 -> ±15, RD=200 -> ±12, RD=75 -> ±9.5
+    const maxDelta = 8 + (rd / 50);
+    const clampedDelta = Math.max(-maxDelta, Math.min(maxDelta, adjustedDelta));
+
+    global = Math.round((prevGlobal + clampedDelta) * 10) / 10;
     rd = globalUpdate.newRd;
 
     // Para el tipo: K derivado del RD actual.
