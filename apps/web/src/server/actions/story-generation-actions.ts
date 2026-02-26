@@ -42,6 +42,7 @@ import {
   getSkillBySlug,
   DOMINIOS,
 } from '@/lib/data/skills';
+import { normalizarTexto } from '@/lib/utils/text';
 import {
   elegirSiguienteSkillTechTree,
   construirContextoTechTree,
@@ -71,6 +72,26 @@ const MAX_HISTORIAS_DIA = 20;
 // Numero de dias hacia atras que se considera valida una historia cacheada.
 const CACHE_TTL_DIAS = 7;
 
+/**
+ * Compatibilidad con slugs legacy (pre-tech-tree) que aun pueden existir
+ * en historiales viejos o enlaces guardados.
+ */
+const LEGACY_TOPIC_SLUG_MAP: Record<string, string> = {
+  animales: 'animales-que-vuelan',
+  dinosaurios: 'prehistoria-accesible',
+  espacio: 'sistema-solar',
+  ciencia: 'fuerzas-empujar-jalar',
+  tecnologia: 'como-piensan-ordenadores',
+  historia: 'lineas-del-tiempo',
+  geografia: 'que-son-mapas',
+  cultura: 'ninos-otros-paises',
+  musica: 'sonido-vibra',
+  cocina: 'nutricion-combustible',
+  deportes: 'fuerzas-empujar-jalar',
+  naturaleza: 'plantas-que-crecen',
+  arte: 'como-se-transmiten-tradiciones',
+};
+
 // ─── Internal helpers ───
 
 async function contarHistoriasHoy(studentId: string): Promise<number> {
@@ -84,6 +105,70 @@ async function contarHistoriasHoy(studentId: string): Promise<number> {
     .where(and(eq(generatedStories.studentId, studentId), gte(generatedStories.creadoEn, hoy)));
 
   return Number(result[0]?.count ?? 0);
+}
+
+function topicAplicaPorEdad(
+  topic: (typeof TOPICS_SEED)[number],
+  edadAnos: number,
+): boolean {
+  return edadAnos >= topic.edadMinima && edadAnos <= topic.edadMaxima;
+}
+
+function resolverTopicPorSlug(
+  rawTopicSlug: string,
+  edadAnos: number,
+): { topicSlug: string; topic: (typeof TOPICS_SEED)[number]; remapped: boolean } | null {
+  const normalizedSlug = rawTopicSlug.trim().toLowerCase();
+  if (!normalizedSlug) return null;
+
+  const direct = TOPICS_SEED.find((t) => t.slug === normalizedSlug);
+  if (direct) {
+    return {
+      topicSlug: direct.slug,
+      topic: direct,
+      remapped: false,
+    };
+  }
+
+  const mappedSlug = LEGACY_TOPIC_SLUG_MAP[normalizedSlug];
+  if (mappedSlug) {
+    const mappedTopic = TOPICS_SEED.find((t) => t.slug === mappedSlug);
+    if (mappedTopic) {
+      return {
+        topicSlug: mappedTopic.slug,
+        topic: mappedTopic,
+        remapped: true,
+      };
+    }
+  }
+
+  const requested = normalizarTexto(normalizedSlug);
+  const requestedTokens = requested.split(' ').filter((token) => token.length >= 3);
+  if (requestedTokens.length === 0) return null;
+
+  let best: { topic: (typeof TOPICS_SEED)[number]; score: number } | null = null;
+  for (const topic of TOPICS_SEED) {
+    const haystack = normalizarTexto(`${topic.slug} ${topic.nombre} ${topic.descripcion}`);
+    let score = 0;
+
+    if (haystack.includes(requested)) score += 5;
+    for (const token of requestedTokens) {
+      if (haystack.includes(token)) score += 1;
+    }
+    if (score === 0) continue;
+    if (topicAplicaPorEdad(topic, edadAnos)) score += 2;
+
+    if (!best || score > best.score) {
+      best = { topic, score };
+    }
+  }
+
+  if (!best) return null;
+  return {
+    topicSlug: best.topic.slug,
+    topic: best.topic,
+    remapped: true,
+  };
 }
 
 // ─── Server Actions ───
@@ -141,10 +226,12 @@ export async function generarHistoria(datos: {
   topicSlug?: string;
   forceRegenerate?: boolean;
   progressTraceId?: string;
+  nivelOverride?: number;
 }) {
   const db = await getDb();
   const validado = generarHistoriaSchema.parse(datos);
-  const { estudiante, padre, edadAnos, nivel } = await getStudentContext(validado.studentId);
+  const { estudiante, padre, edadAnos, nivel: nivelElo } = await getStudentContext(validado.studentId);
+  const nivel = validado.nivelOverride ?? nivelElo;
   const funModeActivo = extraerFunModeConfig(padre.config);
   const traceId = validado.progressTraceId;
   const trace = crearStoryGenerationTrace();
@@ -249,12 +336,23 @@ export async function generarHistoria(datos: {
       );
       topicSlug =
         topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ??
-        'como-funciona-corazon';
+        TOPICS_SEED[0]?.slug;
     }
 
-    const topic = TOPICS_SEED.find((t) => t.slug === topicSlug);
-    if (!topic) {
+    if (!topicSlug) {
+      return await finalizarConError('ruta', 'No hay topics disponibles para esta edad', 'GENERATION_FAILED');
+    }
+    const topicResolved = resolverTopicPorSlug(topicSlug, edadAnos);
+    if (!topicResolved) {
       return await finalizarConError('ruta', 'Topic no encontrado', 'GENERATION_FAILED');
+    }
+    topicSlug = topicResolved.topicSlug;
+    const topic = topicResolved.topic;
+    if (topicResolved.remapped && validado.topicSlug) {
+      console.info('[story-generation] topic remapeado por compatibilidad', {
+        from: validado.topicSlug,
+        to: topicSlug,
+      });
     }
     await completarEtapa('ruta', `Topic seleccionado: ${topic.nombre}`);
 
@@ -703,8 +801,6 @@ export async function cargarHistoriaExistente(datos: {
   const db = await getDb();
   const validado = cargarHistoriaExistenteSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
-
-  const { nivel } = await getStudentContext(validado.studentId);
 
   const historia = await db.query.generatedStories.findFirst({
     where: and(

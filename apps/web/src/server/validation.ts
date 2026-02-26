@@ -247,6 +247,8 @@ export const generarHistoriaSchema = z.object({
   forceRegenerate: z.boolean().optional(),
   /** Token para reportar progreso en tiempo real al cliente */
   progressTraceId: uuid.optional(),
+  /** Override del nivel ELO para re-lectura a nivel diferente */
+  nivelOverride: z.number().min(1).max(4.8).optional(),
 });
 
 /** Schema: obtenerProgresoGeneracionHistoria */

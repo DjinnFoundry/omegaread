@@ -84,6 +84,9 @@ export default function LecturaPage() {
   const { estudiante, autoSelecting, recargarProgreso } = useStudentProgress();
   const topicFromQuery = searchParams.get('topic');
   const storyIdFromQuery = searchParams.get('storyId');
+  const levelFromQuery = searchParams.get('level');
+  const parsedLevel = levelFromQuery ? Number.parseFloat(levelFromQuery) : undefined;
+  const nivelOverride = Number.isFinite(parsedLevel) ? parsedLevel : undefined;
   const autoStartedRef = useRef(false);
   const [estado, setEstado] = useState<EstadoFlujoLectura | null>(null);
   const [datosEstudiante, setDatosEstudiante] = useState<DatosEstudianteLectura | null>(null);
@@ -155,7 +158,7 @@ export default function LecturaPage() {
       void handleReRead(storyIdFromQuery);
     } else if (topicFromQuery) {
       autoStartedRef.current = true;
-      void handleStartReading(topicFromQuery);
+      void handleStartReading(topicFromQuery, false, nivelOverride);
     }
     // Handlers use refs internally; including them would cause infinite re-triggers
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -223,7 +226,7 @@ export default function LecturaPage() {
   }, []);
 
   const handleStartReading = useCallback(
-    async (topicSlug: string, forceRegenerate?: boolean) => {
+    async (topicSlug: string, forceRegenerate?: boolean, levelOverride?: number) => {
       if (!estudiante || generando) return;
       setUltimoTopicIntentado(topicSlug);
       setGenerando(true);
@@ -240,6 +243,7 @@ export default function LecturaPage() {
           topicSlug,
           forceRegenerate,
           progressTraceId,
+          nivelOverride: levelOverride,
         });
 
         if (result.generationTrace) {

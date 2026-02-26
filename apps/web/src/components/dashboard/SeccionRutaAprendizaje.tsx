@@ -87,11 +87,13 @@ function NodePopover({
   onClose,
   toScreenPoint,
   scale,
+  nivelActual,
 }: {
   data: PopoverData;
   onClose: () => void;
   toScreenPoint: (gx: number, gy: number) => { x: number; y: number };
   scale: number;
+  nivelActual: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -123,22 +125,64 @@ function NodePopover({
   };
 
   if (data.kind === 'completed') {
+    const nivelDisplay = Math.floor(nivelActual);
+    const nivelUp = Math.min(nivelDisplay + 1, Math.min(Math.floor(nivelActual) + 2, 4));
+    const nivelDown = Math.max(nivelDisplay - 1, 1);
+    const canGoUp = nivelUp > nivelDisplay;
+    const canGoDown = nivelDown < nivelDisplay;
+    const topicParam = encodeURIComponent(node.slug);
+
     return (
-      <div ref={ref} style={style} className="animate-fade-in">
-        <div className="rounded-2xl bg-superficie border border-turquesa/30 shadow-lg px-3 py-2.5 text-center min-w-[140px]">
+      <div
+        ref={ref}
+        style={style}
+        className="animate-fade-in"
+        data-panzoom-ignore="true"
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+      >
+        <div className="rounded-2xl bg-superficie border border-turquesa/30 shadow-lg px-4 py-3 text-center min-w-[200px]">
           <p className="text-sm font-bold text-texto">
             {node.emoji} {node.nombre}
           </p>
-          <p className="text-[11px] text-texto-suave mt-1">
-            Estudiado {node.veces} {node.veces === 1 ? 'vez' : 'veces'}
-          </p>
-          <p className="text-[10px] text-texto-suave mt-0.5 capitalize">
+          <p className="text-[11px] text-texto-suave mt-0.5 capitalize">
             {node.dominio}
           </p>
+          <p className="text-[11px] text-texto-suave mt-0.5">
+            Leido {node.veces} {node.veces === 1 ? 'vez' : 'veces'}
+          </p>
+
+          <div className="mt-3 flex flex-col gap-2">
+            <Link
+              href={`/jugar/lectura?topic=${topicParam}`}
+              className="flex items-center justify-center rounded-xl bg-turquesa px-4 py-2.5 text-xs font-bold text-white hover:opacity-90 active:scale-[0.98] transition-all min-h-[44px]"
+            >
+              Leer de nuevo
+            </Link>
+
+            {canGoUp && (
+              <Link
+                href={`/jugar/lectura?topic=${topicParam}&level=${nivelUp}`}
+                className="flex items-center justify-center rounded-xl bg-turquesa/15 px-4 py-2.5 text-xs font-semibold text-turquesa hover:bg-turquesa/25 transition-colors min-h-[44px]"
+              >
+                Nivel {nivelDisplay} &rarr; {nivelUp}
+              </Link>
+            )}
+
+            {canGoDown && (
+              <Link
+                href={`/jugar/lectura?topic=${topicParam}&level=${nivelDown}`}
+                className="flex items-center justify-center rounded-xl bg-neutro/10 px-4 py-2.5 text-xs font-semibold text-texto-suave hover:bg-neutro/20 transition-colors min-h-[44px]"
+              >
+                Nivel {nivelDisplay} &rarr; {nivelDown}
+              </Link>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="mt-2 text-[10px] text-texto-suave hover:text-texto transition-colors min-h-0 min-w-0"
+            className="mt-2 text-[10px] text-texto-suave hover:text-texto transition-colors"
           >
             Cerrar
           </button>
@@ -147,28 +191,36 @@ function NodePopover({
     );
   }
 
+  // Suggested node popover
   return (
-    <div ref={ref} style={style} className="animate-fade-in">
-      <div className="rounded-2xl bg-superficie border border-amarillo/40 shadow-lg px-3 py-2.5 text-center min-w-[160px]">
+    <div
+      ref={ref}
+      style={style}
+      className="animate-fade-in"
+      data-panzoom-ignore="true"
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      <div className="rounded-2xl bg-superficie border border-amarillo/40 shadow-lg px-4 py-3 text-center min-w-[200px]">
         <p className="text-xs text-texto-suave">
           Quieres una historia sobre
         </p>
         <p className="text-sm font-bold text-texto mt-0.5">
           {node.emoji} {node.nombre}?
         </p>
-        <div className="mt-2.5 flex items-center justify-center gap-2">
+        <div className="mt-3 flex flex-col gap-2">
           <Link
             href={`/jugar/lectura?topic=${encodeURIComponent(node.slug)}`}
-            className="rounded-xl bg-turquesa px-3 py-1.5 text-xs font-bold text-white hover:opacity-90 active:scale-[0.98] transition-all min-h-0 min-w-0"
+            className="flex items-center justify-center rounded-xl bg-turquesa px-4 py-2.5 text-xs font-bold text-white hover:opacity-90 active:scale-[0.98] transition-all min-h-[44px]"
           >
             Si, vamos!
           </Link>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl bg-neutro/10 px-3 py-1.5 text-xs font-semibold text-texto-suave hover:bg-neutro/20 transition-colors min-h-0 min-w-0"
+            className="flex items-center justify-center rounded-xl bg-neutro/10 px-4 py-2.5 text-xs font-semibold text-texto-suave hover:bg-neutro/20 transition-colors min-h-[44px]"
           >
-            No
+            No, gracias
           </button>
         </div>
       </div>
@@ -292,26 +344,27 @@ const GraphNode = memo(function GraphNode({
 
 // ─────────────────────────────────────────────
 // SVG Node label (zoom-responsive: full text at high zoom)
+// Now takes a stable boolean `showFullLabels` instead of numeric `scale`,
+// so memo() prevents re-renders during pan/zoom gestures.
 // ─────────────────────────────────────────────
 
 const NodeLabel = memo(function NodeLabel({
   node,
-  scale,
+  showFullLabels,
 }: {
   node: PositionedNode;
-  scale: number;
+  showFullLabels: boolean;
 }) {
   const fontSize = 10;
   const maxWidth = Math.max(60, node.radius * 3);
   const charWidth = fontSize * 0.55;
   const maxChars = Math.floor(maxWidth / charWidth);
 
-  const showFull = scale >= 1.3;
-  const text = showFull ? node.nombre : truncateLabel(node.nombre);
+  const text = showFullLabels ? node.nombre : truncateLabel(node.nombre);
 
   const y = node.y + node.radius + 4 + fontSize;
 
-  if (showFull && text.length > maxChars) {
+  if (showFullLabels && text.length > maxChars) {
     const lines = wrapText(text, maxChars);
     return (
       <text
@@ -562,7 +615,7 @@ export function SeccionRutaAprendizaje({ data }: Props) {
   );
 
   // SVG viewBox pan/zoom (handles ResizeObserver internally)
-  const { containerRef, viewBox, scale, resetView, zoomTo, toScreenPoint } = usePanZoom({
+  const { containerRef, svgRef, viewBox, scale, showFullLabels, resetView, zoomTo, toScreenPoint } = usePanZoom({
     minScale: 0.3,
     maxScale: 3,
     graphWidth: layout.width,
@@ -667,6 +720,7 @@ export function SeccionRutaAprendizaje({ data }: Props) {
             >
               {/* SVG canvas with viewBox-driven pan/zoom (always crisp vectors) */}
               <svg
+                ref={svgRef}
                 viewBox={viewBox}
                 width="100%"
                 height="100%"
@@ -698,7 +752,7 @@ export function SeccionRutaAprendizaje({ data }: Props) {
                 {/* Layer 4: Node labels */}
                 <g>
                   {layout.nodes.map((node) => (
-                    <NodeLabel key={`label-${node.slug}`} node={node} scale={scale} />
+                    <NodeLabel key={`label-${node.slug}`} node={node} showFullLabels={showFullLabels} />
                   ))}
                 </g>
 
@@ -724,6 +778,7 @@ export function SeccionRutaAprendizaje({ data }: Props) {
                   onClose={closePopover}
                   toScreenPoint={toScreenPoint}
                   scale={scale}
+                  nivelActual={data.nivelActual}
                 />
               )}
             </div>

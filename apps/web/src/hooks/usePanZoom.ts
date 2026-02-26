@@ -23,10 +23,13 @@ export interface UsePanZoomOptions {
 
 export interface UsePanZoomReturn {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  svgRef: React.RefObject<SVGSVGElement | null>;
   /** Ready-to-use SVG viewBox string: "vx vy vw vh" */
   viewBox: string;
   /** Derived zoom scale: containerWidth / viewBoxWidth */
   scale: number;
+  /** Whether full labels should show (scale >= threshold). Stable boolean for memo(). */
+  showFullLabels: boolean;
   resetView: () => void;
   zoomTo: (targetScale: number, screenCenterX?: number, screenCenterY?: number) => void;
   /** Convert graph-space point to screen-space pixel position (for HTML overlays). */
@@ -55,9 +58,20 @@ function getTouchDistance(touches: TouchList): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return !!target.closest(
+    'a,button,input,select,textarea,label,[role="button"],[data-panzoom-ignore="true"]',
+  );
+}
+
 // ─────────────────────────────────────────────
 // ViewBox helpers
 // ─────────────────────────────────────────────
+
+function vbToString(vb: VBState): string {
+  return `${vb.vx} ${vb.vy} ${vb.vw} ${vb.vh}`;
+}
 
 /** Compute the viewBox that fits the entire graph centered within the container. */
 function computeFitAll(gw: number, gh: number, cw: number, ch: number): VBState {
@@ -79,6 +93,8 @@ function computeFitAll(gw: number, gh: number, cw: number, ch: number): VBState 
   return { vx: 0, vy: -(vh - gh) / 2, vw, vh };
 }
 
+const SHOW_FULL_LABELS_THRESHOLD = 1.3;
+
 // ─────────────────────────────────────────────
 // Hook
 //
@@ -86,23 +102,29 @@ function computeFitAll(gw: number, gh: number, cw: number, ch: number): VBState 
 // and pixelates), we track a viewBox {vx, vy, vw, vh} in graph-space
 // coordinates. Shrinking vw/vh = zoom in, expanding = zoom out.
 // Everything renders as crisp vectors at any zoom level.
+//
+// Performance: During high-frequency gestures (wheel, drag, pinch),
+// we mutate the SVG viewBox attribute directly via ref (0 re-renders).
+// React state is synced only on gesture end (mouseup/touchend).
 // ─────────────────────────────────────────────
 
 export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
   const { minScale = 0.3, maxScale = 3, graphWidth, graphHeight } = options;
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   // Container pixel size: state for rendering, ref for gesture closures
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const containerSizeRef = useRef({ width: 0, height: 0 });
 
   // ViewBox state (graph-space coordinates)
+  // React state is the "source of truth" for rendering; vbRef is always up-to-date
+  // (including mid-gesture values that skip React).
   const [vb, setVb] = useState<VBState>(() =>
     computeFitAll(graphWidth, graphHeight, 350, 500),
   );
   const vbRef = useRef(vb);
-  vbRef.current = vb;
 
   // Track graph dimensions for resets
   const graphRef = useRef({ width: graphWidth, height: graphHeight });
@@ -119,6 +141,17 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
     [minScale, maxScale],
   );
 
+  /** Apply a viewBox to the SVG DOM element directly (no React re-render). */
+  const applySvgViewBox = useCallback((newVb: VBState) => {
+    vbRef.current = newVb;
+    svgRef.current?.setAttribute('viewBox', vbToString(newVb));
+  }, []);
+
+  /** Sync vbRef to React state (triggers 1 re-render). Call on gesture end. */
+  const syncToReact = useCallback(() => {
+    setVb(vbRef.current);
+  }, []);
+
   // ResizeObserver: track container size, fit-all on first measure
   const hasInitialized = useRef(false);
   useEffect(() => {
@@ -133,7 +166,9 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
 
         if (!hasInitialized.current && width > 0 && height > 0) {
           hasInitialized.current = true;
-          setVb(computeFitAll(graphRef.current.width, graphRef.current.height, width, height));
+          const fitVb = computeFitAll(graphRef.current.width, graphRef.current.height, width, height);
+          setVb(fitVb);
+          vbRef.current = fitVb;
         }
       }
     });
@@ -146,7 +181,9 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
     if (hasInitialized.current && graphWidth > 0 && graphHeight > 0) {
       const { width, height } = containerSizeRef.current;
       if (width > 0 && height > 0) {
-        setVb(computeFitAll(graphWidth, graphHeight, width, height));
+        const fitVb = computeFitAll(graphWidth, graphHeight, width, height);
+        setVb(fitVb);
+        vbRef.current = fitVb;
       }
     }
   }, [graphWidth, graphHeight]);
@@ -154,8 +191,10 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
   const resetView = useCallback(() => {
     const { width, height } = containerSizeRef.current;
     const g = graphRef.current;
-    setVb(computeFitAll(g.width, g.height, width, height));
-  }, []);
+    const fitVb = computeFitAll(g.width, g.height, width, height);
+    applySvgViewBox(fitVb);
+    setVb(fitVb);
+  }, [applySvgViewBox]);
 
   const zoomTo = useCallback(
     (targetScale: number, screenCenterX?: number, screenCenterY?: number) => {
@@ -164,23 +203,24 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
       const cx = screenCenterX ?? cw / 2;
       const cy = screenCenterY ?? ch / 2;
 
-      setVb((prev) => {
-        const newVw = clampVw(cw / targetScale);
-        const newVh = newVw * (ch / cw);
+      const prev = vbRef.current;
+      const newVw = clampVw(cw / targetScale);
+      const newVh = newVw * (ch / cw);
 
-        // Keep the point under (cx, cy) fixed in graph space
-        const gx = prev.vx + (cx / cw) * prev.vw;
-        const gy = prev.vy + (cy / ch) * prev.vh;
+      // Keep the point under (cx, cy) fixed in graph space
+      const gx = prev.vx + (cx / cw) * prev.vw;
+      const gy = prev.vy + (cy / ch) * prev.vh;
 
-        return {
-          vx: gx - (cx / cw) * newVw,
-          vy: gy - (cy / ch) * newVh,
-          vw: newVw,
-          vh: newVh,
-        };
-      });
+      const newVb: VBState = {
+        vx: gx - (cx / cw) * newVw,
+        vy: gy - (cy / ch) * newVh,
+        vw: newVw,
+        vh: newVh,
+      };
+      applySvgViewBox(newVb);
+      setVb(newVb);
     },
-    [clampVw],
+    [clampVw, applySvgViewBox],
   );
 
   const toScreenPoint = useCallback(
@@ -215,6 +255,7 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
     if (!elOrNull) return;
     const el: HTMLDivElement = elOrNull;
 
+    // High-frequency: mutate SVG directly, NO setVb()
     function handleWheel(e: WheelEvent) {
       e.preventDefault();
       const rect = el.getBoundingClientRect();
@@ -222,29 +263,31 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
       const mouseY = e.clientY - rect.top;
       const cw = rect.width;
       const ch = rect.height;
+      if (cw <= 0 || ch <= 0) return;
 
-      setVb((prev) => {
-        // deltaY > 0 = scroll down = zoom out = viewBox grows
-        const factor = e.deltaY > 0 ? 1 / 0.92 : 1 / 1.08;
-        const newVw = clampVw(prev.vw * factor);
-        const newVh = newVw * (ch / cw);
+      const prev = vbRef.current;
+      const factor = e.deltaY > 0 ? 1 / 0.92 : 1 / 1.08;
+      const newVw = clampVw(prev.vw * factor);
+      const newVh = newVw * (ch / cw);
 
-        // Keep the cursor point fixed in graph space
-        const gx = prev.vx + (mouseX / cw) * prev.vw;
-        const gy = prev.vy + (mouseY / ch) * prev.vh;
+      const gx = prev.vx + (mouseX / cw) * prev.vw;
+      const gy = prev.vy + (mouseY / ch) * prev.vh;
 
-        return {
-          vx: gx - (mouseX / cw) * newVw,
-          vy: gy - (mouseY / ch) * newVh,
-          vw: newVw,
-          vh: newVh,
-        };
+      applySvgViewBox({
+        vx: gx - (mouseX / cw) * newVw,
+        vy: gy - (mouseY / ch) * newVh,
+        vw: newVw,
+        vh: newVh,
       });
+      // Debounced sync: wheel events stop naturally, sync after brief pause
+      clearTimeout(wheelSyncTimer);
+      wheelSyncTimer = window.setTimeout(syncToReact, 120);
     }
 
+    let wheelSyncTimer = 0;
+
     function handleMouseDown(e: MouseEvent) {
-      const target = e.target as Element;
-      if (target.closest('[role="button"], a')) return;
+      if (isInteractiveTarget(e.target)) return;
 
       e.preventDefault();
       const g = gestureRef.current;
@@ -255,6 +298,7 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
       el.style.cursor = 'grabbing';
     }
 
+    // High-frequency: mutate SVG directly, NO setVb()
     function handleMouseMove(e: MouseEvent) {
       const g = gestureRef.current;
       if (!g.isPanning) return;
@@ -264,8 +308,7 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
       const dx = e.clientX - g.startX;
       const dy = e.clientY - g.startY;
 
-      // Dragging right moves content right, so viewBox origin moves left
-      setVb({
+      applySvgViewBox({
         vx: g.startVb.vx - dx * (g.startVb.vw / cw),
         vy: g.startVb.vy - dy * (g.startVb.vh / ch),
         vw: g.startVb.vw,
@@ -273,16 +316,19 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
       });
     }
 
+    // Gesture end: sync to React state (1 re-render)
     function handleMouseUp() {
-      gestureRef.current.isPanning = false;
+      if (gestureRef.current.isPanning) {
+        gestureRef.current.isPanning = false;
+        syncToReact();
+      }
       el.style.cursor = 'grab';
     }
 
     // ── Touch handlers ──
 
     function handleTouchStart(e: TouchEvent) {
-      const target = e.target as Element;
-      if (target.closest('[role="button"], a')) return;
+      if (isInteractiveTarget(e.target)) return;
 
       const g = gestureRef.current;
 
@@ -335,6 +381,7 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
       }
     }
 
+    // High-frequency: mutate SVG directly, NO setVb()
     function handleTouchMove(e: TouchEvent) {
       const g = gestureRef.current;
       const cw = containerSizeRef.current.width || 350;
@@ -342,26 +389,25 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
 
       if (g.isPinching && e.touches.length === 2) {
         e.preventDefault();
+        if (g.startDistance <= 0) return;
         const newDistance = getTouchDistance(e.touches);
-        const ratio = newDistance / g.startDistance; // >1 = spread = zoom in
+        if (newDistance <= 0) return;
+        const ratio = newDistance / g.startDistance;
 
-        // Zoom in = viewBox shrinks
         const newVw = clampVw(g.startVb.vw / ratio);
         const newVh = newVw * (ch / cw);
 
-        // Keep the original pinch center fixed in graph space
         const rect = el.getBoundingClientRect();
         const cx = g.startX - rect.left;
         const cy = g.startY - rect.top;
         const gx = g.startVb.vx + (cx / cw) * g.startVb.vw;
         const gy = g.startVb.vy + (cy / ch) * g.startVb.vh;
 
-        // Also account for pinch center movement (pan while pinching)
         const center = getTouchCenter(e.touches);
         const panDx = center.x - g.startX;
         const panDy = center.y - g.startY;
 
-        setVb({
+        applySvgViewBox({
           vx: gx - (cx / cw) * newVw - panDx * (newVw / cw),
           vy: gy - (cy / ch) * newVh - panDy * (newVh / ch),
           vw: newVw,
@@ -374,7 +420,7 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
 
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
           e.preventDefault();
-          setVb({
+          applySvgViewBox({
             vx: g.startVb.vx - dx * (g.startVb.vw / cw),
             vy: g.startVb.vy - dy * (g.startVb.vh / ch),
             vw: g.startVb.vw,
@@ -384,11 +430,14 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
       }
     }
 
-    function handleTouchEnd(e: TouchEvent) {
+    // Gesture end/cancel: sync to React state (1 re-render)
+    function handleTouchEndOrCancel(e: TouchEvent) {
       const g = gestureRef.current;
       if (e.touches.length === 0) {
+        const wasGesturing = g.isPanning || g.isPinching;
         g.isPanning = false;
         g.isPinching = false;
+        if (wasGesturing) syncToReact();
       } else if (e.touches.length === 1) {
         // Transition from pinch to pan
         g.isPinching = false;
@@ -406,25 +455,29 @@ export function usePanZoom(options: UsePanZoomOptions): UsePanZoomReturn {
     window.addEventListener('mouseup', handleMouseUp);
     el.addEventListener('touchstart', handleTouchStart, { passive: false });
     el.addEventListener('touchmove', handleTouchMove, { passive: false });
-    el.addEventListener('touchend', handleTouchEnd);
+    el.addEventListener('touchend', handleTouchEndOrCancel);
+    el.addEventListener('touchcancel', handleTouchEndOrCancel);
 
     el.style.cursor = 'grab';
 
     return () => {
+      clearTimeout(wheelSyncTimer);
       el.removeEventListener('wheel', handleWheel);
       el.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       el.removeEventListener('touchstart', handleTouchStart);
       el.removeEventListener('touchmove', handleTouchMove);
-      el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchend', handleTouchEndOrCancel);
+      el.removeEventListener('touchcancel', handleTouchEndOrCancel);
     };
-  }, [clampVw, zoomTo]);
+  }, [clampVw, zoomTo, applySvgViewBox, syncToReact]);
 
   // Derived values
   const cw = containerSize.width;
   const scale = cw > 0 ? cw / vb.vw : 1;
-  const viewBox = `${vb.vx} ${vb.vy} ${vb.vw} ${vb.vh}`;
+  const showFullLabels = scale >= SHOW_FULL_LABELS_THRESHOLD;
+  const viewBox = vbToString(vb);
 
-  return { containerRef, viewBox, scale, resetView, zoomTo, toScreenPoint };
+  return { containerRef, svgRef, viewBox, scale, showFullLabels, resetView, zoomTo, toScreenPoint };
 }
