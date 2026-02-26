@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { createToken, verifyToken } from '@/server/jwt';
 
-const ADMIN_COOKIE = 'omega-admin';
+const ADMIN_COOKIE = 'zeta-admin';
 const ADMIN_SESSION_SECONDS = 7 * 24 * 60 * 60;
 
 type AdminTokenPayload = {
@@ -9,11 +9,25 @@ type AdminTokenPayload = {
   username: string;
 };
 
-function getAdminCredentials() {
+async function getAdminCredentials() {
+  // In Cloudflare Workers, secrets live in bindings, not process.env.
+  // Try to read from Cloudflare context first, fall back to process.env (dev).
+  let cfEnv: Record<string, string> = {};
+  try {
+    const { getCloudflareContext } = await import('@opennextjs/cloudflare');
+    const { env } = await getCloudflareContext({ async: true });
+    cfEnv = env as Record<string, string>;
+  } catch {
+    // Not in Cloudflare context (local dev)
+  }
+
+  const username = cfEnv.ADMIN_USER || process.env.ADMIN_USER || '';
+  const password = cfEnv.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || '';
+
   return {
-    username: (process.env.ADMIN_USER ?? 'juan').trim(),
-    password: (process.env.ADMIN_PASSWORD ?? 'juan').trim(),
-    usingDefaults: !process.env.ADMIN_USER && !process.env.ADMIN_PASSWORD,
+    username: username.trim() || 'admin',
+    password: password.trim() || 'admin',
+    usingDefaults: !username && !password,
   };
 }
 
@@ -40,9 +54,10 @@ export async function getCurrentAdmin() {
   const data = await verificarTokenAdmin(token);
   if (!data) return null;
 
+  const creds = await getAdminCredentials();
   return {
     username: data.username,
-    usingDefaultCredentials: getAdminCredentials().usingDefaults,
+    usingDefaultCredentials: creds.usingDefaults,
   };
 }
 
@@ -59,7 +74,7 @@ export async function requireAdminAuth() {
 }
 
 export async function loginAdmin(username: string, password: string) {
-  const creds = getAdminCredentials();
+  const creds = await getAdminCredentials();
   if (username.trim() !== creds.username || password.trim() !== creds.password) {
     return {
       ok: false as const,
@@ -71,7 +86,7 @@ export async function loginAdmin(username: string, password: string) {
   const token = await crearTokenAdmin({ role: 'admin', username: creds.username });
   store.set(ADMIN_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     sameSite: 'lax',
     maxAge: ADMIN_SESSION_SECONDS,
     path: '/admin',
@@ -88,7 +103,7 @@ export async function logoutAdmin() {
   const store = await cookies();
   store.set(ADMIN_COOKIE, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     sameSite: 'lax',
     maxAge: 0,
     path: '/admin',

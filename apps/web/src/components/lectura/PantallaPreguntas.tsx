@@ -109,7 +109,7 @@ export default function PantallaPreguntas({
     <div className="animate-fade-in w-full max-w-md mx-auto">
       {/* Progreso */}
       <div className="flex items-center justify-between mb-4 px-1">
-        <span className="text-sm text-texto-suave">
+        <span className="text-sm text-texto-suave font-datos">
           Pregunta {preguntaActual + 1} de {preguntas.length}
         </span>
         <div className="flex gap-1.5">
@@ -162,14 +162,14 @@ export default function PantallaPreguntas({
       {/* Tipo de pregunta */}
       <div className="flex items-center gap-2 mb-3">
         <span className="text-lg">{TIPO_EMOJI[pregunta.tipo]}</span>
-        <span className="text-xs font-medium text-texto-suave bg-superficie px-3 py-1 rounded-full">
+        <span className="text-xs font-medium text-texto-suave bg-superficie px-3 py-1 rounded-full font-datos">
           {TIPO_LABELS[pregunta.tipo]}
         </span>
       </div>
 
       {/* Pregunta */}
       <div className="bg-superficie rounded-3xl p-5 shadow-sm border border-neutro/10 mb-5">
-        <p className="text-lg font-semibold text-texto leading-relaxed">
+        <p className="text-lg font-semibold text-texto leading-relaxed font-datos">
           {pregunta.pregunta}
         </p>
       </div>
@@ -254,7 +254,7 @@ export default function PantallaPreguntas({
               touch-manipulation
             "
           >
-            {preguntaActual + 1 < preguntas.length ? 'Siguiente' : 'Ver mi resultado'}
+            <span className="font-datos">{preguntaActual + 1 < preguntas.length ? 'Siguiente' : 'Ver mi resultado'}</span>
             <span>{preguntaActual + 1 < preguntas.length ? '→' : '🏆'}</span>
           </button>
         </div>

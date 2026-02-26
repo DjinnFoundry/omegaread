@@ -2,7 +2,7 @@
  * Story generation trace: types, state machine functions, and fun-mode helpers.
  * No I/O, no DB, no server directives. Pure domain logic.
  */
-import type { ParentConfig, StoryMetadata } from '@omegaread/db';
+import type { ParentConfig, StoryMetadata } from '@zetaread/db';
 
 // ─── Fun mode helpers ───
 

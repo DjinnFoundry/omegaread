@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
 import { getDb } from '@/server/db';
-import { parents, students, eq, and } from '@omegaread/db';
+import { parents, students, eq, and } from '@zetaread/db';
 import { createToken, verifyToken } from '@/server/jwt';
 
 const AUTH_COOKIE = 'omega-auth';

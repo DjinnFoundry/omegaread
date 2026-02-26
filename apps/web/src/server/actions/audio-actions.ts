@@ -11,7 +11,7 @@ import {
   sessions,
   eq,
   and,
-} from '@omegaread/db';
+} from '@zetaread/db';
 import { requireStudentOwnership } from '../auth';
 import { analizarLecturaAudioSchema } from '../validation';
 import { getOpenAIClient, hasLLMKey, OpenAIKeyMissingError } from '@/lib/ai/openai';

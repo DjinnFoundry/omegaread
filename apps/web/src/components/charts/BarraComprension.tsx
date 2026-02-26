@@ -17,7 +17,7 @@ interface BarraComprensionProps {
 
 function colorBarra(porcentaje: number): string {
   if (porcentaje >= 80) return '#7BC67E'; // acierto/bosque
-  if (porcentaje >= 60) return '#FFE66D'; // amarillo
+  if (porcentaje >= 60) return '#D4880B'; // ambar
   return '#FF6B6B'; // coral
 }
 

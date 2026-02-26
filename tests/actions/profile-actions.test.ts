@@ -35,7 +35,7 @@ vi.mock('@/lib/profile/micro-profile', () => ({
   })),
 }));
 
-vi.mock('@omegaread/db', () => ({
+vi.mock('@zetaread/db', () => ({
   parents: { id: 'id' },
   students: { id: 'id', parentId: 'parent_id' },
   eq: vi.fn((...args: unknown[]) => args),

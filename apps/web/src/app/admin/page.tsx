@@ -43,34 +43,48 @@ function retentionCellClass(rate: number | null): string {
 }
 
 function StoriesBarChart({ data }: { data: AdminDashboardData['storiesByDay'] }) {
+  const total = data.reduce((acc, item) => acc + item.stories, 0);
   const maxStories = Math.max(1, ...data.map((item) => item.stories));
+  const allZero = total === 0;
   const tickIndexes = new Set([0, Math.floor(data.length / 2), data.length - 1]);
 
   return (
     <div className="rounded-3xl border border-neutro/20 bg-white p-4">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-bold text-texto">Historias generadas por dia (30 dias)</h3>
-        <span className="text-xs text-texto-suave">
-          Total 30 dias: {data.reduce((acc, item) => acc + item.stories, 0)}
+        <span className="font-datos text-xs text-texto-suave">
+          Total 30 dias: <span className="font-semibold text-texto">{total}</span>
         </span>
       </div>
 
-      <div className="flex h-40 items-end gap-1 rounded-2xl bg-fondo/70 px-3 py-2">
-        {data.map((item, idx) => (
-          <div key={item.date} className="flex min-w-0 flex-1 flex-col items-center justify-end">
-            <div
-              className="w-full rounded-t-md bg-turquesa/80"
-              style={{
-                height: `${Math.max(4, (item.stories / maxStories) * 100)}%`,
-              }}
-              title={`${item.date}: ${item.stories} historias, ${item.totalTokens} tokens`}
-            />
-            <span className="mt-1 text-[10px] text-texto-suave">
-              {tickIndexes.has(idx) ? formatShortDate(item.date) : ''}
-            </span>
-          </div>
-        ))}
-      </div>
+      {allZero ? (
+        <div className="flex h-40 items-center justify-center rounded-2xl bg-fondo/70">
+          <p className="text-sm text-texto-suave">Sin historias en los ultimos 30 dias</p>
+        </div>
+      ) : (
+        <div className="flex h-40 items-end gap-1 rounded-2xl bg-fondo/70 px-3 py-2">
+          {data.map((item, idx) => (
+            <div key={item.date} className="flex min-w-0 flex-1 flex-col items-center justify-end">
+              {item.stories > 0 && (
+                <span className="mb-0.5 text-[9px] font-semibold leading-none text-turquesa">
+                  {item.stories}
+                </span>
+              )}
+              <div
+                className="w-full rounded-t-md bg-turquesa/80"
+                style={{
+                  height: item.stories === 0 ? '2px' : `${Math.max(8, (item.stories / maxStories) * 100)}%`,
+                  opacity: item.stories === 0 ? 0.15 : 1,
+                }}
+                title={`${item.date}: ${item.stories} historias, ${item.totalTokens} tokens`}
+              />
+              <span className="mt-1 text-[10px] text-texto-suave">
+                {tickIndexes.has(idx) ? formatShortDate(item.date) : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -108,17 +122,10 @@ function CompletionRateChart({ data }: { data: AdminDashboardData['completionByD
   const toY = (value: number) => top + ((maxRate - value) / maxRate) * chartHeight;
   const xTickIndexes = new Set([0, Math.floor(data.length / 2), data.length - 1]);
 
-  const segments: string[] = [];
-  let current: string[] = [];
-  data.forEach((point, idx) => {
-    if (point.completionRate === null) {
-      if (current.length > 1) segments.push(current.join(' '));
-      current = [];
-      return;
-    }
-    current.push(`${toX(idx)},${toY(point.completionRate)}`);
-  });
-  if (current.length > 1) segments.push(current.join(' '));
+  const connectedPoints = data
+    .map((point, idx) => (point.completionRate !== null ? `${toX(idx)},${toY(point.completionRate)}` : null))
+    .filter((p): p is string => p !== null)
+    .join(' ');
 
   return (
     <div className="rounded-3xl border border-neutro/20 bg-white p-4 shadow-sm">
@@ -142,15 +149,16 @@ function CompletionRateChart({ data }: { data: AdminDashboardData['completionByD
           );
         })}
 
-        {segments.map((segment, idx) => (
+        {connectedPoints && (
           <polyline
-            key={idx}
             fill="none"
             stroke="#0F766E"
             strokeWidth="2.5"
-            points={segment}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            points={connectedPoints}
           />
-        ))}
+        )}
 
         {data.map((point, idx) => {
           if (point.completionRate === null) return null;
@@ -159,7 +167,7 @@ function CompletionRateChart({ data }: { data: AdminDashboardData['completionByD
               key={point.date}
               cx={toX(idx)}
               cy={toY(point.completionRate)}
-              r="2.3"
+              r="3.5"
               fill="#0F766E"
             />
           );
@@ -363,11 +371,115 @@ function CohortLineChart({ data }: { data: AdminDashboardData['comprehensionByCo
   );
 }
 
+function EngagementChart({ data }: { data: AdminDashboardData['engagement'] }) {
+  const series = data.series.slice(-14);
+
+  const width = 760;
+  const height = 220;
+  const left = 36;
+  const right = 18;
+  const top = 16;
+  const bottom = 30;
+  const chartWidth = width - left - right;
+  const chartHeight = height - top - bottom;
+
+  const maxCount = Math.max(1, ...series.map((d) => Math.max(d.dau, d.wau)));
+  const spanX = Math.max(1, series.length - 1);
+
+  const toX = (idx: number) => left + (idx / spanX) * chartWidth;
+  const toY = (value: number) => top + ((maxCount - value) / maxCount) * chartHeight;
+
+  const dauPoints = series.map((d, idx) => `${toX(idx)},${toY(d.dau)}`).join(' ');
+  const wauPoints = series.map((d, idx) => `${toX(idx)},${toY(d.wau)}`).join(' ');
+
+  const yTicks = [0, Math.round(maxCount / 2), maxCount].filter(
+    (v, i, arr) => arr.indexOf(v) === i,
+  );
+  const xTickIndexes = new Set([0, Math.floor(series.length / 2), series.length - 1]);
+
+  return (
+    <div className="mt-3">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-48 w-full">
+        {yTicks.map((tick) => {
+          const y = toY(tick);
+          return (
+            <g key={tick}>
+              <line x1={left} y1={y} x2={width - right} y2={y} stroke="#e5e7eb" strokeWidth="1" />
+              <text x={left - 6} y={y + 4} textAnchor="end" fontSize="10" fill="#9ca3af">
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+
+        {series.length > 1 && (
+          <>
+            <polyline
+              fill="none"
+              stroke="#FF6B6B"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              points={wauPoints}
+              strokeDasharray="5 3"
+            />
+            <polyline
+              fill="none"
+              stroke="#4ECDC4"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              points={dauPoints}
+            />
+          </>
+        )}
+
+        {series.map((d, idx) => (
+          <g key={d.date}>
+            <circle cx={toX(idx)} cy={toY(d.wau)} r="3" fill="#FF6B6B" />
+            <circle cx={toX(idx)} cy={toY(d.dau)} r="3.5" fill="#4ECDC4" />
+          </g>
+        ))}
+
+        {series.map((d, idx) => {
+          if (!xTickIndexes.has(idx)) return null;
+          return (
+            <text
+              key={`tick-${d.date}`}
+              x={toX(idx)}
+              y={height - 8}
+              textAnchor="middle"
+              fontSize="10"
+              fill="#9ca3af"
+            >
+              {formatShortDate(d.date)}
+            </text>
+          );
+        })}
+      </svg>
+
+      <div className="mt-1 flex gap-4">
+        <div className="flex items-center gap-1.5 text-xs text-texto-suave">
+          <span className="inline-block h-2 w-5 rounded-full bg-[#4ECDC4]" />
+          DAU (usuarios activos diarios)
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-texto-suave">
+          <span
+            className="inline-block h-0.5 w-5 rounded-full bg-[#FF6B6B]"
+            style={{ borderTop: '2px dashed #FF6B6B', backgroundColor: 'transparent' }}
+          />
+          WAU (usuarios activos semanales)
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LoginScreen({ showError }: { showError: boolean }) {
   return (
     <main className="min-h-screen bg-fondo px-4 py-10">
       <div className="mx-auto max-w-md rounded-3xl border border-neutro/20 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-bold text-texto">Admin OmegaRead</h1>
+        <h1 className="text-2xl font-bold text-texto">Admin ZetaRead</h1>
         <p className="mt-2 text-sm text-texto-suave">
           Acceso interno para metricas operativas. Por ahora usa credenciales basicas.
         </p>
@@ -388,7 +500,6 @@ function LoginScreen({ showError }: { showError: boolean }) {
               name="username"
               type="text"
               required
-              defaultValue="juan"
               className="w-full rounded-2xl border border-neutro/25 px-3 py-2 text-sm outline-none focus:border-turquesa"
             />
           </div>
@@ -402,7 +513,6 @@ function LoginScreen({ showError }: { showError: boolean }) {
               name="password"
               type="password"
               required
-              defaultValue="juan"
               className="w-full rounded-2xl border border-neutro/25 px-3 py-2 text-sm outline-none focus:border-turquesa"
             />
           </div>
@@ -428,9 +538,7 @@ function DashboardScreen({
   usingDefaultCredentials: boolean;
   data: AdminDashboardData;
 }) {
-  const recentEngagement = data.engagement.series.slice(-14);
   const recentStories = data.storiesByDay.slice(-7);
-  const completionByDate = new Map(data.completionByDay.map((item) => [item.date, item]));
 
   return (
     <main className="min-h-screen bg-fondo px-4 py-6 md:px-6">
@@ -470,30 +578,43 @@ function DashboardScreen({
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-3xl border border-neutro/20 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase text-texto-suave">Estudiantes</p>
-            <p className="mt-2 text-3xl font-bold text-texto">{data.totals.students}</p>
+            <p className="mt-2 font-datos text-3xl font-bold text-texto">{data.totals.students}</p>
           </div>
 
           <div className="rounded-3xl border border-neutro/20 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase text-texto-suave">Historias generadas</p>
-            <p className="mt-2 text-3xl font-bold text-texto">{data.totals.stories}</p>
+            <p className="mt-2 font-datos text-3xl font-bold text-texto">{data.totals.stories}</p>
           </div>
 
           <div className="rounded-3xl border border-neutro/20 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase text-texto-suave">Lecturas completadas</p>
-            <p className="mt-2 text-3xl font-bold text-texto">{data.totals.readingSessions}</p>
+            <p className="mt-2 font-datos text-3xl font-bold text-texto">{data.totals.readingSessions}</p>
           </div>
 
           <div className="rounded-3xl border border-neutro/20 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase text-texto-suave">Completitud media (30d)</p>
-            <p className="mt-2 text-3xl font-bold text-texto">
+            <p className="mt-2 font-datos text-3xl font-bold text-texto">
               {percentage(data.totals.avgCompletionRate30d)}
             </p>
           </div>
 
           <div className="rounded-3xl border border-neutro/20 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase text-texto-suave">Tokens totales (estimados)</p>
-            <p className="mt-2 text-3xl font-bold text-texto">{data.totals.totalTokens.toLocaleString('es-ES')}</p>
-            <p className="mt-1 text-xs text-texto-suave">Coste: {formatUsd(data.totals.estimatedCostUsd)}</p>
+            <p className="text-xs font-semibold uppercase text-texto-suave">Tokens totales</p>
+            <p className="mt-2 font-datos text-3xl font-bold text-texto">{data.totals.totalTokens.toLocaleString('es-ES')}</p>
+            <div className="mt-2 space-y-0.5 text-xs text-texto-suave">
+              <p>
+                Input:{' '}
+                <span className="font-datos font-semibold text-texto">{data.totals.totalInputTokens.toLocaleString('es-ES')}</span>
+              </p>
+              <p>
+                Output:{' '}
+                <span className="font-datos font-semibold text-texto">{data.totals.totalOutputTokens.toLocaleString('es-ES')}</span>
+              </p>
+              <p className="mt-1 border-t border-neutro/10 pt-1">
+                Coste:{' '}
+                <span className="font-datos font-semibold text-texto">{formatUsd(data.totals.estimatedCostUsd)}</span>
+              </p>
+            </div>
           </div>
         </section>
 
@@ -563,32 +684,19 @@ function DashboardScreen({
             <div className="mt-3 grid grid-cols-3 gap-2">
               <div className="rounded-2xl bg-fondo p-3">
                 <p className="text-xs text-texto-suave">DAU hoy</p>
-                <p className="mt-1 text-2xl font-bold text-texto">{data.engagement.dau}</p>
+                <p className="mt-1 font-datos text-2xl font-bold text-texto">{data.engagement.dau}</p>
               </div>
               <div className="rounded-2xl bg-fondo p-3">
                 <p className="text-xs text-texto-suave">WAU hoy</p>
-                <p className="mt-1 text-2xl font-bold text-texto">{data.engagement.wau}</p>
+                <p className="mt-1 font-datos text-2xl font-bold text-texto">{data.engagement.wau}</p>
               </div>
               <div className="rounded-2xl bg-fondo p-3">
                 <p className="text-xs text-texto-suave">Stickiness</p>
-                <p className="mt-1 text-2xl font-bold text-texto">{percentage(data.engagement.dauWauRatio)}</p>
+                <p className="mt-1 font-datos text-2xl font-bold text-texto">{percentage(data.engagement.dauWauRatio)}</p>
               </div>
             </div>
 
-            <div className="mt-4 space-y-1.5 text-xs">
-              {recentEngagement.map((row) => {
-                const comp = completionByDate.get(row.date);
-                return (
-                  <div key={row.date} className="flex items-center justify-between rounded-xl bg-fondo/70 px-2 py-1">
-                    <span className="text-texto-suave">{formatShortDate(row.date)}</span>
-                    <span className="font-semibold text-texto">
-                      DAU {row.dau} / WAU {row.wau} ({percentage(row.dauWauRatio)})
-                      {comp ? ` | Comp ${percentage(comp.completionRate)}` : ''}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <EngagementChart data={data.engagement} />
           </div>
 
           <CohortLineChart data={data.comprehensionByCohort} />

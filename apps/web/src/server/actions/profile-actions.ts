@@ -12,7 +12,7 @@ import {
   and,
   type ParentConfig,
   type AccesibilidadConfig,
-} from '@omegaread/db';
+} from '@zetaread/db';
 import { requireAuth, requireStudentOwnership } from '../auth';
 import {
   actualizarPerfilSchema,

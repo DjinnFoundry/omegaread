@@ -21,7 +21,7 @@ import {
   type InferSelectModel,
   type ParentConfig,
   type AccesibilidadConfig,
-} from '@omegaread/db';
+} from '@zetaread/db';
 import { getStudentContext } from '../student-context';
 import {
   calcularProgresoNivel,

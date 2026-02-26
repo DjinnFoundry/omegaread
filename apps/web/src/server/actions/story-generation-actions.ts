@@ -20,7 +20,7 @@ import {
   gte,
   desc,
   sql,
-} from '@omegaread/db';
+} from '@zetaread/db';
 import { requireStudentOwnership } from '../auth';
 import { getStudentContext } from '../student-context';
 import {
@@ -63,12 +63,9 @@ import {
 import { mergeSessionMetadata } from '@/lib/types/session-metadata';
 import { mapPreguntaToDTO } from '@/lib/questions/mapper';
 
-// Re-export the trace type so the barrel can still expose it.
-export type { StoryGenerationTrace };
-
 // ─── Constants ───
 
-export const MAX_HISTORIAS_DIA = 20;
+const MAX_HISTORIAS_DIA = 20;
 
 // Numero de dias hacia atras que se considera valida una historia cacheada.
 const CACHE_TTL_DIAS = 7;

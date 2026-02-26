@@ -1,12 +1,12 @@
 /**
- * @omegaread/db -- Conexion a base de datos y exports
+ * @zetaread/db -- Conexion a base de datos y exports
  *
  * Para Cloudflare D1 (SQLite):
- *   import { createDb } from '@omegaread/db';
+ *   import { createDb } from '@zetaread/db';
  *   const db = createDb(env.DB);
  *
  * Schema:
- *   import { parents, students } from '@omegaread/db/schema';
+ *   import { parents, students } from '@zetaread/db/schema';
  */
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from './schema';

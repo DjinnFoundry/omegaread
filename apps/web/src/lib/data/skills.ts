@@ -1,5 +1,5 @@
 /**
- * Skill Tree para OmegaRead.
+ * Skill Tree para ZetaRead.
  *
  * Cada skill pertenece a un dominio y tiene un nivel (1, 2, 3).
  * - Nivel 1: siempre desbloqueado, sin prerequisitos.

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { obtenerPadreActual } from '@/server/auth';
 import { getDb } from '@/server/db';
-import { students, eq } from '@omegaread/db';
+import { students, eq } from '@zetaread/db';
 
 /**
  * GET /api/estudiantes

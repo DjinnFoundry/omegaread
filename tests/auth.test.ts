@@ -4,7 +4,7 @@
  *
  * Mocking strategy:
  * - next/headers and next/navigation: Aliased to __mocks__/next/* in vitest.config.ts
- * - jose, bcryptjs, @/server/db, @omegaread/db: Mocked inline with vi.mock()
+ * - jose, bcryptjs, @/server/db, @zetaread/db: Mocked inline with vi.mock()
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { UUID_PARENT, UUID_STUDENT, createMockParent, createMockStudent } from './_helpers/fixtures';
@@ -27,7 +27,7 @@ const mockDb = {
 // Gets the actual mock from the next/headers mock when needed
 let mockCookieStore: any = null;
 
-// ─── MOCKS (jose, bcryptjs, @/server/db, @omegaread/db) ───
+// ─── MOCKS (jose, bcryptjs, @/server/db, @zetaread/db) ───
 
 vi.mock('jose', () => {
   const mockSignJWT = {
@@ -57,7 +57,7 @@ vi.mock('@/server/db', () => ({
   getDb: vi.fn(async () => mockDb),
 }));
 
-vi.mock('@omegaread/db', () => ({
+vi.mock('@zetaread/db', () => ({
   parents: {},
   students: {},
   eq: vi.fn((col, val) => ({ col, val })),

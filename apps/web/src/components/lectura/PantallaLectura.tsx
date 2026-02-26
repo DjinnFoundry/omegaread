@@ -57,7 +57,7 @@ interface PantallaLecturaProps {
 type TipoFuenteLectura = 'libro' | 'dislexia';
 
 const DELAY_TERMINAR_MS = 15_000;
-const READING_FONT_STORAGE_KEY = 'omegaread.reading-font';
+const READING_FONT_STORAGE_KEY = 'zetaread.reading-font';
 
 /** Font size adaptativo: nivel 1.0 -> 24px, nivel 4.8 -> 18px */
 function getFontSizePx(nivel: number): number {
@@ -355,7 +355,7 @@ export default function PantallaLectura({
 
       {/* Barra superior compacta */}
       <div className="flex items-center justify-between mb-3 no-print">
-        <span className="text-xs text-texto-suave bg-superficie px-3 py-1 rounded-full border border-neutro/10">
+        <span className="text-xs text-texto-suave bg-superficie px-3 py-1 rounded-full border border-neutro/10 font-datos">
           {paginaActual + 1} / {totalPaginas}
         </span>
 
@@ -491,10 +491,10 @@ export default function PantallaLectura({
           aria-label="Pagina anterior"
         >
           <span>←</span>
-          <span>Anterior</span>
+          <span className="font-datos">Anterior</span>
         </button>
 
-        <span className="text-sm font-medium text-texto-suave tabular-nums">
+        <span className="text-sm font-medium text-texto-suave tabular-nums font-datos">
           {paginaActual + 1} / {totalPaginas}
         </span>
 
@@ -516,11 +516,11 @@ export default function PantallaLectura({
               "
               aria-label="He terminado de leer"
             >
-              <span>{procesandoAudio ? 'Analizando...' : 'Terminar'}</span>
+              <span className="font-datos">{procesandoAudio ? 'Analizando...' : 'Terminar'}</span>
               <span>✓</span>
             </button>
           ) : (
-            <span className="text-xs text-texto-suave">Tomate tu tiempo para leer...</span>
+            <span className="text-xs text-texto-suave font-datos">Tomate tu tiempo para leer...</span>
           )
         ) : (
           <button
@@ -539,7 +539,7 @@ export default function PantallaLectura({
             "
             aria-label="Siguiente pagina"
           >
-            <span>Siguiente</span>
+            <span className="font-datos">Siguiente</span>
             <span>→</span>
           </button>
         )}

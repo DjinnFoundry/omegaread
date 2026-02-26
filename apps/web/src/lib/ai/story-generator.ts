@@ -40,6 +40,7 @@ export type { LLMUsageSnapshot } from './call-llm';
 // Reintentos automaticos desactivados por UX/latencia.
 // 0 = una sola llamada al LLM y, si falla, el reintento queda en manos del usuario.
 const MAX_REINTENTOS = 0;
+const MAX_QA_RETRIES = 2;
 const TIPOS_PREGUNTA_CANONICOS = ['literal', 'inferencia', 'vocabulario', 'resumen'] as const;
 
 type TipoPreguntaCanonico = (typeof TIPOS_PREGUNTA_CANONICOS)[number];
@@ -329,123 +330,126 @@ function buildGeneratedStory(
 
 /**
  * Genera una historia + preguntas via LLM con reintentos y QA.
+ * Si QA rechaza, reintenta hasta MAX_QA_RETRIES veces antes de fallar.
  */
 export async function generateStory(input: PromptInput): Promise<StoryGenerationResult> {
   const maxTokens = envInt('LLM_MAX_TOKENS_STORY', 1200);
   const systemPrompt = buildSystemPrompt();
-  const userPrompt = buildUserPrompt(input, { intento: 1 });
 
-  const outcome = await callLLM({
-    systemPrompt,
-    userMessage: userPrompt,
-    maxRetries: MAX_REINTENTOS,
-    temperature: 0.8,
-    maxTokens,
-    modelEnvVar: 'LLM_MODEL_STORY',
-    logTag: 'generateStory',
-  });
+  let lastError = '';
+  for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
+    const userPrompt = buildUserPrompt(input, { intento: attempt + 1 });
 
-  if (!outcome.ok) {
-    return { ok: false, error: outcome.error, code: outcome.code };
+    const outcome = await callLLM({
+      systemPrompt,
+      userMessage: userPrompt,
+      maxRetries: MAX_REINTENTOS,
+      temperature: 0.8 + attempt * 0.05,
+      maxTokens,
+      modelEnvVar: 'LLM_MODEL_STORY',
+      logTag: `generateStory[${attempt}]`,
+    });
+
+    if (!outcome.ok) {
+      return { ok: false, error: outcome.error, code: outcome.code };
+    }
+
+    const { result } = outcome;
+    const { parsed } = result;
+
+    if (!validarEstructura(parsed)) {
+      lastError = 'Estructura de respuesta invalida';
+      console.warn(`[generateStory] QA retry ${attempt + 1}/${MAX_QA_RETRIES + 1}: ${lastError}`);
+      continue;
+    }
+
+    const storyOutput = parsed as StoryLLMOutput;
+    const qa = evaluarHistoria(storyOutput, input.nivel, {
+      historiasAnteriores: input.historiasAnteriores,
+    });
+
+    if (!qa.aprobada) {
+      lastError = qa.motivo ?? 'QA rechazada sin motivo';
+      console.warn(`[generateStory] QA retry ${attempt + 1}/${MAX_QA_RETRIES + 1}: ${lastError}`);
+      continue;
+    }
+
+    const story = buildGeneratedStory(storyOutput, qa, input.edadAnos, input.nivel, result);
+    return { ok: true, story };
   }
 
-  const { result } = outcome;
-  const { parsed } = result;
-
-  if (!validarEstructura(parsed)) {
-    return {
-      ok: false,
-      error: 'Estructura de respuesta invalida',
-      code: 'GENERATION_FAILED',
-    };
-  }
-
-  const storyOutput = parsed as StoryLLMOutput;
-  const qa = evaluarHistoria(storyOutput, input.nivel, {
-    historiasAnteriores: input.historiasAnteriores,
-  });
-
-  const story = buildGeneratedStory(storyOutput, qa, input.edadAnos, input.nivel, result);
-
-  if (!qa.aprobada) {
-    return {
-      ok: false,
-      error: qa.motivo ?? 'QA rechazada sin motivo',
-      code: 'GENERATION_FAILED',
-    };
-  }
-
-  return { ok: true, story };
+  return { ok: false, error: lastError, code: 'GENERATION_FAILED' };
 }
 
 /**
  * Genera SOLO la historia (sin preguntas) via LLM.
  * Mas rapido porque produce menos tokens y el LLM se enfoca en narrativa.
+ * Si QA rechaza, reintenta hasta MAX_QA_RETRIES veces antes de fallar.
  */
 export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyResult> {
   const maxTokens = envInt('LLM_MAX_TOKENS_STORY', 900);
   const fastPromptMode = envFlag('LLM_FAST_STORY_PROMPT', true);
   const systemPrompt = buildStoryOnlySystemPrompt();
-  const userPrompt = buildStoryOnlyUserPrompt(input, {
-    intento: 1,
-    fastMode: fastPromptMode,
-  });
 
-  const outcome = await callLLM({
-    systemPrompt,
-    userMessage: userPrompt,
-    maxRetries: MAX_REINTENTOS,
-    temperature: 0.8,
-    maxTokens,
-    modelEnvVar: 'LLM_MODEL_STORY',
-    logTag: 'generateStoryOnly',
-  });
+  let lastError = '';
+  for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
+    const userPrompt = buildStoryOnlyUserPrompt(input, {
+      intento: attempt + 1,
+      fastMode: fastPromptMode,
+    });
 
-  if (!outcome.ok) {
-    return { ok: false, error: outcome.error, code: outcome.code };
-  }
+    const outcome = await callLLM({
+      systemPrompt,
+      userMessage: userPrompt,
+      maxRetries: MAX_REINTENTOS,
+      temperature: 0.8 + attempt * 0.05,
+      maxTokens,
+      modelEnvVar: 'LLM_MODEL_STORY',
+      logTag: `generateStoryOnly[${attempt}]`,
+    });
 
-  const { result } = outcome;
-  const { parsed } = result;
+    if (!outcome.ok) {
+      return { ok: false, error: outcome.error, code: outcome.code };
+    }
 
-  if (!validarEstructuraHistoria(parsed)) {
-    return {
-      ok: false,
-      error: 'Estructura de respuesta invalida (historia)',
-      code: 'GENERATION_FAILED',
-    };
-  }
+    const { result } = outcome;
+    const { parsed } = result;
 
-  const storyOutput = parsed as StoryOnlyLLMOutput;
-  const qa = evaluarHistoriaSinPreguntas(storyOutput, input.nivel, {
-    historiasAnteriores: input.historiasAnteriores,
-  });
+    if (!validarEstructuraHistoria(parsed)) {
+      lastError = 'Estructura de respuesta invalida (historia)';
+      console.warn(`[generateStoryOnly] QA retry ${attempt + 1}/${MAX_QA_RETRIES + 1}: ${lastError}`);
+      continue;
+    }
 
-  const metadataCalc = calcularMetadataHistoria(storyOutput.contenido, input.edadAnos, input.nivel);
+    const storyOutput = parsed as StoryOnlyLLMOutput;
+    const qa = evaluarHistoriaSinPreguntas(storyOutput, input.nivel, {
+      historiasAnteriores: input.historiasAnteriores,
+    });
 
-  const story: GeneratedStoryOnly = {
-    titulo: storyOutput.titulo,
-    contenido: storyOutput.contenido,
-    vocabularioNuevo: storyOutput.vocabularioNuevo,
-    metadata: {
-      ...metadataCalc,
+    if (!qa.aprobada) {
+      lastError = qa.motivo ?? 'QA rechazada sin motivo';
+      console.warn(`[generateStoryOnly] QA retry ${attempt + 1}/${MAX_QA_RETRIES + 1}: ${lastError}`);
+      continue;
+    }
+
+    const metadataCalc = calcularMetadataHistoria(storyOutput.contenido, input.edadAnos, input.nivel);
+    const story: GeneratedStoryOnly = {
+      titulo: storyOutput.titulo,
+      contenido: storyOutput.contenido,
       vocabularioNuevo: storyOutput.vocabularioNuevo,
-    },
-    modelo: result.model,
-    aprobadaQA: qa.aprobada,
-    motivoRechazo: qa.motivo,
-    llmUsage: result.usage,
-  };
-
-  if (!qa.aprobada) {
-    return {
-      ok: false,
-      error: qa.motivo ?? 'QA rechazada sin motivo',
-      code: 'GENERATION_FAILED',
+      metadata: {
+        ...metadataCalc,
+        vocabularioNuevo: storyOutput.vocabularioNuevo,
+      },
+      modelo: result.model,
+      aprobadaQA: true,
+      llmUsage: result.usage,
     };
+
+    return { ok: true, story };
   }
 
-  return { ok: true, story };
+  return { ok: false, error: lastError, code: 'GENERATION_FAILED' };
 }
 
 /**

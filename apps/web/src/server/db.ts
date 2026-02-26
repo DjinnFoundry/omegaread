@@ -6,7 +6,7 @@
  *   const db = await getDb();
  */
 import { getCloudflareContext } from '@opennextjs/cloudflare';
-import { createDb } from '@omegaread/db';
+import { createDb } from '@zetaread/db';
 
 export async function getDb() {
   const { env } = await getCloudflareContext({ async: true });

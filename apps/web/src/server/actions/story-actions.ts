@@ -1,5 +1,3 @@
-'use server';
-
 /**
  * Barrel re-export for story actions.
  *
@@ -20,7 +18,6 @@ export {
   generarHistoria,
   obtenerProgresoGeneracionHistoria,
   generarPreguntasSesion,
-  type StoryGenerationTrace,
 } from './story-generation-actions';
 
 export {

@@ -76,7 +76,7 @@ vi.mock('@/lib/ai/story-generator', () => ({
   })),
 }));
 
-vi.mock('@omegaread/db', () => ({
+vi.mock('@zetaread/db', () => ({
   generatedStories: { id: 'id', studentId: 'student_id', topicSlug: 'topic_slug' },
   storyQuestions: { id: 'id', storyId: 'story_id' },
   sessions: { id: 'id', studentId: 'student_id' },

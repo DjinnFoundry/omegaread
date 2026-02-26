@@ -146,15 +146,15 @@ describe('Baseline texts', () => {
 // ─────────────────────────────────────────────
 
 describe('Schema exports (Sprint 1 tables)', () => {
-  it('exporta tablas nuevas desde @omegaread/db', async () => {
-    const schema = await import('@omegaread/db');
+  it('exporta tablas nuevas desde @zetaread/db', async () => {
+    const schema = await import('@zetaread/db');
     expect(schema.topics).toBeDefined();
     expect(schema.baselineAssessments).toBeDefined();
     expect(schema.difficultyAdjustments).toBeDefined();
   });
 
   it('students tiene campos nuevos de Sprint 1', async () => {
-    const schema = await import('@omegaread/db');
+    const schema = await import('@zetaread/db');
     const cols = schema.students;
     // Verificar que las columnas existen en la definicion
     expect(cols.curso).toBeDefined();

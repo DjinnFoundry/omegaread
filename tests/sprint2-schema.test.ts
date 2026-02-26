@@ -10,7 +10,7 @@ import {
   generatedStoriesRelations,
   storyQuestionsRelations,
   sessionsRelations,
-} from '@omegaread/db';
+} from '@zetaread/db';
 
 describe('generatedStories table', () => {
   it('existe y esta definida', () => {

@@ -8,7 +8,7 @@ vi.mock('@/server/admin-auth', () => ({
   requireAdminAuth: vi.fn(async () => ({ username: 'admin' })),
 }));
 
-vi.mock('@omegaread/db', () => ({
+vi.mock('@zetaread/db', () => ({
   generatedStories: { id: 'id', creadoEn: 'creado_en', studentId: 'student_id' },
   responses: { id: 'id', sessionId: 'session_id', correcta: 'correcta' },
   sessions: { id: 'id', studentId: 'student_id', tipoActividad: 'tipo_actividad', completada: 'completada' },

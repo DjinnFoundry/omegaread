@@ -6,7 +6,7 @@ initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
   // Transpile monorepo packages
-  transpilePackages: ['@omegaread/db'],
+  transpilePackages: ['@zetaread/db'],
   // Set correct workspace root for monorepo
   outputFileTracingRoot: path.join(import.meta.dirname, '../../'),
   // Audio base64 puede superar 1MB en Server Actions durante analisis de lectura.

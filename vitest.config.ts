@@ -42,7 +42,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'apps/web/src'),
-      '@omegaread/db': resolve(__dirname, 'packages/db/src'),
+      '@zetaread/db': resolve(__dirname, 'packages/db/src'),
       'react': resolve(__dirname, 'apps/web/node_modules/react'),
       'react-dom': resolve(__dirname, 'apps/web/node_modules/react-dom'),
       'next/headers': resolve(__dirname, '__mocks__/next/headers.ts'),

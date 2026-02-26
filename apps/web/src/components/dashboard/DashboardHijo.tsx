@@ -6,6 +6,7 @@
  * Heatmap mensual tipo GitHub para visualizar actividad.
  */
 import Link from 'next/link';
+import { BookOpen, Timer, Flame, Star, Library } from 'lucide-react';
 import { calcularEdad } from '@/lib/utils/fecha';
 
 interface DashboardHijoProps {
@@ -116,7 +117,7 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
             touch-manipulation
           "
         >
-          <span>📖</span> Empezar a leer con {nombre}
+          <BookOpen size={18} /> Empezar a leer con {nombre}
         </Link>
       </div>
     );
@@ -131,11 +132,15 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
         </h2>
         <span className="text-sm text-texto-suave">
           {resumen.sesionesHoy > 0 ? (
-            <span className="text-acierto font-semibold">
-              🟢 {resumen.sesionesHoy} sesion{resumen.sesionesHoy !== 1 ? 'es' : ''} hoy
+            <span className="flex items-center gap-1 text-acierto font-semibold">
+              <span className="h-2 w-2 rounded-full bg-acierto" />
+              {resumen.sesionesHoy} sesion{resumen.sesionesHoy !== 1 ? 'es' : ''} hoy
             </span>
           ) : (
-            <span className="text-texto-suave">⚪ Sin sesiones hoy</span>
+            <span className="flex items-center gap-1 text-texto-suave">
+              <span className="h-2 w-2 rounded-full bg-neutro/30" />
+              Sin sesiones hoy
+            </span>
           )}
         </span>
       </div>
@@ -157,7 +162,7 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
             touch-manipulation
           "
         >
-          <span>📖</span> Ir a leer con {nombre}
+          <BookOpen size={18} /> Ir a leer con {nombre}
         </Link>
       </div>
 
@@ -165,32 +170,40 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
       <div className="mt-4 grid grid-cols-2 gap-3">
         {/* Tiempo */}
         <div className="rounded-2xl bg-turquesa/10 p-3">
-          <p className="text-xs font-semibold text-turquesa">⏱️ Tiempo hoy</p>
-          <p className="mt-1 text-2xl font-bold text-turquesa">
-            {resumen.tiempoHoyMin} <span className="text-sm font-normal">min</span>
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-turquesa">
+            <Timer size={14} /> Tiempo hoy
+          </p>
+          <p className="mt-1 text-2xl font-bold font-datos text-turquesa">
+            {resumen.tiempoHoyMin} <span className="text-sm font-normal font-principal">min</span>
           </p>
         </div>
 
         {/* Racha */}
         <div className="rounded-2xl bg-coral/10 p-3">
-          <p className="text-xs font-semibold text-coral">🔥 Racha</p>
-          <p className="mt-1 text-2xl font-bold text-coral">
-            {resumen.racha} <span className="text-sm font-normal">dias</span>
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-coral">
+            <Flame size={14} /> Racha
+          </p>
+          <p className="mt-1 text-2xl font-bold font-datos text-coral">
+            {resumen.racha} <span className="text-sm font-normal font-principal">dias</span>
           </p>
         </div>
 
         {/* Estrellas */}
         <div className="rounded-2xl bg-amarillo/20 p-3">
-          <p className="text-xs font-semibold text-texto">⭐ Estrellas</p>
-          <p className="mt-1 text-2xl font-bold text-texto">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-texto">
+            <Star size={14} className="text-ambar" /> Estrellas
+          </p>
+          <p className="mt-1 text-2xl font-bold font-datos text-texto">
             {resumen.totalEstrellas}
           </p>
         </div>
 
         {/* Sesiones totales */}
         <div className="rounded-2xl bg-bosque/10 p-3">
-          <p className="text-xs font-semibold text-bosque">📚 Sesiones</p>
-          <p className="mt-1 text-2xl font-bold text-bosque">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-bosque">
+            <Library size={14} /> Sesiones
+          </p>
+          <p className="mt-1 text-2xl font-bold font-datos text-bosque">
             {resumen.totalSesiones}
           </p>
         </div>

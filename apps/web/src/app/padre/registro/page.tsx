@@ -40,7 +40,7 @@ export default function RegistroPage() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <span className="text-5xl">✨</span>
-          <h1 className="mt-4 text-3xl font-bold text-texto">
+          <h1 className="mt-4 text-3xl font-bold text-texto font-datos">
             Crear cuenta
           </h1>
           <p className="mt-2 text-texto-suave">

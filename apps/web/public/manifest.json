@@ -1,6 +1,6 @@
 {
-  "name": "OmegaRead — Lectura adaptativa",
-  "short_name": "OmegaRead",
+  "name": "ZetaRead — Lectura adaptativa",
+  "short_name": "ZetaRead",
   "description": "Historias personalizadas que se adaptan al nivel de tu hijo. Comprension lectora medible, progreso visible.",
   "start_url": "/",
   "display": "standalone",

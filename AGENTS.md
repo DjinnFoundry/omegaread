@@ -38,7 +38,7 @@ Si tu tarea es de dashboard, añade:
 flowchart LR
   UI["Rutas y componentes (apps/web/src/app + components)"] --> Actions["Server Actions (apps/web/src/server/actions)"]
   Actions --> Auth["Auth JWT cookie (apps/web/src/server/auth.ts)"]
-  Actions --> DB["D1 + Drizzle (@omegaread/db)"]
+  Actions --> DB["D1 + Drizzle (@zetaread/db)"]
   Actions --> LLM["Cliente LLM (apps/web/src/lib/ai/openai.ts)"]
   DB --> Schema["Schema fuente de verdad (packages/db/src/schema.ts)"]
 ```
@@ -114,8 +114,8 @@ pnpm db:studio
 Deploy web a Cloudflare:
 
 ```bash
-pnpm --filter @omegaread/web build:cf
-pnpm --filter @omegaread/web deploy:cf
+pnpm --filter @zetaread/web build:cf
+pnpm --filter @zetaread/web deploy:cf
 ```
 
 ## 8) Checklist de salida minimo

@@ -15,7 +15,7 @@ import {
   eq,
   and,
   desc,
-} from '@omegaread/db';
+} from '@zetaread/db';
 import { requireStudentOwnership } from '../auth';
 import {
   crearSesionLecturaSchema,

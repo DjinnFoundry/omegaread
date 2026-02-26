@@ -5,7 +5,7 @@
  * Determina en que paso esta el estudiante: intereses, contexto, o listo.
  */
 import { getDb } from '@/server/db';
-import { students, eq, and, type AccesibilidadConfig } from '@omegaread/db';
+import { students, eq, and, type AccesibilidadConfig } from '@zetaread/db';
 import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
 

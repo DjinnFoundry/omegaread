@@ -9,8 +9,8 @@ import {
   sessions,
   students,
   generatedStories,
-} from '@omegaread/db';
-import type { DifficultyEvidence } from '@omegaread/db';
+} from '@zetaread/db';
+import type { DifficultyEvidence } from '@zetaread/db';
 
 describe('manualAdjustments table', () => {
   it('tabla esta exportada', () => {

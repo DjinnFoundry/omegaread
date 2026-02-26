@@ -31,7 +31,7 @@ vi.mock('@/lib/utils/fecha', () => ({
   }),
 }));
 
-vi.mock('@omegaread/db', () => ({
+vi.mock('@zetaread/db', () => ({
   students: { id: 'id', parentId: 'parent_id' },
   sessions: { studentId: 'student_id', tipoActividad: 'tipo_actividad' },
   achievements: { studentId: 'student_id' },

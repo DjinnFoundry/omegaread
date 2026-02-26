@@ -20,7 +20,7 @@ interface LineaNivelProps {
 const COLORES_DIRECCION: Record<string, string> = {
   subir: '#7BC67E',
   bajar: '#FF6B6B',
-  mantener: '#FFE66D',
+  mantener: '#D4880B',
 };
 
 export function LineaNivel({ datos, nivelMax = 10 }: LineaNivelProps) {

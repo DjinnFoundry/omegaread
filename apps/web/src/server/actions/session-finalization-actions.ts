@@ -14,7 +14,7 @@ import {
   eloSnapshots,
   eq,
   and,
-} from '@omegaread/db';
+} from '@zetaread/db';
 import { requireStudentOwnership } from '../auth';
 import {
   registrarLecturaCompletadaSchema,
@@ -255,6 +255,7 @@ export async function finalizarSesionLectura(datos: {
 
   // 5. Calcular y guardar Elo
   let eloResult: { nuevoElo: EloRatings } | null = null;
+  let eloPrevioGlobal: number | null = null;
   try {
     // Leer dificultad de las preguntas de la story
     const storyId = sesion.storyId;
@@ -278,6 +279,7 @@ export async function finalizarSesionLectura(datos: {
       });
 
       if (estudianteElo) {
+        eloPrevioGlobal = estudianteElo.eloGlobal;
         const eloActual: EloRatings = {
           global: estudianteElo.eloGlobal,
           literal: estudianteElo.eloLiteral,
@@ -346,6 +348,7 @@ export async function finalizarSesionLectura(datos: {
       nivelNuevo: ajuste.nivelNuevo,
       razon: ajuste.razon,
       eloGlobal: eloResult?.nuevoElo.global ?? null,
+      eloPrevio: eloPrevioGlobal,
     },
   };
 }

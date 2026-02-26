@@ -1,4 +1,4 @@
-# OmegaRead
+# ZetaRead
 
 Lectura adaptativa para ninos con historias generadas por LLM, preguntas de comprension y dashboard para padres.
 
@@ -18,7 +18,7 @@ Si vas a trabajar en el repo, lee tambien `AGENTS.md`.
 
 - Monorepo con `pnpm workspaces`
 - App principal en `apps/web` (Next.js 15 + React 19 + App Router)
-- Persistencia con `@omegaread/db` (Drizzle + Cloudflare D1, dialecto SQLite)
+- Persistencia con `@zetaread/db` (Drizzle + Cloudflare D1, dialecto SQLite)
 - Server Actions para toda la logica de negocio
 - Generacion de historias/preguntas via proveedor compatible con OpenAI API
 - CI con lint + typecheck + tests + knip
@@ -30,7 +30,7 @@ Si vas a trabajar en el repo, lee tambien `AGENTS.md`.
 flowchart LR
   UI["Next.js App Router (apps/web/src/app)"] --> Actions["Server Actions (apps/web/src/server/actions)"]
   Actions --> Auth["JWT cookies (apps/web/src/server/auth.ts)"]
-  Actions --> DB["D1 via @omegaread/db"]
+  Actions --> DB["D1 via @zetaread/db"]
   Actions --> LLM["LLM provider (LLM_API_KEY u OPENAI_API_KEY)"]
   DB --> Data["parents, students, stories, sessions, responses, skills"]
 ```
@@ -38,7 +38,7 @@ flowchart LR
 ## Estructura del repo
 
 ```text
-omegaread/
+zetaread/
   apps/
     web/
       src/app/                  # Rutas App Router y layouts
@@ -198,7 +198,7 @@ CI (`.github/workflows/ci.yml`) ejecuta:
 
 Configuracion clave en `apps/web/wrangler.jsonc`:
 
-- binding D1 `DB` (`omegaread-db`)
+- binding D1 `DB` (`zetaread-db`)
 - vars runtime como `LLM_BASE_URL` y `LLM_MODEL`
 
 ## Fuente de verdad y docs con drift

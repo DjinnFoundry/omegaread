@@ -54,11 +54,8 @@ export interface QAContext {
 }
 
 const PALABRAS_PROHIBIDAS = [
-  'muerte', 'muerto', 'matar', 'sangre', 'arma', 'pistola', 'cuchillo',
-  'droga', 'alcohol', 'cerveza', 'vino', 'borracho',
   'sexo', 'sexy', 'desnudo',
-  'odio', 'estupido', 'idiota', 'imbecil', 'tonto',
-  'demonio', 'diablo', 'infierno',
+  'droga',
   'suicidio', 'suicida',
 ];
 

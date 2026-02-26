@@ -2,10 +2,10 @@
 
 /**
  * Pantalla de resultado de sesion.
- * Minimalista: celebracion + estrellas + CTA hacia la siguiente historia.
- * Los datos detallados (ELO, WPM, skills) van al dashboard del padre.
+ * Muestra: celebracion + estrellas + ELO delta animado + CTAs.
+ * Los datos detallados (sub-ELOs, WPM, skills) van al dashboard del padre.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Celebracion } from '@/components/ui/Celebracion';
 
 interface ResultadoSesionProps {
@@ -13,11 +13,14 @@ interface ResultadoSesionProps {
     aciertos: number;
     totalPreguntas: number;
     estrellas: number;
+    eloGlobal?: number | null;
+    eloPrevio?: number | null;
   };
   studentNombre: string;
   historiaTitulo?: string;
   historiaContenido?: string;
   onLeerOtra: () => void;
+  onVolverDashboard?: () => void;
 }
 
 const MENSAJES: Record<string, string[]> = {
@@ -63,7 +66,7 @@ function construirMensajeWhatsapp(params: {
   const origenBase = params.origen.endsWith('/') ? params.origen.slice(0, -1) : params.origen;
 
   return [
-    'Te comparto una historia de OmegaRead:',
+    'Te comparto una historia de ZetaRead:',
     '',
     `Titulo: ${titulo}`,
     '',
@@ -73,12 +76,40 @@ function construirMensajeWhatsapp(params: {
   ].join('\n');
 }
 
+/** Animated counter that counts from `from` to `to` over `durationMs`. */
+function useAnimatedNumber(from: number, to: number, durationMs: number, delay: number): number {
+  const [current, setCurrent] = useState(from);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const start = performance.now();
+      const diff = to - from;
+
+      function tick() {
+        const elapsed = performance.now() - start;
+        const progress = Math.min(elapsed / durationMs, 1);
+        // Ease-out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setCurrent(Math.round(from + diff * eased));
+        if (progress < 1) requestAnimationFrame(tick);
+      }
+
+      requestAnimationFrame(tick);
+    }, delay);
+
+    return () => clearTimeout(timeout);
+  }, [from, to, durationMs, delay]);
+
+  return current;
+}
+
 export default function ResultadoSesion({
   resultado,
   studentNombre,
   historiaTitulo,
   historiaContenido,
   onLeerOtra,
+  onVolverDashboard,
 }: ResultadoSesionProps) {
   const ratio = resultado.totalPreguntas > 0 ? resultado.aciertos / resultado.totalPreguntas : 0;
   const [mostrarCelebracion, setMostrarCelebracion] = useState(() => ratio >= 0.75);
@@ -89,6 +120,13 @@ export default function ResultadoSesion({
   );
   const emoji = getEmoji(resultado.aciertos, resultado.totalPreguntas);
   const puedeCompartir = !!historiaTitulo?.trim() && !!historiaContenido?.trim();
+
+  // ELO animation
+  const hasElo = resultado.eloGlobal != null && resultado.eloPrevio != null;
+  const eloPrevio = resultado.eloPrevio ?? 1000;
+  const eloNuevo = resultado.eloGlobal ?? 1000;
+  const eloDelta = eloNuevo - eloPrevio;
+  const animatedElo = useAnimatedNumber(eloPrevio, eloNuevo, 1200, 800);
 
   const handleCompartirWhatsApp = useCallback(async () => {
     setMensajeCompartir(null);
@@ -135,7 +173,7 @@ export default function ResultadoSesion({
 
       {/* Emoji + mensaje */}
       <div className="text-7xl mb-4">{emoji}</div>
-      <p className="text-xl font-bold text-texto mb-6">{mensaje}</p>
+      <p className="text-xl font-bold text-texto mb-6 font-datos">{mensaje}</p>
 
       {/* Estrellas */}
       <div className="flex justify-center gap-2 mb-2">
@@ -148,9 +186,32 @@ export default function ResultadoSesion({
           </span>
         ))}
       </div>
-      <p className="text-sm text-texto-suave mb-8">
+      <p className="text-sm text-texto-suave mb-4 font-datos">
         {resultado.aciertos} de {resultado.totalPreguntas} correctas
       </p>
+
+      {/* ELO delta animation */}
+      {hasElo && (
+        <div className="mb-6 py-3 px-4 rounded-xl bg-white/60 border border-texto/10">
+          <p className="text-xs text-texto-suave mb-1 font-datos">Nivel de lectura</p>
+          <div className="flex items-center justify-center gap-3">
+            <span className="text-2xl font-bold text-texto tabular-nums font-datos">
+              {animatedElo}
+            </span>
+            {eloDelta !== 0 && (
+              <span
+                className={`text-sm font-bold px-2 py-0.5 rounded-full ${
+                  eloDelta > 0
+                    ? 'text-green-700 bg-green-100'
+                    : 'text-coral bg-coral/10'
+                }`}
+              >
+                {eloDelta > 0 ? '+' : ''}{eloDelta}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* CTA principal */}
       <button
@@ -167,7 +228,7 @@ export default function ResultadoSesion({
         "
       >
         <span className="text-xl">📖</span>
-        Otra historia!
+        <span className="font-datos">Otra historia!</span>
       </button>
 
       <button
@@ -186,15 +247,30 @@ export default function ResultadoSesion({
         "
       >
         <span className="text-lg">💬</span>
-        Compartir por WhatsApp
+        <span className="font-datos">Compartir por WhatsApp</span>
       </button>
-      <p className="mt-2 text-xs text-texto-suave">
-        Se envia la historia completa en texto plano.
-      </p>
+
       {mensajeCompartir && (
         <p className="mt-2 text-xs text-coral">{mensajeCompartir}</p>
       )}
 
+      {/* Volver al dashboard */}
+      {onVolverDashboard && (
+        <button
+          type="button"
+          onClick={onVolverDashboard}
+          className="
+            mt-4 w-full flex items-center justify-center gap-2
+            px-6 py-3 rounded-2xl
+            text-texto-suave font-medium text-sm
+            hover:text-texto hover:bg-texto/5
+            transition-all duration-150
+            active:scale-[0.98] touch-manipulation
+          "
+        >
+          Volver al inicio
+        </button>
+      )}
     </div>
   );
 }

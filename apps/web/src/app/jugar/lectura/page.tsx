@@ -10,8 +10,8 @@
  *
  * La dificultad se ajusta automaticamente por respuestas (sin ajuste manual en UI).
  */
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useStudentProgress } from '@/contexts/StudentProgressContext';
 import {
   obtenerEstadoLectura,
@@ -25,8 +25,8 @@ import {
   registrarLecturaCompletada,
   finalizarSesionLectura,
   analizarLecturaAudio,
-  type StoryGenerationTrace,
 } from '@/server/actions/story-actions';
+import type { StoryGenerationTrace } from '@/lib/story-generation/trace';
 import SelectorIntereses from '@/components/perfil/SelectorIntereses';
 import FormularioContexto from '@/components/perfil/FormularioContexto';
 import InicioSesion from '@/components/lectura/InicioSesion';
@@ -66,6 +66,8 @@ interface ResultadoSesionData {
   aciertos: number;
   totalPreguntas: number;
   estrellas: number;
+  eloGlobal: number | null;
+  eloPrevio: number | null;
 }
 
 function stageStatusIcon(status: StoryGenerationTrace['stages'][number]['status']): string {
@@ -77,7 +79,10 @@ function stageStatusIcon(status: StoryGenerationTrace['stages'][number]['status'
 
 export default function LecturaPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { estudiante, autoSelecting, recargarProgreso } = useStudentProgress();
+  const topicFromQuery = searchParams.get('topic');
+  const autoStartedRef = useRef(false);
   const [estado, setEstado] = useState<EstadoFlujoLectura | null>(null);
   const [datosEstudiante, setDatosEstudiante] = useState<DatosEstudianteLectura | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -126,6 +131,22 @@ export default function LecturaPage() {
     if (autoSelecting) return; // Provider aun resolviendo, esperar
     void cargarEstado();
   }, [autoSelecting, cargarEstado]);
+
+  // Auto-start when ?topic=SLUG is present (e.g. from tech tree navigation)
+  useEffect(() => {
+    if (
+      topicFromQuery &&
+      !autoStartedRef.current &&
+      estado?.paso === 'listo' &&
+      pasoSesion === 'elegir-topic' &&
+      !generando &&
+      estudiante
+    ) {
+      autoStartedRef.current = true;
+      void handleStartReading(topicFromQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicFromQuery, estado, pasoSesion, generando, estudiante]);
 
   // ─── Handlers de sesion ───
 
@@ -643,6 +664,7 @@ export default function LecturaPage() {
           historiaTitulo={sesionActiva?.historia.titulo}
           historiaContenido={sesionActiva?.historia.contenido}
           onLeerOtra={handleLeerOtra}
+          onVolverDashboard={() => router.push('/padre/dashboard')}
         />
       </main>
     );

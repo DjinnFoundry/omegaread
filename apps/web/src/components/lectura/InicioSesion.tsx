@@ -90,10 +90,10 @@ export default function InicioSesion({
       {/* Header */}
       <div className="text-center mb-5">
         <span className="text-5xl">📚</span>
-        <h1 className="mt-3 text-2xl font-extrabold text-texto">
+        <h1 className="mt-3 text-2xl font-extrabold text-texto font-datos">
           Hola, {studentNombre}!
         </h1>
-        <p className="mt-2 text-sm text-texto-suave leading-relaxed">
+        <p className="mt-2 text-sm text-texto-suave leading-relaxed font-datos">
           Empezamos con un nivel inicial segun tu edad y lo ajustamos automaticamente
           segun tus respuestas de comprension.
         </p>
@@ -117,13 +117,13 @@ export default function InicioSesion({
           "
         >
           <span className="text-xl">🎲</span>
-          Sorprendeme!
+          <span className="font-datos">Sorprendeme!</span>
         </button>
       </div>
 
       {/* Skill selector */}
       <div className="mb-5">
-        <p className="text-base font-semibold text-texto mb-3 text-center">
+        <p className="text-base font-semibold text-texto mb-3 text-center font-datos">
           Que quieres descubrir hoy?
         </p>
 

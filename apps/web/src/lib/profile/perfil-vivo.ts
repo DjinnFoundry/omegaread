@@ -3,7 +3,7 @@
  * El "perfil vivo" es el objeto `perfilVivo` anidado dentro de `students.senalesDificultad`.
  */
 
-import type { PerfilVivoState } from '@omegaread/db';
+import type { PerfilVivoState } from '@zetaread/db';
 
 /**
  * Extrae hasta 3 hechos de texto del perfil vivo embebido en senalesDificultad.

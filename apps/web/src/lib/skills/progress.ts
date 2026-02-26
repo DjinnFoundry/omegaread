@@ -3,8 +3,8 @@
  * Unica fuente de verdad para umbrales y normalizacion de skill IDs.
  */
 
-import type { InferSelectModel } from '@omegaread/db';
-import { skillProgress } from '@omegaread/db';
+import type { InferSelectModel } from '@zetaread/db';
+import { skillProgress } from '@zetaread/db';
 import type { SkillProgressLite } from '@/lib/learning/graph';
 
 /** Porcentaje de dominio requerido para considerar un skill como dominado. */

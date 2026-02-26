@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 
 /**
@@ -9,8 +10,8 @@ export function NavPadre({ nombrePadre }: { nombrePadre: string }) {
     <nav className="sticky top-0 z-50 border-b border-neutro/10 bg-superficie/95 backdrop-blur-sm">
       <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
         <Link href="/padre/dashboard" className="flex items-center gap-2">
-          <span className="text-xl">📖</span>
-          <span className="text-lg font-extrabold text-texto">OmegaRead</span>
+          <Image src="/logo-zr-64.png" alt="ZR" width={28} height={28} className="rounded-sm" />
+          <span className="text-lg font-extrabold text-texto font-datos">ZetaRead</span>
         </Link>
 
         <span className="text-sm text-texto-suave">

@@ -13,7 +13,7 @@ import {
   manualAdjustments,
   eq,
   and,
-} from '@omegaread/db';
+} from '@zetaread/db';
 import { reescribirHistoriaSchema } from '../validation';
 import { getStudentContext } from '../student-context';
 import { rewriteStory } from '@/lib/ai/story-generator';

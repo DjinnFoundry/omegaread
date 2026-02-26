@@ -5,7 +5,7 @@
  * Sprint 1: medir nivel inicial y confianza.
  */
 import { getDb } from '@/server/db';
-import { students, baselineAssessments, eq, and } from '@omegaread/db';
+import { students, baselineAssessments, eq, and } from '@zetaread/db';
 import { requireAuth } from '../auth';
 import {
   guardarRespuestaBaselineSchema,

@@ -23,7 +23,7 @@ vi.mock('@/server/auth', () => ({
   })),
 }));
 
-vi.mock('@omegaread/db', () => ({
+vi.mock('@zetaread/db', () => ({
   sessions: { id: 'id', studentId: 'student_id', tipoActividad: 'tipo_actividad' },
   responses: { sessionId: 'session_id', correcta: 'correcta' },
   skillProgress: { studentId: 'student_id', skillId: 'skill_id', id: 'id' },

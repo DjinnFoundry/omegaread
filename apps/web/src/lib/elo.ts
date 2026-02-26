@@ -262,12 +262,13 @@ export function procesarRespuestasElo(
     global = Math.round((prevGlobal + (rawDeltaGlobal * factorGlobal)) * 10) / 10;
     rd = globalUpdate.newRd;
 
-    // Para el tipo: K derivado del RD actual
-    const K = Math.max(8, rd * 0.1);
+    // Para el tipo: K derivado del RD actual.
+    // No se aplica anti-farming a sub-tipos: queremos que reflejen skill real
+    // rapidamente. Anti-farming solo protege el global (que determina dificultad).
+    const K = Math.max(12, rd * 0.15);
     const expectedTipo = 1 / (1 + Math.pow(10, (qRating - prevTipo) / 400));
     const rawDeltaTipo = K * (score - expectedTipo);
-    const factorTipo = factorAntiFarming(prevTipo, qRating, score, expectedTipo);
-    porTipo[resp.tipo] = Math.round((prevTipo + (rawDeltaTipo * factorTipo)) * 10) / 10;
+    porTipo[resp.tipo] = Math.round((prevTipo + rawDeltaTipo) * 10) / 10;
 
     cambios.push({
       tipo: resp.tipo,

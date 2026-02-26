@@ -1,18 +1,18 @@
 import type { Metadata, Viewport } from 'next';
-import { Nunito, Literata, Atkinson_Hyperlegible } from 'next/font/google';
+import { Literata, Special_Elite, Atkinson_Hyperlegible } from 'next/font/google';
 import './globals.css';
-
-const nunito = Nunito({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-nunito',
-});
 
 const literata = Literata({
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-libro',
-  weight: ['400', '600', '700'],
+  variable: '--font-literata',
+});
+
+const specialElite = Special_Elite({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-typewriter',
+  weight: '400',
 });
 
 const atkinson = Atkinson_Hyperlegible({
@@ -23,22 +23,18 @@ const atkinson = Atkinson_Hyperlegible({
 });
 
 export const metadata: Metadata = {
-  title: 'OmegaRead — Lectura adaptativa para ninos',
+  title: 'ZetaRead — Lectura adaptativa para ninos',
   description:
     'Historias personalizadas que se adaptan al nivel de tu hijo. Comprension lectora medible, progreso visible. Open source, AGPL-3.0.',
   icons: {
-    icon: [
-      {
-        url: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>',
-        type: 'image/svg+xml',
-      },
-    ],
+    icon: '/favicon.png',
+    apple: '/icon-192.png',
   },
   openGraph: {
-    title: 'OmegaRead — Lectura adaptativa para ninos',
+    title: 'ZetaRead — Lectura adaptativa para ninos',
     description:
       'Historias personalizadas que se adaptan al nivel de tu hijo. Comprension lectora medible, progreso visible.',
-    siteName: 'OmegaRead',
+    siteName: 'ZetaRead',
     locale: 'es_ES',
     type: 'website',
   },
@@ -59,7 +55,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${nunito.variable} ${literata.variable} ${atkinson.variable}`}>
+    <html lang="es" className={`${literata.variable} ${specialElite.variable} ${atkinson.variable}`}>
       <body className="min-h-screen bg-fondo text-texto antialiased">
         {children}
       </body>

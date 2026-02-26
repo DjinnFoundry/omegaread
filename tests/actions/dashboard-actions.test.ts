@@ -47,7 +47,7 @@ vi.mock('@/lib/data/skills', () => ({
   getSkillsDeDominio: vi.fn(() => []),
 }));
 
-vi.mock('@omegaread/db', () => ({
+vi.mock('@zetaread/db', () => ({
   sessions: { id: 'id', studentId: 'student_id' },
   responses: { sessionId: 'session_id' },
   generatedStories: { id: 'id', studentId: 'student_id' },

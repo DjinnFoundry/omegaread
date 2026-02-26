@@ -83,7 +83,7 @@ describe('PantallaLectura', () => {
     expect(screen.getByText('Opciones de lectura')).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Dislexia' }));
-    expect(window.localStorage.setItem).toHaveBeenCalledWith('omegaread.reading-font', 'dislexia');
+    expect(window.localStorage.setItem).toHaveBeenCalledWith('zetaread.reading-font', 'dislexia');
   });
 
   it('aplica preferencia de fuente dislexia desde perfil', () => {

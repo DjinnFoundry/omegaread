@@ -5,7 +5,7 @@
  * TODAS verifican autenticacion y ownership.
  */
 import { getDb } from '@/server/db';
-import { students, sessions, achievements, skillProgress, eq, desc, and } from '@omegaread/db';
+import { students, sessions, achievements, skillProgress, eq, desc, and } from '@zetaread/db';
 import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
 import { ok, err, type ActionResult } from '@/lib/types/errors';

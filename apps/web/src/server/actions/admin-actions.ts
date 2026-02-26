@@ -13,7 +13,7 @@ import {
   eq,
   gte,
   sql,
-} from '@omegaread/db';
+} from '@zetaread/db';
 
 const STORIES_WINDOW_DAYS = 30;
 const ENGAGEMENT_WINDOW_DAYS = 30;
@@ -44,6 +44,8 @@ export interface AdminDashboardData {
     totalStoryTokens: number;
     totalQuestionTokens: number;
     totalTokens: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
     estimatedCostUsd: number | null;
     pricingConfigured: boolean;
   };
@@ -328,6 +330,8 @@ export async function obtenerAdminDashboard(): Promise<AdminDashboardData> {
     { stories: number; totalTokens: number; estimatedCostUsd: number | null }
   >();
   let totalStoryTokens = 0;
+  let totalStoryInputTokens = 0;
+  let totalStoryOutputTokens = 0;
   let totalStoryCost = 0;
   let hasStoryCost = false;
 
@@ -340,6 +344,8 @@ export async function obtenerAdminDashboard(): Promise<AdminDashboardData> {
     if (usage) {
       entry.totalTokens += usage.totalTokens;
       totalStoryTokens += usage.totalTokens;
+      totalStoryInputTokens += usage.promptTokens;
+      totalStoryOutputTokens += usage.completionTokens;
       const estimated = estimateCostUsd(usage, rates);
       if (estimated !== null) {
         hasStoryCost = true;
@@ -680,6 +686,8 @@ export async function obtenerAdminDashboard(): Promise<AdminDashboardData> {
       totalStoryTokens,
       totalQuestionTokens: totalQuestionUsage.totalTokens,
       totalTokens: totalStoryTokens + totalQuestionUsage.totalTokens,
+      totalInputTokens: totalStoryInputTokens + totalQuestionUsage.promptTokens,
+      totalOutputTokens: totalStoryOutputTokens + totalQuestionUsage.completionTokens,
       estimatedCostUsd,
       pricingConfigured: rates.configured,
     },

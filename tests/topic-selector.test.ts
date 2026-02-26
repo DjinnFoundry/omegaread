@@ -17,8 +17,8 @@ import {
   getSkillsPorEdad,
   type SkillDef,
 } from '@/lib/data/skills';
-import type { InferSelectModel } from '@omegaread/db';
-import { skillProgress } from '@omegaread/db';
+import type { InferSelectModel } from '@zetaread/db';
+import { skillProgress } from '@zetaread/db';
 
 type SkillProgressRow = InferSelectModel<typeof skillProgress>;
 

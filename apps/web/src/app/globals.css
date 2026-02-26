@@ -10,6 +10,7 @@
   --color-coral: #FF6B6B;
   --color-turquesa: #4ECDC4;
   --color-amarillo: #FFE66D;
+  --color-ambar: #D4880B;
 
   /* Zonas del mapa */
   --color-bosque: #7BC67E;
@@ -29,9 +30,10 @@
   --color-texto-suave: #636e72;
 
   /* Tipografia */
-  --font-principal: var(--font-nunito), 'Nunito', system-ui, sans-serif;
-  --font-lectura-normal: var(--font-libro), 'Literata', Georgia, serif;
+  --font-principal: var(--font-literata), 'Literata', Georgia, serif;
+  --font-lectura-normal: var(--font-typewriter), 'Special Elite', 'Courier New', monospace;
   --font-lectura-dislexia: var(--font-lectura-accesible), 'Atkinson Hyperlegible', Arial, sans-serif;
+  --font-datos: var(--font-typewriter), 'Special Elite', 'Courier New', monospace;
   /* Lectura dinamica */
   --reading-font-size: 20px;
   --reading-font-size-min: 16px;
@@ -232,5 +234,5 @@ button, a, [role="button"] {
 }
 
 /* ─────────────────────────────────────────────
-   Tipografía principal: Nunito con fallbacks del sistema
+   Tipografia principal: Literata (serif para lectura)
    ───────────────────────────────────────────── */
