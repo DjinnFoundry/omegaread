@@ -107,7 +107,9 @@ export interface SessionScoreInput {
   comprension: number;
   ritmo?: number;
   ritmoNormalizado?: number;
+  /** @deprecated Use `ritmoNormalizado` or `ritmo` instead. */
   wpmRatio?: number;
+  /** @deprecated Use `ritmoNormalizado` or `ritmo` instead. */
   ritmoMejora?: number;
   estabilidad: number;
 }

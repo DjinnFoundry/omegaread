@@ -80,6 +80,110 @@ const CONECTORES_NARRATIVOS = [
   'por eso',
 ];
 
+// ─────────────────────────────────────────────
+// HELPERS PRIVADOS COMPARTIDOS
+// ─────────────────────────────────────────────
+
+/**
+ * Valida la estructura de cada pregunta individualmente.
+ * Compartido por validarEstructura y validarEstructuraPreguntas.
+ */
+function validarPreguntasComunes(preguntas: unknown[]): boolean {
+  for (const p of preguntas) {
+    if (!p || typeof p !== 'object') return false;
+    const q = p as Record<string, unknown>;
+    if (typeof q.tipo !== 'string') return false;
+    if (typeof q.pregunta !== 'string') return false;
+    if (!Array.isArray(q.opciones) || q.opciones.length !== 4) return false;
+    if (typeof q.respuestaCorrecta !== 'number') return false;
+    if (q.respuestaCorrecta < 0 || q.respuestaCorrecta > 3) return false;
+    if (typeof q.explicacion !== 'string') return false;
+    // dificultadPregunta es opcional (backward compat), pero si existe debe ser 1-5
+    if (q.dificultadPregunta !== undefined) {
+      if (typeof q.dificultadPregunta !== 'number') return false;
+      if (q.dificultadPregunta < 1 || q.dificultadPregunta > 5) return false;
+      if (!Number.isInteger(q.dificultadPregunta)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Valida el contenido de una historia (seguridad, longitud, titulo, conectores).
+ * Compartido por evaluarHistoria y evaluarHistoriaSinPreguntas.
+ */
+function evaluarContenidoHistoria(
+  contenido: string,
+  titulo: string,
+  nivel: number,
+  titulosPrevios?: string[],
+): QAResult {
+  // 1. Contenido seguro
+  const textoCompleto = `${titulo} ${contenido}`.toLowerCase();
+  for (const palabra of PALABRAS_PROHIBIDAS) {
+    if (textoCompleto.includes(palabra)) {
+      return { aprobada: false, motivo: `Contenido inseguro: contiene "${palabra}"` };
+    }
+  }
+
+  // 2. Validar longitud
+  const config = getNivelConfig(nivel);
+  const palabras = contenido.split(/\s+/).filter(w => w.length > 0).length;
+  const tolerancia = 0.3; // 30% de margen
+
+  if (palabras < config.palabrasMin * (1 - tolerancia)) {
+    return {
+      aprobada: false,
+      motivo: `Historia muy corta: ${palabras} palabras (minimo ~${config.palabrasMin})`,
+    };
+  }
+
+  if (palabras > config.palabrasMax * (1 + tolerancia)) {
+    return {
+      aprobada: false,
+      motivo: `Historia muy larga: ${palabras} palabras (maximo ~${config.palabrasMax})`,
+    };
+  }
+
+  // 3. Validar que el titulo no este vacio ni sea generico
+  if (titulo.length < 3) {
+    return { aprobada: false, motivo: 'Titulo demasiado corto' };
+  }
+
+  // 4. Evitar titulos repetidos en historial reciente
+  if (titulosPrevios && titulosPrevios.length > 0) {
+    const tituloActual = normalizarTexto(titulo);
+    for (const tituloAnterior of titulosPrevios) {
+      const tituloPrevio = normalizarTexto(tituloAnterior);
+      if (!tituloPrevio) continue;
+      if (tituloActual === tituloPrevio || similitudTexto(tituloActual, tituloPrevio) >= 0.9) {
+        return {
+          aprobada: false,
+          motivo: 'Titulo repetido o muy similar a una historia reciente',
+        };
+      }
+    }
+  }
+
+  // 5. Detectar apertura plana
+  if (tieneAperturaPlana(contenido)) {
+    return {
+      aprobada: false,
+      motivo: 'Inicio poco engaging: apertura plana tipo texto escolar',
+    };
+  }
+
+  // 6. Detectar historias sin conectores narrativos
+  if (!tieneConectoresNarrativos(contenido)) {
+    return {
+      aprobada: false,
+      motivo: 'Historia plana: faltan conectores narrativos que creen progresion',
+    };
+  }
+
+  return { aprobada: true };
+}
+
 function tokens(value: string): Set<string> {
   return new Set(
     normalizarTexto(value)
@@ -141,24 +245,7 @@ export function validarEstructura(data: unknown): data is StoryLLMOutput {
   if (!Array.isArray(d.vocabularioNuevo)) return false;
   if (!Array.isArray(d.preguntas) || d.preguntas.length !== 4) return false;
 
-  for (const p of d.preguntas) {
-    if (!p || typeof p !== 'object') return false;
-    const q = p as Record<string, unknown>;
-    if (typeof q.tipo !== 'string') return false;
-    if (typeof q.pregunta !== 'string') return false;
-    if (!Array.isArray(q.opciones) || q.opciones.length !== 4) return false;
-    if (typeof q.respuestaCorrecta !== 'number') return false;
-    if (q.respuestaCorrecta < 0 || q.respuestaCorrecta > 3) return false;
-    if (typeof q.explicacion !== 'string') return false;
-    // dificultadPregunta es opcional (backward compat), pero si existe debe ser 1-5
-    if (q.dificultadPregunta !== undefined) {
-      if (typeof q.dificultadPregunta !== 'number') return false;
-      if (q.dificultadPregunta < 1 || q.dificultadPregunta > 5) return false;
-      if (!Number.isInteger(q.dificultadPregunta)) return false;
-    }
-  }
-
-  return true;
+  return validarPreguntasComunes(d.preguntas);
 }
 
 /**
@@ -169,34 +256,18 @@ export function evaluarHistoria(
   nivel: number,
   context?: QAContext,
 ): QAResult {
-  // 1. Validar contenido seguro
-  const textoCompleto = `${story.titulo} ${story.contenido}`.toLowerCase();
-  for (const palabra of PALABRAS_PROHIBIDAS) {
-    if (textoCompleto.includes(palabra)) {
-      return { aprobada: false, motivo: `Contenido inseguro: contiene "${palabra}"` };
-    }
-  }
+  // Validaciones de contenido compartidas con evaluarHistoriaSinPreguntas
+  const resultadoContenido = evaluarContenidoHistoria(
+    story.contenido,
+    story.titulo,
+    nivel,
+    context?.historiasAnteriores,
+  );
+  if (!resultadoContenido.aprobada) return resultadoContenido;
 
-  // 2. Validar longitud
-  const config = getNivelConfig(nivel);
-  const palabras = story.contenido.split(/\s+/).filter(w => w.length > 0).length;
-  const tolerancia = 0.3; // 30% de margen
+  // Validaciones de preguntas (exclusivas de este flujo combinado)
 
-  if (palabras < config.palabrasMin * (1 - tolerancia)) {
-    return {
-      aprobada: false,
-      motivo: `Historia muy corta: ${palabras} palabras (minimo ~${config.palabrasMin})`,
-    };
-  }
-
-  if (palabras > config.palabrasMax * (1 + tolerancia)) {
-    return {
-      aprobada: false,
-      motivo: `Historia muy larga: ${palabras} palabras (maximo ~${config.palabrasMax})`,
-    };
-  }
-
-  // 3. Validar tipos de preguntas
+  // 1. Tipos requeridos
   const tiposPresentes = story.preguntas.map(p => p.tipo);
   for (const tipo of TIPOS_REQUERIDOS) {
     if (!tiposPresentes.includes(tipo)) {
@@ -204,7 +275,7 @@ export function evaluarHistoria(
     }
   }
 
-  // 4. Validar opciones de preguntas
+  // 2. Opciones validas
   for (const pregunta of story.preguntas) {
     if (pregunta.opciones.some(o => typeof o !== 'string' || o.length === 0)) {
       return { aprobada: false, motivo: `Pregunta "${pregunta.tipo}" tiene opciones vacias` };
@@ -219,41 +290,6 @@ export function evaluarHistoria(
         motivo: `Pregunta "${pregunta.tipo}" con opciones ambiguas: ${motivoAmbigua}`,
       };
     }
-  }
-
-  // 5. Validar que el titulo no este vacio ni sea generico
-  if (story.titulo.length < 3) {
-    return { aprobada: false, motivo: 'Titulo demasiado corto' };
-  }
-
-  // 6. Evitar titulos repetidos en historial reciente
-  if (context?.historiasAnteriores && context.historiasAnteriores.length > 0) {
-    const tituloActual = normalizarTexto(story.titulo);
-    for (const tituloAnterior of context.historiasAnteriores) {
-      const tituloPrevio = normalizarTexto(tituloAnterior);
-      if (!tituloPrevio) continue;
-      if (tituloActual === tituloPrevio || similitudTexto(tituloActual, tituloPrevio) >= 0.9) {
-        return {
-          aprobada: false,
-          motivo: 'Titulo repetido o muy similar a una historia reciente',
-        };
-      }
-    }
-  }
-
-  // 7. Detectar historias planas/poco engaging
-  if (tieneAperturaPlana(story.contenido)) {
-    return {
-      aprobada: false,
-      motivo: 'Inicio poco engaging: apertura plana tipo texto escolar',
-    };
-  }
-
-  if (!tieneConectoresNarrativos(story.contenido)) {
-    return {
-      aprobada: false,
-      motivo: 'Historia plana: faltan conectores narrativos que creen progresion',
-    };
   }
 
   return { aprobada: true };
@@ -286,23 +322,7 @@ export function validarEstructuraPreguntas(data: unknown): data is QuestionsLLMO
 
   if (!Array.isArray(d.preguntas) || d.preguntas.length !== 4) return false;
 
-  for (const p of d.preguntas) {
-    if (!p || typeof p !== 'object') return false;
-    const q = p as Record<string, unknown>;
-    if (typeof q.tipo !== 'string') return false;
-    if (typeof q.pregunta !== 'string') return false;
-    if (!Array.isArray(q.opciones) || q.opciones.length !== 4) return false;
-    if (typeof q.respuestaCorrecta !== 'number') return false;
-    if (q.respuestaCorrecta < 0 || q.respuestaCorrecta > 3) return false;
-    if (typeof q.explicacion !== 'string') return false;
-    if (q.dificultadPregunta !== undefined) {
-      if (typeof q.dificultadPregunta !== 'number') return false;
-      if (q.dificultadPregunta < 1 || q.dificultadPregunta > 5) return false;
-      if (!Number.isInteger(q.dificultadPregunta)) return false;
-    }
-  }
-
-  return true;
+  return validarPreguntasComunes(d.preguntas);
 }
 
 /**
@@ -313,70 +333,12 @@ export function evaluarHistoriaSinPreguntas(
   nivel: number,
   context?: QAContext,
 ): QAResult {
-  // 1. Contenido seguro
-  const textoCompleto = `${story.titulo} ${story.contenido}`.toLowerCase();
-  for (const palabra of PALABRAS_PROHIBIDAS) {
-    if (textoCompleto.includes(palabra)) {
-      return { aprobada: false, motivo: `Contenido inseguro: contiene "${palabra}"` };
-    }
-  }
-
-  // 2. Validar longitud
-  const config = getNivelConfig(nivel);
-  const palabras = story.contenido.split(/\s+/).filter(w => w.length > 0).length;
-  const tolerancia = 0.3;
-
-  if (palabras < config.palabrasMin * (1 - tolerancia)) {
-    return {
-      aprobada: false,
-      motivo: `Historia muy corta: ${palabras} palabras (minimo ~${config.palabrasMin})`,
-    };
-  }
-
-  if (palabras > config.palabrasMax * (1 + tolerancia)) {
-    return {
-      aprobada: false,
-      motivo: `Historia muy larga: ${palabras} palabras (maximo ~${config.palabrasMax})`,
-    };
-  }
-
-  // 3. Titulo
-  if (story.titulo.length < 3) {
-    return { aprobada: false, motivo: 'Titulo demasiado corto' };
-  }
-
-  // 4. Titulo repetido
-  if (context?.historiasAnteriores && context.historiasAnteriores.length > 0) {
-    const tituloActual = normalizarTexto(story.titulo);
-    for (const tituloAnterior of context.historiasAnteriores) {
-      const tituloPrevio = normalizarTexto(tituloAnterior);
-      if (!tituloPrevio) continue;
-      if (tituloActual === tituloPrevio || similitudTexto(tituloActual, tituloPrevio) >= 0.9) {
-        return {
-          aprobada: false,
-          motivo: 'Titulo repetido o muy similar a una historia reciente',
-        };
-      }
-    }
-  }
-
-  // 5. Apertura plana
-  if (tieneAperturaPlana(story.contenido)) {
-    return {
-      aprobada: false,
-      motivo: 'Inicio poco engaging: apertura plana tipo texto escolar',
-    };
-  }
-
-  // 6. Conectores narrativos
-  if (!tieneConectoresNarrativos(story.contenido)) {
-    return {
-      aprobada: false,
-      motivo: 'Historia plana: faltan conectores narrativos que creen progresion',
-    };
-  }
-
-  return { aprobada: true };
+  return evaluarContenidoHistoria(
+    story.contenido,
+    story.titulo,
+    nivel,
+    context?.historiasAnteriores,
+  );
 }
 
 /**

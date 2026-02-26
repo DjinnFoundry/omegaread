@@ -61,19 +61,32 @@ beforeEach(async () => {
 // ─── TESTS ───
 
 describe('admin-auth.ts - loginAdmin', () => {
-  it('debe retornar ok=true con credenciales default (juan/juan)', async () => {
+  it('debe retornar ok=false cuando no hay credenciales configuradas', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
 
-    const result = await loginAdmin('juan', 'juan');
+    const result = await loginAdmin('admin', 'admin');
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('Credenciales invalidas');
+  });
+
+  it('debe retornar ok=true con credenciales de entorno correctas', async () => {
+    process.env.AUTH_SECRET = 'a'.repeat(32);
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
+
+    const result = await loginAdmin('customuser', 'custompass');
 
     expect(result.ok).toBe(true);
-    expect(result.username).toBe('juan');
+    expect(result.username).toBe('customuser');
   });
 
   it('debe retornar ok=false con contraseña incorrecta', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
 
-    const result = await loginAdmin('juan', 'wrongpassword');
+    const result = await loginAdmin('customuser', 'wrongpassword');
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe('Credenciales invalidas');
@@ -81,8 +94,10 @@ describe('admin-auth.ts - loginAdmin', () => {
 
   it('debe retornar ok=false con usuario incorrecto', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
 
-    const result = await loginAdmin('wronguser', 'juan');
+    const result = await loginAdmin('wronguser', 'custompass');
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe('Credenciales invalidas');
@@ -90,19 +105,23 @@ describe('admin-auth.ts - loginAdmin', () => {
 
   it('debe establecer cookie de admin en login exitoso', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
 
-    await loginAdmin('juan', 'juan');
+    await loginAdmin('customuser', 'custompass');
 
     expect(mockCookieStore.set).toHaveBeenCalled();
     const setCookieCall = mockCookieStore.set.mock.calls[0];
-    expect(setCookieCall[0]).toBe('omega-admin');
+    expect(setCookieCall[0]).toBe('zeta-admin');
     expect(setCookieCall[1]).toBe('mock-admin-token');
   });
 
   it('debe setear cookie con opciones correctas (httpOnly, 7 días)', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
 
-    await loginAdmin('juan', 'juan');
+    await loginAdmin('customuser', 'custompass');
 
     const setCookieCall = mockCookieStore.set.mock.calls[0];
     const cookieOptions = setCookieCall[2];
@@ -114,13 +133,15 @@ describe('admin-auth.ts - loginAdmin', () => {
 
   it('debe trimear whitespace en username y password', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
 
-    const result = await loginAdmin('  juan  ', '  juan  ');
+    const result = await loginAdmin('  customuser  ', '  custompass  ');
 
     expect(result.ok).toBe(true);
   });
 
-  it('debe respetar variables de entorno ADMIN_USER y ADMIN_PASSWORD', async () => {
+  it('la respuesta de login exitoso no incluye usingDefaultCredentials', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
     process.env.ADMIN_USER = 'customuser';
     process.env.ADMIN_PASSWORD = 'custompass';
@@ -128,25 +149,7 @@ describe('admin-auth.ts - loginAdmin', () => {
     const result = await loginAdmin('customuser', 'custompass');
 
     expect(result.ok).toBe(true);
-    expect(result.username).toBe('customuser');
-  });
-
-  it('debe retornar usingDefaultCredentials cuando usa credenciales default', async () => {
-    process.env.AUTH_SECRET = 'a'.repeat(32);
-
-    const result = await loginAdmin('juan', 'juan');
-
-    expect(result.usingDefaultCredentials).toBe(true);
-  });
-
-  it('debe retornar usingDefaultCredentials=false cuando usa credenciales custom', async () => {
-    process.env.AUTH_SECRET = 'a'.repeat(32);
-    process.env.ADMIN_USER = 'customuser';
-    process.env.ADMIN_PASSWORD = 'custompass';
-
-    const result = await loginAdmin('customuser', 'custompass');
-
-    expect(result.usingDefaultCredentials).toBe(false);
+    expect(result).not.toHaveProperty('usingDefaultCredentials');
   });
 });
 
@@ -210,10 +213,9 @@ describe('admin-auth.ts - getCurrentAdmin', () => {
 
     expect(result).not.toBeNull();
     expect(result.username).toBe('juan');
-    expect(result.usingDefaultCredentials).toBe(true);
   });
 
-  it('debe incluir usingDefaultCredentials en respuesta', async () => {
+  it('la respuesta de getCurrentAdmin no incluye usingDefaultCredentials', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
 
     mockCookieStore.get.mockReturnValue({ value: 'valid-token' });
@@ -223,7 +225,7 @@ describe('admin-auth.ts - getCurrentAdmin', () => {
 
     const result = await getCurrentAdmin();
 
-    expect(result.usingDefaultCredentials).toBeDefined();
+    expect(result).not.toHaveProperty('usingDefaultCredentials');
   });
 });
 
@@ -313,7 +315,7 @@ describe('admin-auth.ts - logoutAdmin', () => {
 
     expect(mockCookieStore.set).toHaveBeenCalled();
     const setCookieCall = mockCookieStore.set.mock.calls[0];
-    expect(setCookieCall[0]).toBe('omega-admin');
+    expect(setCookieCall[0]).toBe('zeta-admin');
     expect(setCookieCall[1]).toBe('');
     expect(setCookieCall[2].maxAge).toBe(0);
   });
@@ -333,8 +335,11 @@ describe('admin-auth.ts - logoutAdmin', () => {
 
 describe('admin-auth.ts - AUTH_SECRET validation', () => {
   it('debe lanzar error si AUTH_SECRET no está configurado', async () => {
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
+
     try {
-      await loginAdmin('juan', 'juan');
+      await loginAdmin('customuser', 'custompass');
       expect.fail('Debería haber lanzado error');
     } catch (error: any) {
       expect(error.message).toContain('AUTH_SECRET must be set');
@@ -343,9 +348,11 @@ describe('admin-auth.ts - AUTH_SECRET validation', () => {
 
   it('debe lanzar error si AUTH_SECRET es menor a 32 caracteres', async () => {
     process.env.AUTH_SECRET = 'short-secret';
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
 
     try {
-      await loginAdmin('juan', 'juan');
+      await loginAdmin('customuser', 'custompass');
       expect.fail('Debería haber lanzado error');
     } catch (error: any) {
       expect(error.message).toContain('AUTH_SECRET must be at least 32 characters');
@@ -354,16 +361,20 @@ describe('admin-auth.ts - AUTH_SECRET validation', () => {
 
   it('debe aceptar AUTH_SECRET de exactamente 32 caracteres', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(32);
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
 
-    const result = await loginAdmin('juan', 'juan');
+    const result = await loginAdmin('customuser', 'custompass');
 
     expect(result.ok).toBe(true);
   });
 
   it('debe aceptar AUTH_SECRET mayor a 32 caracteres', async () => {
     process.env.AUTH_SECRET = 'a'.repeat(64);
+    process.env.ADMIN_USER = 'customuser';
+    process.env.ADMIN_PASSWORD = 'custompass';
 
-    const result = await loginAdmin('juan', 'juan');
+    const result = await loginAdmin('customuser', 'custompass');
 
     expect(result.ok).toBe(true);
   });

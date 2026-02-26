@@ -44,11 +44,6 @@ export function computeWpmTrend(
 
   const usable = snapshots.filter((s) => CONFIDENCE_WEIGHT[s.confianza] > 0);
 
-  const excluded = snapshots.length - usable.length;
-  if (excluded > 0) {
-    console.info(`[wpm-trend] ${excluded}/${snapshots.length} sessions excluded (low confidence)`);
-  }
-
   if (usable.length === 0) {
     return {
       puntos: snapshots.map((s) => ({

@@ -6,7 +6,7 @@
  * lo pasa al DashboardShell (client), y este lo provee via context
  * a todas las sub-rutas.
  */
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { DashboardPadreData } from '@/server/actions/dashboard-actions';
 
 // ─────────────────────────────────────────────
@@ -69,10 +69,13 @@ export function DashboardDataProvider({
   nombrePadre,
   hijoSeleccionadoId,
 }: ProviderProps) {
+  const value = useMemo(
+    () => ({ resumenes, dashboard, nombrePadre, hijoSeleccionadoId }),
+    [resumenes, dashboard, nombrePadre, hijoSeleccionadoId],
+  );
+
   return (
-    <DashboardDataContext.Provider
-      value={{ resumenes, dashboard, nombrePadre, hijoSeleccionadoId }}
-    >
+    <DashboardDataContext.Provider value={value}>
       {children}
     </DashboardDataContext.Provider>
   );

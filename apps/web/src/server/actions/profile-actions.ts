@@ -9,11 +9,10 @@ import {
   parents,
   students,
   eq,
-  and,
   type ParentConfig,
   type AccesibilidadConfig,
 } from '@zetaread/db';
-import { requireAuth, requireStudentOwnership } from '../auth';
+import { requireStudentOwnership } from '../auth';
 import {
   actualizarPerfilSchema,
   eliminarHechoSchema,
@@ -51,14 +50,7 @@ export async function actualizarPerfilEstudiante(datos: {
 }) {
   const db = await getDb();
   const validado = actualizarPerfilSchema.parse(datos);
-  const padre = await requireAuth();
-
-  const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
-  });
-  if (!estudiante) {
-    return { ok: false, error: 'Estudiante no encontrado' };
-  }
+  await requireStudentOwnership(validado.studentId);
 
   await db
     .update(students)
@@ -87,14 +79,7 @@ export async function guardarIntereses(datos: {
 }) {
   const db = await getDb();
   const validado = guardarInteresesSchema.parse(datos);
-  const padre = await requireAuth();
-
-  const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
-  });
-  if (!estudiante) {
-    return { ok: false, error: 'Estudiante no encontrado' };
-  }
+  await requireStudentOwnership(validado.studentId);
 
   await db
     .update(students)
@@ -117,14 +102,7 @@ export async function guardarContextoPersonal(datos: {
 }) {
   const db = await getDb();
   const validado = guardarContextoPersonalSchema.parse(datos);
-  const padre = await requireAuth();
-
-  const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
-  });
-  if (!estudiante) {
-    return { ok: false, error: 'Estudiante no encontrado' };
-  }
+  await requireStudentOwnership(validado.studentId);
 
   // Guardamos '' cuando el padre salta el paso (distinto de null = nunca mostrado)
   await db
@@ -152,14 +130,7 @@ export async function guardarPerfilVivo(datos: {
 }) {
   const db = await getDb();
   const validado = guardarPerfilVivoSchema.parse(datos);
-  const padre = await requireAuth();
-
-  const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
-  });
-  if (!estudiante) {
-    return { ok: false as const, error: 'Estudiante no encontrado' };
-  }
+  const { estudiante } = await requireStudentOwnership(validado.studentId);
 
   const senalesActuales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
   const perfilVivo = extraerPerfilVivo(senalesActuales.perfilVivo);
@@ -280,14 +251,7 @@ export async function eliminarHecho(datos: {
 }) {
   const db = await getDb();
   const validado = eliminarHechoSchema.parse(datos);
-  const padre = await requireAuth();
-
-  const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
-  });
-  if (!estudiante) {
-    return { ok: false as const, error: 'Estudiante no encontrado' };
-  }
+  const { estudiante } = await requireStudentOwnership(validado.studentId);
 
   const senalesActuales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
   const perfilVivo = extraerPerfilVivo(senalesActuales.perfilVivo);
@@ -314,14 +278,7 @@ export async function responderMicroPreguntaPerfil(datos: {
 }) {
   const db = await getDb();
   const validado = responderMicroPreguntaPerfilSchema.parse(datos);
-  const padre = await requireAuth();
-
-  const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
-  });
-  if (!estudiante) {
-    return { ok: false as const, error: 'Estudiante no encontrado' };
-  }
+  const { estudiante } = await requireStudentOwnership(validado.studentId);
 
   const pregunta = MICRO_PREGUNTAS_PERFIL.find((p) => p.id === validado.preguntaId);
   if (!pregunta) {

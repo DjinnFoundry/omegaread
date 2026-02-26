@@ -531,11 +531,9 @@ function LoginScreen({ showError }: { showError: boolean }) {
 
 function DashboardScreen({
   username,
-  usingDefaultCredentials,
   data,
 }: {
   username: string;
-  usingDefaultCredentials: boolean;
   data: AdminDashboardData;
 }) {
   const recentStories = data.storiesByDay.slice(-7);
@@ -561,11 +559,6 @@ function DashboardScreen({
             </form>
           </div>
 
-          {usingDefaultCredentials ? (
-            <div className="mt-4 rounded-2xl border border-amarillo/60 bg-amarillo/20 px-3 py-2 text-sm text-texto">
-              Estan activas credenciales por defecto. Recomendado: definir `ADMIN_USER` y `ADMIN_PASSWORD`.
-            </div>
-          ) : null}
 
           {!data.totals.pricingConfigured ? (
             <div className="mt-2 rounded-2xl border border-neutro/20 bg-fondo px-3 py-2 text-xs text-texto-suave">
@@ -745,7 +738,6 @@ export default async function AdminPage({
   return (
     <DashboardScreen
       username={admin.username}
-      usingDefaultCredentials={admin.usingDefaultCredentials}
       data={data}
     />
   );

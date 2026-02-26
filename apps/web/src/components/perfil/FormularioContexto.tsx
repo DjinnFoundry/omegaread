@@ -26,16 +26,14 @@ export default function FormularioContexto({ studentId, studentNombre, onComplet
   async function handleGuardar() {
     setError('');
     setLoading(true);
-
-    const result = await guardarContextoPersonal({
-      studentId,
-      contextoPersonal: texto || undefined,
-    });
-
-    if (result.ok) {
+    try {
+      await guardarContextoPersonal({
+        studentId,
+        contextoPersonal: texto || undefined,
+      });
       onComplete();
-    } else {
-      setError(result.error ?? 'Error al guardar');
+    } catch {
+      setError('Error al guardar');
       setLoading(false);
     }
   }

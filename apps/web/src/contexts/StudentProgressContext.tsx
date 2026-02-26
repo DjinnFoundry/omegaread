@@ -58,8 +58,20 @@ function leerEstudianteDesdeStorage(): EstudianteActivo | null {
   if (!saved) return null;
 
   try {
-    return JSON.parse(saved) as EstudianteActivo;
+    const parsed: unknown = JSON.parse(saved);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as Record<string, unknown>).id === 'string' &&
+      typeof (parsed as Record<string, unknown>).nombre === 'string'
+    ) {
+      return parsed as EstudianteActivo;
+    }
+    // Shape is invalid - discard corrupted data
+    sessionStorage.removeItem('estudianteActivo');
+    return null;
   } catch {
+    sessionStorage.removeItem('estudianteActivo');
     return null;
   }
 }

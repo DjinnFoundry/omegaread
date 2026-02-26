@@ -38,7 +38,6 @@ export function normalizarTexto(value: string, opts?: NormalizarTextoOpts): stri
       .replace(/[\u0300-\u036f]/g, '')
       .replaceAll(ENIE_PLACEHOLDER, 'n\u0303') // restaurar como NFD para volver a compose
       .normalize('NFC') // recomponer: 'n' + combinacion -> n con virgulilla
-      .normalize('NFC')
       .replace(/[^a-z0-9\u00f1\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();

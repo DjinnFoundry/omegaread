@@ -13,9 +13,13 @@ export type AuthResult = {
 
 /** Acción: Registrar nuevo padre */
 export async function actionRegistro(formData: FormData): Promise<AuthResult> {
-  const nombre = formData.get('nombre') as string;
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
+  const nombre = formData.get('nombre');
+  const email = formData.get('email');
+  const password = formData.get('password');
+
+  if (typeof nombre !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+    return { ok: false, error: 'Datos incompletos' };
+  }
 
   if (!nombre || !email || !password) {
     return { ok: false, error: 'Todos los campos son obligatorios' };
@@ -44,8 +48,12 @@ export async function actionRegistro(formData: FormData): Promise<AuthResult> {
 
 /** Acción: Iniciar sesión */
 export async function actionLogin(formData: FormData): Promise<AuthResult> {
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
+  const email = formData.get('email');
+  const password = formData.get('password');
+
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return { ok: false, error: 'Datos incompletos' };
+  }
 
   if (!email || !password) {
     return { ok: false, error: 'Email y contraseña son obligatorios' };

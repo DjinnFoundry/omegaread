@@ -118,15 +118,14 @@ export default function SelectorIntereses({
     setError('');
     setLoading(true);
 
-    const result = await guardarIntereses({
-      studentId,
-      intereses: seleccionados,
-    });
-
-    if (result.ok) {
+    try {
+      await guardarIntereses({
+        studentId,
+        intereses: seleccionados,
+      });
       onComplete();
-    } else {
-      setError(result.error ?? 'Error al guardar intereses');
+    } catch {
+      setError('Error al guardar intereses');
       setLoading(false);
     }
   }

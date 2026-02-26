@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const BASIC_USER = 'zeta';
-const BASIC_PASS = 'zeta';
-
 function unauthorized() {
   return new NextResponse('Authentication required', {
     status: 401,
@@ -12,6 +9,13 @@ function unauthorized() {
 }
 
 export function middleware(request: NextRequest) {
+  const BASIC_USER = process.env.BASIC_AUTH_USER;
+  const BASIC_PASS = process.env.BASIC_AUTH_PASS;
+
+  if (!BASIC_USER || !BASIC_PASS) {
+    return new NextResponse('Auth not configured', { status: 503 });
+  }
+
   const auth = request.headers.get('authorization');
   if (!auth?.startsWith('Basic ')) return unauthorized();
 

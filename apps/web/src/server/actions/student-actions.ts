@@ -24,11 +24,14 @@ export async function crearEstudiante(formData: FormData): Promise<ActionResult<
   const db = await getDb();
   const padre = await requireAuth();
 
-  const nombre = formData.get('nombre') as string;
-  const fechaNacStr = formData.get('fechaNacimiento') as string;
+  const nombre = formData.get('nombre');
+  const fechaNacStr = formData.get('fechaNacimiento');
 
-  if (!nombre || !fechaNacStr) {
-    return err('AUTH_MISSING_FIELDS', 'Nombre y fecha de nacimiento son obligatorios');
+  if (typeof nombre !== 'string' || nombre.trim().length === 0) {
+    return err('AUTH_MISSING_FIELDS', 'Nombre es obligatorio');
+  }
+  if (typeof fechaNacStr !== 'string' || fechaNacStr.trim().length === 0) {
+    return err('AUTH_MISSING_FIELDS', 'Fecha de nacimiento es obligatoria');
   }
 
   const fechaNac = new Date(fechaNacStr);
@@ -175,11 +178,11 @@ export async function obtenerResumenProgreso(studentId: string) {
 function calcularRacha(sesiones: Array<{ iniciadaEn: Date }>): number {
   if (sesiones.length === 0) return 0;
 
+  const toKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
   const dias = new Set(
-    sesiones.map((s) => {
-      const d = new Date(s.iniciadaEn);
-      return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    })
+    sesiones.map((s) => toKey(new Date(s.iniciadaEn)))
   );
 
   let racha = 0;
@@ -188,7 +191,7 @@ function calcularRacha(sesiones: Array<{ iniciadaEn: Date }>): number {
   for (let i = 0; i < 365; i++) {
     const d = new Date(hoy);
     d.setDate(d.getDate() - i);
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const key = toKey(d);
     if (dias.has(key)) {
       racha++;
     } else if (i > 0) {

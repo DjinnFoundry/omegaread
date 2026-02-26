@@ -91,20 +91,24 @@ export default function PantallaPreguntas({
       tiempoMs,
     };
 
-    setRespuestasAcumuladas(prev => [...prev, respuesta]);
-  }, [mostrandoFeedback, pregunta]);
+    // Compute the new array inline so it is available synchronously for
+    // onComplete without depending on the state variable (which would be
+    // stale until the next render).
+    const nuevas = [...respuestasAcumuladas, respuesta];
+    setRespuestasAcumuladas(nuevas);
+
+    if (preguntaActual >= preguntas.length - 1) {
+      // Last question: call onComplete with the freshly computed array,
+      // not the stale respuestasAcumuladas state value.
+      onComplete(nuevas);
+    }
+  }, [mostrandoFeedback, pregunta, respuestasAcumuladas, preguntaActual, preguntas.length, onComplete]);
 
   const handleSiguiente = useCallback(() => {
-    const siguiente = preguntaActual + 1;
-    if (siguiente >= preguntas.length) {
-      // Ultima pregunta, finalizar
-      onComplete(respuestasAcumuladas);
-    } else {
-      setPreguntaActual(siguiente);
-      setRespuestaSeleccionada(null);
-      setMostrandoFeedback(false);
-    }
-  }, [preguntaActual, preguntas.length, onComplete, respuestasAcumuladas]);
+    setPreguntaActual(prev => prev + 1);
+    setRespuestaSeleccionada(null);
+    setMostrandoFeedback(false);
+  }, []);
 
   if (!pregunta) return null;
 
@@ -308,8 +312,9 @@ export default function PantallaPreguntas({
         </div>
       )}
 
-      {/* Boton siguiente */}
-      {mostrandoFeedback && (
+      {/* Boton siguiente - only shown on non-final questions; the last
+          question completes immediately on answer selection */}
+      {mostrandoFeedback && preguntaActual + 1 < preguntas.length && (
         <div className="text-center animate-fade-in">
           <button
             type="button"
@@ -324,8 +329,8 @@ export default function PantallaPreguntas({
               touch-manipulation
             "
           >
-            <span className="font-datos">{preguntaActual + 1 < preguntas.length ? 'Siguiente' : 'Ver mi resultado'}</span>
-            <span>{preguntaActual + 1 < preguntas.length ? '→' : '🏆'}</span>
+            <span className="font-datos">Siguiente</span>
+            <span>→</span>
           </button>
         </div>
       )}

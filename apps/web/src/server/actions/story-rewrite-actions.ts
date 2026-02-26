@@ -50,9 +50,12 @@ export async function reescribirHistoria(datos: {
     };
   }
 
-  // 2. Obtener historia original
+  // 2. Obtener historia original verificando propiedad del estudiante
   const historiaOriginal = await db.query.generatedStories.findFirst({
-    where: eq(generatedStories.id, validado.storyId),
+    where: and(
+      eq(generatedStories.id, validado.storyId),
+      eq(generatedStories.studentId, validado.studentId),
+    ),
   });
 
   if (!historiaOriginal) {

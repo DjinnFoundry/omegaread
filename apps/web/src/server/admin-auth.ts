@@ -21,14 +21,10 @@ async function getAdminCredentials() {
     // Not in Cloudflare context (local dev)
   }
 
-  const username = cfEnv.ADMIN_USER || process.env.ADMIN_USER || '';
-  const password = cfEnv.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || '';
+  const username = (cfEnv.ADMIN_USER || process.env.ADMIN_USER || '').trim();
+  const password = (cfEnv.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || '').trim();
 
-  return {
-    username: username.trim() || 'admin',
-    password: password.trim() || 'admin',
-    usingDefaults: !username && !password,
-  };
+  return { username, password };
 }
 
 async function crearTokenAdmin(payload: AdminTokenPayload): Promise<string> {
@@ -54,10 +50,8 @@ export async function getCurrentAdmin() {
   const data = await verificarTokenAdmin(token);
   if (!data) return null;
 
-  const creds = await getAdminCredentials();
   return {
     username: data.username,
-    usingDefaultCredentials: creds.usingDefaults,
   };
 }
 
@@ -75,6 +69,14 @@ export async function requireAdminAuth() {
 
 export async function loginAdmin(username: string, password: string) {
   const creds = await getAdminCredentials();
+
+  if (!creds.username || !creds.password) {
+    return {
+      ok: false as const,
+      error: 'Credenciales invalidas',
+    };
+  }
+
   if (username.trim() !== creds.username || password.trim() !== creds.password) {
     return {
       ok: false as const,
@@ -95,7 +97,6 @@ export async function loginAdmin(username: string, password: string) {
   return {
     ok: true as const,
     username: creds.username,
-    usingDefaultCredentials: creds.usingDefaults,
   };
 }
 

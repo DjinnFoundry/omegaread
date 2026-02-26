@@ -89,7 +89,7 @@ export function SeccionPerfilVivo({ data }: Props) {
         .filter(Boolean)
         .slice(0, 10);
 
-      const result = await guardarPerfilVivo({
+      await guardarPerfilVivo({
         studentId: data.studentId,
         contextoPersonal: contextoEdit,
         personajesFavoritos: personajesEdit,
@@ -97,11 +97,6 @@ export function SeccionPerfilVivo({ data }: Props) {
         nuevoHecho: nuevoHecho.trim() || undefined,
         categoriaHecho,
       });
-
-      if (!result.ok) {
-        setErrorPerfil(result.error ?? 'No se pudo guardar el perfil');
-        return;
-      }
 
       setMensajePerfil('Perfil actualizado');
       setNuevoHecho('');
@@ -119,15 +114,11 @@ export function SeccionPerfilVivo({ data }: Props) {
     setErrorPerfil(null);
     setMensajePerfil(null);
     try {
-      const result = await responderMicroPreguntaPerfil({
+      await responderMicroPreguntaPerfil({
         studentId: data.studentId,
         preguntaId: data.perfilVivo.microPreguntaActiva.id,
         respuesta,
       });
-      if (!result.ok) {
-        setErrorPerfil(result.error ?? 'No se pudo guardar la respuesta');
-        return;
-      }
       setMensajePerfil('Respuesta guardada');
       router.refresh();
     } catch {
@@ -141,14 +132,10 @@ export function SeccionPerfilVivo({ data }: Props) {
     setEliminandoId(hechoId);
     setErrorPerfil(null);
     try {
-      const result = await eliminarHecho({
+      await eliminarHecho({
         studentId: data.studentId,
         hechoId,
       });
-      if (!result.ok) {
-        setErrorPerfil(result.error ?? 'No se pudo eliminar el hecho');
-        return;
-      }
       router.refresh();
     } catch {
       setErrorPerfil('No se pudo eliminar el hecho');

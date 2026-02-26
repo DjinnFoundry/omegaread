@@ -5,8 +5,8 @@
  * Sprint 1: medir nivel inicial y confianza.
  */
 import { getDb } from '@/server/db';
-import { students, baselineAssessments, eq, and } from '@zetaread/db';
-import { requireAuth } from '../auth';
+import { students, baselineAssessments, eq } from '@zetaread/db';
+import { requireStudentOwnership } from '../auth';
 import {
   guardarRespuestaBaselineSchema,
   finalizarBaselineSchema,
@@ -33,14 +33,7 @@ export async function guardarRespuestaBaseline(datos: {
 }) {
   const db = await getDb();
   const validado = guardarRespuestaBaselineSchema.parse(datos);
-  const padre = await requireAuth();
-
-  const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
-  });
-  if (!estudiante) {
-    return { ok: false, error: 'Estudiante no encontrado' };
-  }
+  await requireStudentOwnership(validado.studentId);
 
   const [assessment] = await db
     .insert(baselineAssessments)
@@ -70,14 +63,7 @@ export async function finalizarBaseline(datos: {
 }) {
   const db = await getDb();
   const validado = finalizarBaselineSchema.parse(datos);
-  const padre = await requireAuth();
-
-  const estudiante = await db.query.students.findFirst({
-    where: and(eq(students.id, validado.studentId), eq(students.parentId, padre.id)),
-  });
-  if (!estudiante) {
-    return { ok: false, error: 'Estudiante no encontrado' };
-  }
+  await requireStudentOwnership(validado.studentId);
 
   await db
     .update(students)
