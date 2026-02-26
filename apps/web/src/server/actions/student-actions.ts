@@ -8,6 +8,7 @@ import { getDb } from '@/server/db';
 import { students, sessions, achievements, skillProgress, eq, desc, and } from '@omegaread/db';
 import { requireAuth } from '../auth';
 import { calcularEdad } from '@/lib/utils/fecha';
+import { ok, err, type ActionResult } from '@/lib/types/errors';
 
 function nivelPorEdad(edad: number): number {
   if (edad <= 4) return 1.0;
@@ -19,7 +20,7 @@ function nivelPorEdad(edad: number): number {
 }
 
 /** Crear perfil de nino */
-export async function crearEstudiante(formData: FormData) {
+export async function crearEstudiante(formData: FormData): Promise<ActionResult<{ estudiante: unknown }>> {
   const db = await getDb();
   const padre = await requireAuth();
 
@@ -27,13 +28,13 @@ export async function crearEstudiante(formData: FormData) {
   const fechaNacStr = formData.get('fechaNacimiento') as string;
 
   if (!nombre || !fechaNacStr) {
-    return { ok: false, error: 'Nombre y fecha de nacimiento son obligatorios' };
+    return err('AUTH_MISSING_FIELDS', 'Nombre y fecha de nacimiento son obligatorios');
   }
 
   const fechaNac = new Date(fechaNacStr);
   const edad = calcularEdad(fechaNac);
   if (edad < 3 || edad > 10) {
-    return { ok: false, error: 'La edad debe estar entre 3 y 10 anos' };
+    return err('STUDENT_INVALID_AGE', 'La edad debe estar entre 3 y 10 anos');
   }
 
   const [estudiante] = await db
@@ -48,7 +49,7 @@ export async function crearEstudiante(formData: FormData) {
     })
     .returning();
 
-  return { ok: true, estudiante };
+  return ok({ estudiante });
 }
 
 /** Obtener estudiantes del padre actual (sin campos sensibles) */

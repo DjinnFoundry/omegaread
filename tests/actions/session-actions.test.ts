@@ -81,7 +81,7 @@ describe('session-actions', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.sessionId).toBe('session-1');
+    expect(result.ok && result.data.sessionId).toBe('session-1');
   });
 
   it('debería rechazar sesión sin datos válidos', async () => {

@@ -47,11 +47,6 @@ vi.mock('@/lib/data/skills', () => ({
   getSkillsDeDominio: vi.fn(() => []),
 }));
 
-// REMOVED: No mock for ./dashboard-utils
-// These are pure functions that should run with real logic.
-// Tests verify coordination at the action level; detailed utility logic is tested in sprint5-dashboard-logic.test.ts
-// The DB mock provides the data that these real functions operate on.
-
 vi.mock('@omegaread/db', () => ({
   sessions: { id: 'id', studentId: 'student_id' },
   responses: { sessionId: 'session_id' },
@@ -67,19 +62,26 @@ vi.mock('@omegaread/db', () => ({
   inArray: vi.fn((...args: unknown[]) => args),
 }));
 
+// Per-entity mock functions to handle parallel queries correctly
+const mockSessionsFindMany = vi.fn(async () => []);
+const mockResponsesFindMany = vi.fn(async () => []);
+const mockStoriesFindMany = vi.fn(async () => []);
+const mockTopicsFindMany = vi.fn(async () => []);
+const mockAdjustmentsFindMany = vi.fn(async () => []);
+const mockEloSnapshotsFindMany = vi.fn(async () => []);
+const mockSkillProgressFindMany = vi.fn(async () => []);
 const mockFindFirst = vi.fn(async () => null);
-const mockFindMany = vi.fn(async () => []);
 
 vi.mock('@/server/db', () => ({
   getDb: vi.fn(async () => ({
     query: {
-      sessions: { findMany: mockFindMany, findFirst: mockFindFirst },
-      responses: { findMany: mockFindMany },
-      generatedStories: { findMany: mockFindMany },
-      topics: { findMany: mockFindMany },
-      difficultyAdjustments: { findMany: mockFindMany },
-      eloSnapshots: { findMany: mockFindMany },
-      skillProgress: { findMany: mockFindMany },
+      sessions: { findMany: mockSessionsFindMany, findFirst: mockFindFirst },
+      responses: { findMany: mockResponsesFindMany },
+      generatedStories: { findMany: mockStoriesFindMany },
+      topics: { findMany: mockTopicsFindMany },
+      difficultyAdjustments: { findMany: mockAdjustmentsFindMany },
+      eloSnapshots: { findMany: mockEloSnapshotsFindMany },
+      skillProgress: { findMany: mockSkillProgressFindMany },
     },
   })),
 }));
@@ -89,13 +91,21 @@ import { obtenerDashboardNino, obtenerDashboardPadre } from '@/server/actions/da
 describe('dashboard-actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset all per-entity mocks to return empty arrays by default
+    mockSessionsFindMany.mockResolvedValue([]);
+    mockResponsesFindMany.mockResolvedValue([]);
+    mockStoriesFindMany.mockResolvedValue([]);
+    mockTopicsFindMany.mockResolvedValue([]);
+    mockAdjustmentsFindMany.mockResolvedValue([]);
+    mockEloSnapshotsFindMany.mockResolvedValue([]);
+    mockSkillProgressFindMany.mockResolvedValue([]);
   });
 
   // ────────────────────────────────────────────────────
   // DASHBOARD NINO
   // ────────────────────────────────────────────────────
 
-  it('debería obtener dashboard del niño con sesiones completadas', async () => {
+  it('deberia obtener dashboard del nino con sesiones completadas', async () => {
     const hoy = new Date();
     const sesiones = [
       {
@@ -110,10 +120,7 @@ describe('dashboard-actions', () => {
       },
     ];
 
-    mockFindMany.mockResolvedValueOnce(sesiones); // todasSesiones
-    mockFindMany.mockResolvedValueOnce([]); // todasRespuestas
-    mockFindMany.mockResolvedValueOnce([]); // historias
-    mockFindMany.mockResolvedValueOnce([]); // allTopics
+    mockSessionsFindMany.mockResolvedValue(sesiones);
 
     const result = await obtenerDashboardNino('student-1');
 
@@ -123,46 +130,33 @@ describe('dashboard-actions', () => {
     expect(result.mensajeMotivacional).toBeDefined();
   });
 
-  it('debería retornar datos vacíos cuando no hay sesiones', async () => {
-    mockFindMany.mockResolvedValueOnce([]); // todasSesiones
-    mockFindMany.mockResolvedValueOnce([]); // todasRespuestas
-    mockFindMany.mockResolvedValueOnce([]); // historias
-    mockFindMany.mockResolvedValueOnce([]); // allTopics
-
+  it('deberia retornar datos vacios cuando no hay sesiones', async () => {
     const result = await obtenerDashboardNino('student-1');
 
     expect(result.tendenciaComprension).toHaveLength(0);
     expect(result.racha.diasConsecutivos).toBe(0);
   });
 
-  it('debería calcular ritmo lector mejorado', async () => {
+  it('deberia calcular ritmo lector mejorado', async () => {
     const hoy = new Date();
-    // Sessions ordered by date DESC (most recent first) as per DB query
     const sesiones = [
-      // Sesiones recientes (rápidas) - ordered DESC so these come first
       { id: 's6', tipoActividad: 'lectura', storyId: null, duracionSegundos: 320, iniciadaEn: new Date(hoy.getTime() - 60 * 60 * 1000) },
       { id: 's5', tipoActividad: 'lectura', storyId: null, duracionSegundos: 300, iniciadaEn: new Date(hoy.getTime() - 1 * 24 * 60 * 60 * 1000) },
-      // Sesiones antiguas (lentas) - these come later in DESC order
       { id: 's4', tipoActividad: 'lectura', storyId: null, duracionSegundos: 570, iniciadaEn: new Date(hoy.getTime() - 4 * 24 * 60 * 60 * 1000) },
       { id: 's3', tipoActividad: 'lectura', storyId: null, duracionSegundos: 590, iniciadaEn: new Date(hoy.getTime() - 5 * 24 * 60 * 60 * 1000) },
       { id: 's2', tipoActividad: 'lectura', storyId: null, duracionSegundos: 580, iniciadaEn: new Date(hoy.getTime() - 6 * 24 * 60 * 60 * 1000) },
       { id: 's1', tipoActividad: 'lectura', storyId: null, duracionSegundos: 600, iniciadaEn: new Date(hoy.getTime() - 7 * 24 * 60 * 60 * 1000) },
     ];
 
-    mockFindMany.mockResolvedValueOnce(sesiones);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
+    mockSessionsFindMany.mockResolvedValue(sesiones);
 
     const result = await obtenerDashboardNino('student-1');
 
-    // The function should return a result with ritmoLector
-    // In this case with only 6 sessions all with null storyId, the calculation may still work
     expect(result).toBeDefined();
     expect(result.racha).toBeDefined();
   });
 
-  it('debería calcular racha con últimos 7 días', async () => {
+  it('deberia calcular racha con ultimos 7 dias', async () => {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
@@ -172,10 +166,7 @@ describe('dashboard-actions', () => {
       { id: 's3', tipoActividad: 'lectura', iniciadaEn: new Date(hoy.getTime() - 2 * 24 * 60 * 60 * 1000) },
     ];
 
-    mockFindMany.mockResolvedValueOnce(sesiones);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
+    mockSessionsFindMany.mockResolvedValue(sesiones);
 
     const result = await obtenerDashboardNino('student-1');
 
@@ -186,7 +177,7 @@ describe('dashboard-actions', () => {
   // DASHBOARD PADRE
   // ────────────────────────────────────────────────────
 
-  it('debería obtener dashboard padre con evolución semanal', async () => {
+  it('deberia obtener dashboard padre con evolucion semanal', async () => {
     const hoy = new Date();
     const sesiones = [
       {
@@ -208,13 +199,8 @@ describe('dashboard-actions', () => {
       },
     ];
 
-    mockFindMany.mockResolvedValueOnce(sesiones); // todasSesiones
-    mockFindMany.mockResolvedValueOnce([]); // todasRespuestas
-    mockFindMany.mockResolvedValueOnce(historias); // historias
-    mockFindMany.mockResolvedValueOnce([]); // allTopics
-    mockFindMany.mockResolvedValueOnce([]); // progresoSkillsTopic
-    mockFindMany.mockResolvedValueOnce([]); // ajustes
-    mockFindMany.mockResolvedValueOnce([]); // snapshots
+    mockSessionsFindMany.mockResolvedValue(sesiones);
+    mockStoriesFindMany.mockResolvedValue(historias);
 
     const result = await obtenerDashboardPadre('student-1');
 
@@ -225,7 +211,7 @@ describe('dashboard-actions', () => {
     expect(result.desgloseTipos).toBeDefined();
   });
 
-  it('debería incluir historial de sesiones (últimas 20)', async () => {
+  it('deberia incluir historial de sesiones (ultimas 20)', async () => {
     const hoy = new Date();
     const sesiones = Array.from({ length: 25 }, (_, i) => ({
       id: `session-${i}`,
@@ -237,27 +223,15 @@ describe('dashboard-actions', () => {
       duracionSegundos: 300,
     }));
 
-    mockFindMany.mockResolvedValueOnce(sesiones);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
+    mockSessionsFindMany.mockResolvedValue(sesiones);
 
     const result = await obtenerDashboardPadre('student-1');
 
     expect(result.historialSesiones.length).toBeLessThanOrEqual(20);
   });
 
-  it('debería incluir evolución Elo', async () => {
-    mockFindMany.mockResolvedValueOnce([]); // todasSesiones
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([
+  it('deberia incluir evolucion Elo', async () => {
+    mockEloSnapshotsFindMany.mockResolvedValue([
       {
         id: 'elo-snapshot-1',
         studentId: 'student-1',
@@ -278,13 +252,8 @@ describe('dashboard-actions', () => {
     expect(result.eloActual).toBeDefined();
   });
 
-  it('debería incluir timeline de cambios de nivel', async () => {
-    mockFindMany.mockResolvedValueOnce([]); // todasSesiones
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([
+  it('deberia incluir timeline de cambios de nivel', async () => {
+    mockAdjustmentsFindMany.mockResolvedValue([
       {
         id: 'adj-1',
         studentId: 'student-1',
@@ -296,29 +265,18 @@ describe('dashboard-actions', () => {
         razon: 'Score alto',
         evidencia: { comprensionScore: 0.85 },
       },
-    ]); // ajustes
-    mockFindMany.mockResolvedValueOnce([]);
+    ]);
 
     const result = await obtenerDashboardPadre('student-1');
 
     expect(result.timelineCambiosNivel).toBeDefined();
   });
 
-  it('debería incluir Elo actual y Elo por tipo', async () => {
-    mockFindMany.mockResolvedValueOnce([]); // todasSesiones
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-    mockFindMany.mockResolvedValueOnce([]);
-
+  it('deberia incluir Elo actual y Elo por tipo', async () => {
     const result = await obtenerDashboardPadre('student-1');
 
     expect(result.eloActual.global).toBe(1000);
     expect(result.eloActual.literal).toBe(1000);
     expect(result.desgloseTipos).toBeDefined();
   });
-
-
 });

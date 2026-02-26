@@ -58,7 +58,7 @@ interface DatosSesionActiva {
     pregunta: string;
     opciones: string[];
     respuestaCorrecta: number;
-    explicacion: string;
+    explicacion: string | null;
   }>;
 }
 

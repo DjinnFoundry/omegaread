@@ -27,6 +27,7 @@ import {
   actualizarProgresoSchema,
   cargarProgresoSchema,
 } from '../validation';
+import { ok, err, type ActionResult } from '@/lib/types/errors';
 
 // ─────────────────────────────────────────────
 // INICIAR SESION
@@ -36,7 +37,7 @@ export async function iniciarSesion(datos: {
   studentId: string;
   tipoActividad: string;
   modulo: string;
-}) {
+}): Promise<ActionResult<{ sessionId: string }>> {
   const db = await getDb();
   const validado = iniciarSesionSchema.parse(datos);
   await requireStudentOwnership(validado.studentId);
@@ -52,7 +53,7 @@ export async function iniciarSesion(datos: {
     })
     .returning();
 
-  return { ok: true, sessionId: sesion.id };
+  return ok({ sessionId: sesion.id });
 }
 
 // ─────────────────────────────────────────────
@@ -97,7 +98,7 @@ export async function guardarRespuestaIndividual(datos: {
     intentoNumero: validado.intentoNumero ?? 1,
   });
 
-  return { ok: true };
+  return ok({});
 }
 
 // ─────────────────────────────────────────────

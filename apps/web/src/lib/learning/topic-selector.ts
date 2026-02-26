@@ -24,10 +24,6 @@ type SkillProgressRow = InferSelectModel<typeof skillProgress>;
 
 export const INTENTOS_MIN_REFORZAR = 3;
 
-// Re-export canonical implementations directly so callers can import from here.
-export { crearMapaProgresoCompleto as crearMapaProgresoSkill } from '@/lib/skills/progress';
-export { esSkillDominada as skillDominada } from '@/lib/skills/progress';
-
 export function skillDesbloqueada(skill: SkillDef, map: Map<string, SkillProgressRow>): boolean {
   if (skill.prerequisitos.length === 0) return true;
   return skill.prerequisitos.every((req) => esSkillDominada(req, map));
@@ -109,6 +105,19 @@ export function construirObjetivoSesion(skill: SkillDef, row: SkillProgressRow |
   return `Avanzar en "${skill.nombre}" aumentando un poco la dificultad sin perder claridad.`;
 }
 
+function filtrarSkillsRelacionadas(
+  pool: SkillDef[],
+  currentSlug: string,
+  predicate: (slug: string, row: SkillProgressRow | undefined) => boolean,
+  progresoMap: Map<string, SkillProgressRow>,
+  limit: number = 3,
+): string[] {
+  return pool
+    .filter((s) => s.slug !== currentSlug && predicate(s.slug, progresoMap.get(s.slug)))
+    .slice(0, limit)
+    .map((s) => s.nombre);
+}
+
 export function construirContextoTechTree(params: {
   skill: SkillDef;
   progresoMap: Map<string, SkillProgressRow>;
@@ -126,33 +135,30 @@ export function construirContextoTechTree(params: {
     .filter((req) => !esSkillDominada(req, progresoMap))
     .map((req) => getSkillBySlug(req)?.nombre ?? req);
 
-  const skillsDominadasRelacionadas = skillsDominio
-    .filter((s) => s.slug !== skill.slug && esSkillDominada(s.slug, progresoMap))
-    .slice(0, 3)
-    .map((s) => s.nombre);
+  const skillsDominadasRelacionadas = filtrarSkillsRelacionadas(
+    skillsDominio,
+    skill.slug,
+    (slug) => esSkillDominada(slug, progresoMap),
+    progresoMap,
+  );
 
-  const skillsEnProgresoRelacionadas = skillsDominio
-    .filter((s) => s.slug !== skill.slug)
-    .filter((s) => {
-      const row = progresoMap.get(s.slug);
-      return (
-        !!row &&
-        row.totalIntentos > 0 &&
-        !esSkillDominada(s.slug, progresoMap) &&
-        row.nivelMastery >= 0.6
-      );
-    })
-    .slice(0, 3)
-    .map((s) => s.nombre);
+  const skillsEnProgresoRelacionadas = filtrarSkillsRelacionadas(
+    skillsDominio,
+    skill.slug,
+    (slug, row) =>
+      !!row &&
+      row.totalIntentos > 0 &&
+      !esSkillDominada(slug, progresoMap) &&
+      row.nivelMastery >= 0.6,
+    progresoMap,
+  );
 
-  const skillsAReforzarRelacionadas = skillsDominio
-    .filter((s) => s.slug !== skill.slug)
-    .filter((s) => {
-      const row = progresoMap.get(s.slug);
-      return !!row && row.totalIntentos >= INTENTOS_MIN_REFORZAR && row.nivelMastery < 0.6;
-    })
-    .slice(0, 3)
-    .map((s) => s.nombre);
+  const skillsAReforzarRelacionadas = filtrarSkillsRelacionadas(
+    skillsDominio,
+    skill.slug,
+    (_slug, row) => !!row && row.totalIntentos >= INTENTOS_MIN_REFORZAR && row.nivelMastery < 0.6,
+    progresoMap,
+  );
 
   const siguienteSkillSugerida = skillsDominio
     .filter((s) => s.slug !== skill.slug)

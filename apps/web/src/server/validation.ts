@@ -277,7 +277,7 @@ export const finalizarSesionLecturaSchema = z.object({
     totalPalabrasAlineadas: z.number().int().nonnegative(),
     qualityScore: z.number().min(0).max(1),
     confiable: z.boolean(),
-    motivoNoConfiable: z.string().max(200).nullable().optional(),
+    motivoNoConfiable: z.string().max(200).nullable().optional().transform(v => v ?? null),
     motor: z.string().max(100),
   }).optional(),
 });
@@ -303,7 +303,7 @@ export const registrarLecturaCompletadaSchema = z.object({
     totalPalabrasAlineadas: z.number().int().nonnegative(),
     qualityScore: z.number().min(0).max(1),
     confiable: z.boolean(),
-    motivoNoConfiable: z.string().max(200).nullable().optional(),
+    motivoNoConfiable: z.string().max(200).nullable().optional().transform(v => v ?? null),
     motor: z.string().max(100),
   }).optional(),
 });

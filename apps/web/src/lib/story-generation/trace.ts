@@ -1,7 +1,22 @@
 /**
- * Story generation trace: types and state machine functions.
+ * Story generation trace: types, state machine functions, and fun-mode helpers.
  * No I/O, no DB, no server directives. Pure domain logic.
  */
+import type { ParentConfig, StoryMetadata } from '@omegaread/db';
+
+// ─── Fun mode helpers ───
+
+export function extraerFunModeConfig(rawConfig: unknown): boolean {
+  if (!rawConfig || typeof rawConfig !== 'object') return false;
+  const config = rawConfig as ParentConfig;
+  return config.funMode === true;
+}
+
+export function extraerFunModeHistoria(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object') return false;
+  const storyMetadata = metadata as StoryMetadata;
+  return storyMetadata.generationFlags?.funMode === true;
+}
 
 // ─── Types ───
 

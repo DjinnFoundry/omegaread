@@ -24,6 +24,7 @@ import {
 } from '@/lib/ai/prompts';
 import { TOPICS_SEED } from '@/lib/data/skills';
 import { mapPreguntaToDTO } from '@/lib/questions/mapper';
+import { mergeSessionMetadata } from '@/lib/types/session-metadata';
 
 /**
  * Reescribe una historia en caliente durante la sesion de lectura.
@@ -157,15 +158,14 @@ export async function reescribirHistoria(datos: {
     .update(sessions)
     .set({
       storyId: storyRow.id,
-      metadata: {
-        ...(sesion?.metadata as Record<string, unknown>),
+      metadata: mergeSessionMetadata(sesion?.metadata, {
         nivelTexto: nivelNuevo,
         tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
         ajusteManual: validado.direccion,
         storyIdOriginal: validado.storyId,
         llmStoryModel: story.modelo,
         llmStoryUsage: story.llmUsage,
-      },
+      }),
     })
     .where(eq(sessions.id, validado.sessionId));
 

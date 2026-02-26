@@ -27,6 +27,7 @@ import { actualizarProgresoInmediato } from './session-actions';
 import { procesarRespuestasElo, type EloRatings, type RespuestaElo } from '@/lib/elo';
 import type { TipoPregunta, AudioReadingAnalysis } from '@/lib/types/reading';
 import { serializarAudioAnalisis } from '@/lib/audio/utils';
+import { parseSessionMetadata, mergeSessionMetadata } from '@/lib/types/session-metadata';
 
 // ─── Constants ───
 
@@ -65,13 +66,9 @@ export async function registrarLecturaCompletada(datos: {
     return { ok: false as const, error: 'Sesion no encontrada' };
   }
 
-  const metadataBase = (sesion.metadata as Record<string, unknown>) ?? {};
+  const metadataBase = parseSessionMetadata(sesion.metadata);
   const yaMarcada = metadataBase.lecturaCompletada === true;
-  const lecturaCompletadaEnExistente =
-    typeof metadataBase.lecturaCompletadaEn === 'string'
-      ? metadataBase.lecturaCompletadaEn
-      : null;
-  const lecturaCompletadaEn = lecturaCompletadaEnExistente ?? new Date().toISOString();
+  const lecturaCompletadaEn = metadataBase.lecturaCompletadaEn ?? new Date().toISOString();
 
   const usarAudioParaWpm =
     !!validado.audioAnalisis?.confiable && validado.audioAnalisis.wpmUtil > 0;
@@ -85,14 +82,13 @@ export async function registrarLecturaCompletada(datos: {
       wpmPromedio: wpmPromedioFinal ?? sesion.wpmPromedio ?? null,
       wpmPorPagina: validado.wpmPorPagina ?? sesion.wpmPorPagina ?? null,
       totalPaginas: validado.totalPaginas ?? sesion.totalPaginas ?? null,
-      metadata: {
-        ...metadataBase,
+      metadata: mergeSessionMetadata(sesion.metadata, {
         lecturaCompletada: true,
         lecturaCompletadaEn,
         tiempoLecturaMs: validado.tiempoLecturaMs,
         fuenteWpm: usarAudioParaWpm ? 'audio' : 'pagina',
         audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis, metadataBase.audioAnalisis ?? null),
-      },
+      }),
     })
     .where(eq(sessions.id, validado.sessionId));
 
@@ -154,7 +150,7 @@ export async function finalizarSesionLectura(datos: {
   );
 
   // 1b. Actualizar skill progress por tipo de pregunta
-  const topicSlug = (sesion.metadata as Record<string, unknown>)?.topicSlug as string | undefined;
+  const topicSlug = parseSessionMetadata(sesion.metadata).topicSlug;
   for (const resp of validado.respuestas) {
     await actualizarProgresoInmediato({
       studentId: validado.studentId,
@@ -189,40 +185,13 @@ export async function finalizarSesionLectura(datos: {
     ? (validado.audioAnalisis?.wpmUtil ?? null)
     : (validado.wpmPromedio ?? null);
   const fuenteWpm = usarAudioParaWpm ? 'audio' : 'pagina';
-  const metadataPrev = (sesion.metadata as Record<string, unknown>) ?? {};
-  const lecturaCompletadaEn =
-    typeof metadataPrev.lecturaCompletadaEn === 'string'
-      ? metadataPrev.lecturaCompletadaEn
-      : new Date().toISOString();
-
-  await db
-    .update(sessions)
-    .set({
-      completada: true,
-      duracionSegundos,
-      estrellasGanadas: estrellas,
-      finalizadaEn: new Date(),
-      wpmPromedio: wpmPromedioFinal,
-      wpmPorPagina: validado.wpmPorPagina ?? null,
-      totalPaginas: validado.totalPaginas ?? null,
-      metadata: {
-        ...metadataPrev,
-        lecturaCompletada: true,
-        lecturaCompletadaEn,
-        comprensionScore,
-        aciertos,
-        totalPreguntas,
-        tiempoLecturaMs: validado.tiempoLecturaMs,
-        fuenteWpm,
-        audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis),
-      },
-    })
-    .where(eq(sessions.id, validado.sessionId));
+  const metadataPrev = parseSessionMetadata(sesion.metadata);
+  const lecturaCompletadaEn = metadataPrev.lecturaCompletadaEn ?? new Date().toISOString();
 
   // 4. Calcular ajuste de dificultad
   const tiempoEsperadoMs =
-    ((sesion.metadata as Record<string, unknown>)?.tiempoEsperadoMs as number) ??
-    getNivelConfig(((sesion.metadata as Record<string, unknown>)?.nivelTexto as number) ?? 2)
+    (metadataPrev.tiempoEsperadoMs as number | undefined) ??
+    getNivelConfig((metadataPrev.nivelTexto as number | undefined) ?? 2)
       .tiempoEsperadoMs;
 
   let ajuste: {
@@ -245,7 +214,7 @@ export async function finalizarSesionLectura(datos: {
     // En D1 local puede fallar por soporte parcial de transacciones.
     // Fallback no bloqueante: mantener nivel y usar comprension como score de sesion.
     console.error('[AjusteDificultad] Fallback por error:', ajusteError);
-    const nivelMetadata = (sesion.metadata as Record<string, unknown>)?.nivelTexto;
+    const nivelMetadata = metadataPrev.nivelTexto;
     const nivelAnterior = Math.max(
       1.0,
       Math.min(4.8, typeof nivelMetadata === 'number' ? nivelMetadata : 1.0),
@@ -259,18 +228,29 @@ export async function finalizarSesionLectura(datos: {
     };
   }
 
-  // Guardar sessionScore compuesto en metadata para futuras sesiones.
-  const metadataActual = (
-    await db.query.sessions.findFirst({
-      where: eq(sessions.id, validado.sessionId),
-      columns: { metadata: true },
-    })
-  )?.metadata as Record<string, unknown> | null;
-
+  // 3+4 combined: single update writes all session fields and full metadata including sessionScore.
   await db
     .update(sessions)
     .set({
-      metadata: { ...metadataActual, sessionScore: ajuste.sessionScore },
+      completada: true,
+      duracionSegundos,
+      estrellasGanadas: estrellas,
+      finalizadaEn: new Date(),
+      wpmPromedio: wpmPromedioFinal,
+      wpmPorPagina: validado.wpmPorPagina ?? null,
+      totalPaginas: validado.totalPaginas ?? null,
+      metadata: {
+        ...metadataPrev,
+        lecturaCompletada: true,
+        lecturaCompletadaEn,
+        comprensionScore,
+        aciertos,
+        totalPreguntas,
+        tiempoLecturaMs: validado.tiempoLecturaMs,
+        fuenteWpm,
+        audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis),
+        sessionScore: ajuste.sessionScore,
+      },
     })
     .where(eq(sessions.id, validado.sessionId));
 
@@ -308,8 +288,7 @@ export async function finalizarSesionLectura(datos: {
           rd: estudianteElo.eloRd,
         };
 
-        const nivelTexto =
-          ((sesion.metadata as Record<string, unknown>)?.nivelTexto as number) ?? 2;
+        const nivelTexto = metadataPrev.nivelTexto ?? 2;
 
         // Construir respuestas para el motor Elo
         const respuestasElo: RespuestaElo[] = validado.respuestas.map((r) => {

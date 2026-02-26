@@ -13,7 +13,7 @@ interface Pregunta {
   pregunta: string;
   opciones: string[];
   respuestaCorrecta: number;
-  explicacion: string;
+  explicacion: string | null;
 }
 
 export interface RespuestaPregunta {

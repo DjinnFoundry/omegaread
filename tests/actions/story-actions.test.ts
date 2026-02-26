@@ -481,18 +481,7 @@ describe('story-actions', () => {
       studentId: '00000000-0000-4000-8000-000000000020',
       completada: false,
       metadata: { nivelTexto: 2.0, tiempoEsperadoMs: 180000 },
-      storyId: null,
-    });
-
-    mockFindMany.mockResolvedValueOnce([]); // story questions
-    mockFindFirst.mockResolvedValueOnce({
-      id: '00000000-0000-4000-8000-000000000020',
-      eloGlobal: 1000,
-      eloLiteral: 1000,
-      eloInferencia: 1000,
-      eloVocabulario: 1000,
-      eloResumen: 1000,
-      eloRd: 350,
+      storyId: null, // No story -> Elo block is skipped entirely
     });
 
     const result = await finalizarSesionLectura({

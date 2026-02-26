@@ -5,12 +5,16 @@
  *
  * Cambios UX:
  * - Sin ajuste manual de dificultad en pantalla.
- * - Menu compacto (⋯) con acciones secundarias.
+ * - Menu compacto con acciones secundarias.
  * - Selector de fuente (normal/dislexia).
  * - Paginacion por oraciones para evitar cortes raros.
+ *
+ * Audio recording y reading timer delegados a hooks dedicados.
  */
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import type { AudioReadingAnalysis } from '@/lib/types/reading';
+import { useAudioRecording } from '@/hooks/useAudioRecording';
+import { useReadingTimer } from '@/hooks/useReadingTimer';
 
 export interface WpmData {
   wpmPromedio: number;
@@ -33,10 +37,6 @@ export type AudioAnalisisHandler = (
   | { ok: true; analisis: AudioReadingAnalysis }
   | { ok: false; error: string }
 >;
-
-interface BrowserAudioContextConstructor {
-  new (): AudioContext;
-}
 
 interface PantallaLecturaProps {
   titulo: string;
@@ -140,33 +140,6 @@ function dividirEnPaginas(contenido: string, palabrasObjetivo: number): string[]
   return paginas.length > 0 ? paginas : [contenido];
 }
 
-function getAudioContextConstructor(): BrowserAudioContextConstructor | null {
-  if (typeof window === 'undefined') return null;
-  const ctor = (
-    window as unknown as {
-      AudioContext?: BrowserAudioContextConstructor;
-      webkitAudioContext?: BrowserAudioContextConstructor;
-    }
-  ).AudioContext
-    ??
-    (window as unknown as { webkitAudioContext?: BrowserAudioContextConstructor }).webkitAudioContext;
-  return ctor ?? null;
-}
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  const arrayBuffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  const chunkSize = 0x8000;
-  let binary = '';
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const sub = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...sub);
-  }
-
-  return btoa(binary);
-}
-
 export default function PantallaLectura({
   titulo,
   contenido,
@@ -200,22 +173,12 @@ export default function PantallaLectura({
     if (stored === 'libro' || stored === 'dislexia') return stored;
     return preferenciaFuente ?? 'libro';
   });
-  const [audioEstado, setAudioEstado] = useState<'idle' | 'recording' | 'unsupported' | 'denied' | 'processing'>('idle');
-  const [audioError, setAudioError] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // Timestamps: uno por transicion de pagina + inicio
-  const timestampsRef = useRef<number[]>([0]);
-  const inicioTotalRef = useRef(0);
-  const maxPaginaRef = useRef(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioStreamRef = useRef<MediaStream | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const vadRafRef = useRef<number | null>(null);
-  const ultimoTickVadRef = useRef(0);
-  const vozActivaMsRef = useRef(0);
+  // ─── Custom hooks ───
+  const audio = useAudioRecording();
+  const timer = useReadingTimer();
 
   const familiaFuenteLectura =
     tipoFuente === 'dislexia'
@@ -223,162 +186,6 @@ export default function PantallaLectura({
       : 'var(--font-lectura-normal)';
   const modoTDAH = preferenciasAccesibilidad?.modoTDAH === true;
   const altoContraste = preferenciasAccesibilidad?.altoContraste === true;
-
-  const detenerAnalisisAudio = useCallback(async () => {
-    if (vadRafRef.current !== null) {
-      cancelAnimationFrame(vadRafRef.current);
-      vadRafRef.current = null;
-    }
-    ultimoTickVadRef.current = 0;
-
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      await new Promise<void>((resolve) => {
-        const onStop = () => {
-          recorder.removeEventListener('stop', onStop);
-          resolve();
-        };
-        recorder.addEventListener('stop', onStop, { once: true });
-        recorder.stop();
-      });
-    }
-    mediaRecorderRef.current = null;
-
-    const stream = audioStreamRef.current;
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      audioStreamRef.current = null;
-    }
-
-    const ctx = audioContextRef.current;
-    if (ctx) {
-      try {
-        await ctx.close();
-      } catch {
-        // Ignorado: puede estar ya cerrado.
-      }
-      audioContextRef.current = null;
-    }
-  }, []);
-
-  const iniciarAnalisisAudio = useCallback(async () => {
-    if (!onAnalizarAudio) return;
-    setAudioError(null);
-    setAudioEstado('idle');
-
-    if (
-      typeof window === 'undefined'
-      || !navigator.mediaDevices?.getUserMedia
-      || !window.MediaRecorder
-    ) {
-      setAudioEstado('unsupported');
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      audioStreamRef.current = stream;
-
-      const Ctx = getAudioContextConstructor();
-      if (Ctx) {
-        const audioContext = new Ctx();
-        audioContextRef.current = audioContext;
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.75;
-        source.connect(analyser);
-        const buffer = new Float32Array(analyser.fftSize);
-        const thresholdRms = 0.02;
-
-        const tick = () => {
-          analyser.getFloatTimeDomainData(buffer);
-          let sum = 0;
-          for (let i = 0; i < buffer.length; i++) {
-            sum += buffer[i] * buffer[i];
-          }
-          const rms = Math.sqrt(sum / buffer.length);
-
-          const now = performance.now();
-          const delta = ultimoTickVadRef.current > 0 ? now - ultimoTickVadRef.current : 0;
-          ultimoTickVadRef.current = now;
-
-          if (rms >= thresholdRms && delta > 0 && delta < 1000) {
-            vozActivaMsRef.current += delta;
-          }
-
-          vadRafRef.current = requestAnimationFrame(tick);
-        };
-        vadRafRef.current = requestAnimationFrame(tick);
-      }
-
-      const preferred = 'audio/webm;codecs=opus';
-      const mimeType = MediaRecorder.isTypeSupported(preferred) ? preferred : 'audio/webm';
-      const recorder = new MediaRecorder(stream, { mimeType });
-      recorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-      recorder.start(1000);
-      mediaRecorderRef.current = recorder;
-      setAudioEstado('recording');
-    } catch {
-      setAudioEstado('denied');
-      setAudioError('No se pudo activar el microfono. Puedes reintentarlo desde el menu.');
-    }
-  }, [onAnalizarAudio]);
-
-  const reintentarAnalisisAudio = useCallback(async () => {
-    await detenerAnalisisAudio();
-    audioChunksRef.current = [];
-    vozActivaMsRef.current = 0;
-    await iniciarAnalisisAudio();
-  }, [detenerAnalisisAudio, iniciarAnalisisAudio]);
-
-  const finalizarAudioYAnalizar = useCallback(
-    async (tiempoTotalMs: number) => {
-      if (!onAnalizarAudio || audioEstado !== 'recording') {
-        return null;
-      }
-
-      setAudioEstado('processing');
-      await detenerAnalisisAudio();
-
-      const vozActivaMs = Math.round(vozActivaMsRef.current);
-      const chunks = audioChunksRef.current;
-      if (chunks.length === 0 || vozActivaMs <= 0) {
-        setAudioEstado('idle');
-        return null;
-      }
-
-      const mimeType = chunks[0]?.type || 'audio/webm';
-      const blob = new Blob(chunks, { type: mimeType });
-      const audioBase64 = await blobToBase64(blob);
-
-      const resultado = await onAnalizarAudio({
-        audioBase64,
-        mimeType,
-        tiempoVozActivaMs: vozActivaMs,
-        tiempoTotalMs,
-      });
-
-      setAudioEstado('idle');
-      if (!resultado.ok) {
-        setAudioError('No pudimos analizar el audio. Se uso ritmo por pagina.');
-        return null;
-      }
-
-      return resultado.analisis;
-    },
-    [audioEstado, detenerAnalisisAudio, onAnalizarAudio],
-  );
 
   // Persistir preferencia de fuente
   useEffect(() => {
@@ -396,25 +203,23 @@ export default function PantallaLectura({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset required when story changes
     setPaginaActual(0);
-    timestampsRef.current = [Date.now()];
-    inicioTotalRef.current = Date.now();
-    maxPaginaRef.current = 0;
-    audioChunksRef.current = [];
-    vozActivaMsRef.current = 0;
+    timer.iniciar();
     setMenuAbierto(false);
-    void iniciarAnalisisAudio();
+    if (onAnalizarAudio) {
+      void audio.iniciar();
+    }
 
     return () => {
-      void detenerAnalisisAudio();
+      void audio.detener();
     };
-  }, [contenido, iniciarAnalisisAudio, detenerAnalisisAudio]);
+  }, [contenido]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional reset on content change
 
   // Proteccion anti finish instantaneo
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- timer reset when story changes
     setPuedeTerminar(false);
-    const timer = setTimeout(() => setPuedeTerminar(true), DELAY_TERMINAR_MS);
-    return () => clearTimeout(timer);
+    const t = setTimeout(() => setPuedeTerminar(true), DELAY_TERMINAR_MS);
+    return () => clearTimeout(t);
   }, [contenido]);
 
   // Cerrar version de impresion tras finalizar impresion
@@ -441,70 +246,56 @@ export default function PantallaLectura({
   const handleSiguientePagina = useCallback(() => {
     setPaginaActual((p) => {
       const next = p + 1;
-      if (next > maxPaginaRef.current) {
-        timestampsRef.current.push(Date.now());
-        maxPaginaRef.current = next;
+      if (next > timer.getMaxPagina()) {
+        timer.registrarAvancePagina();
       }
       return next;
     });
-  }, []);
+  }, [timer]);
 
   const handlePaginaAnterior = useCallback(() => {
     setPaginaActual((p) => Math.max(0, p - 1));
   }, []);
 
   const handleTerminar = useCallback(async () => {
-    const ahora = Date.now();
-    if (timestampsRef.current.length <= totalPaginas) {
-      timestampsRef.current.push(ahora);
-    }
-    const tiempoTotalMs = ahora - inicioTotalRef.current;
+    const result = timer.finalizar(totalPaginas, paginas, contarPalabras);
 
-    const wpmPorPagina: Array<{ pagina: number; wpm: number }> = [];
-    for (let i = 0; i < totalPaginas; i++) {
-      const inicio = timestampsRef.current[i];
-      const fin = timestampsRef.current[i + 1];
-      if (inicio == null || fin == null) continue;
-      const minutos = (fin - inicio) / 60_000;
-      const palabras = contarPalabras(paginas[i] ?? '');
-      const wpm = minutos > 0 ? Math.round(palabras / minutos) : 0;
-      wpmPorPagina.push({ pagina: i + 1, wpm });
-    }
-
-    const paginasParaPromedio = wpmPorPagina.filter((p) => p.pagina > 1);
-    const wpmPromedioPorPagina = paginasParaPromedio.length > 0
-      ? Math.round(paginasParaPromedio.reduce((sum, p) => sum + p.wpm, 0) / paginasParaPromedio.length)
-      : (wpmPorPagina[0]?.wpm ?? 0);
-
+    // Try to get audio analysis
     let audioAnalisis: AudioReadingAnalysis | null = null;
-    if (onAnalizarAudio && audioEstado === 'recording') {
+    if (onAnalizarAudio && audio.estado === 'recording') {
       try {
-        audioAnalisis = await finalizarAudioYAnalizar(tiempoTotalMs);
+        const audioData = await audio.detenerYObtener();
+        if (audioData) {
+          const analisisResult = await onAnalizarAudio({
+            audioBase64: audioData.audioBase64,
+            mimeType: audioData.mimeType,
+            tiempoVozActivaMs: audioData.vozActivaMs,
+            tiempoTotalMs: result.tiempoTotalMs,
+          });
+          if (analisisResult.ok) {
+            audioAnalisis = analisisResult.analisis;
+          }
+        }
       } catch {
-        setAudioError('No pudimos analizar el audio. Se uso ritmo por pagina.');
+        // Audio analysis failed; fall back to page-based WPM
       }
     }
 
     const usarAudio = !!audioAnalisis?.confiable && audioAnalisis.wpmUtil > 0;
     const wpmPromedioFinal = usarAudio && audioAnalisis
       ? audioAnalisis.wpmUtil
-      : wpmPromedioPorPagina;
+      : result.wpmPromedio;
 
     const payload: WpmData = {
       wpmPromedio: wpmPromedioFinal,
-      wpmPorPagina,
+      wpmPorPagina: result.wpmPorPagina,
       totalPaginas,
       fuenteWpm: usarAudio ? 'audio' : 'pagina',
       audioAnalisis,
     };
 
-    if (onTerminar.length < 2) {
-      (onTerminar as unknown as (tiempoMs: number) => void)(tiempoTotalMs);
-      return;
-    }
-
-    onTerminar(tiempoTotalMs, payload);
-  }, [onTerminar, totalPaginas, paginas, finalizarAudioYAnalizar, onAnalizarAudio, audioEstado]);
+    onTerminar(result.tiempoTotalMs, payload);
+  }, [onTerminar, totalPaginas, paginas, timer, audio, onAnalizarAudio]);
 
   const handlePrint = useCallback(() => {
     setMostrarVersionImpresion(true);
@@ -529,7 +320,7 @@ export default function PantallaLectura({
 
   const esUltimaPagina = paginaActual >= totalPaginas - 1;
   const esPrimeraPagina = paginaActual === 0;
-  const procesandoAudio = audioEstado === 'processing';
+  const procesandoAudio = audio.estado === 'processing';
   const textoPaginaActual = paginas[paginaActual] ?? '';
   const parrafos = textoPaginaActual
     .split('\n\n')
@@ -537,13 +328,13 @@ export default function PantallaLectura({
     .filter((p) => p.length > 0);
 
   const estadoAudioTexto =
-    audioEstado === 'recording'
+    audio.estado === 'recording'
       ? 'Activo'
-      : audioEstado === 'processing'
+      : audio.estado === 'processing'
         ? 'Analizando'
-        : audioEstado === 'denied'
+        : audio.estado === 'denied'
           ? 'Sin permiso'
-          : audioEstado === 'unsupported'
+          : audio.estado === 'unsupported'
             ? 'No disponible'
           : 'Inactivo';
   const cardLecturaClass = altoContraste
@@ -633,13 +424,13 @@ export default function PantallaLectura({
                   <p className="text-[11px] text-texto-suave">Microfono: <span className="font-semibold text-texto">{estadoAudioTexto}</span></p>
                   <button
                     type="button"
-                    onClick={() => void reintentarAnalisisAudio()}
+                    onClick={() => void audio.reintentar()}
                     className="mt-1 w-full text-left rounded-lg px-2 py-1.5 text-xs text-texto hover:bg-superficie transition-colors"
                   >
                     Reintentar microfono
                   </button>
-                  {audioError && (
-                    <p className="mt-1 text-[11px] text-texto-suave">{audioError}</p>
+                  {audio.error && (
+                    <p className="mt-1 text-[11px] text-texto-suave">{audio.error}</p>
                   )}
                 </div>
               )}

@@ -262,33 +262,33 @@ export async function obtenerDashboardNino(estudianteId: string): Promise<Dashbo
     orderBy: [desc(sessions.iniciadaEn)],
   });
 
-  // Obtener todas las respuestas de las sesiones
+  // Obtener respuestas, stories y topics en paralelo (todos dependen solo de sesiones)
   const sessionIds = todasSesiones.map(s => s.id);
-  const todasRespuestas = sessionIds.length > 0
-    ? await obtenerRespuestasDeSesiones(sessionIds)
-    : [];
-
-  // Obtener stories para topic info
   const storyIds = todasSesiones
     .map(s => s.storyId)
     .filter((id): id is string => id !== null);
-  const historias = storyIds.length > 0
-    ? await obtenerHistorias(storyIds)
-    : [];
 
-  // Obtener topics para emojis/nombres
-  const allTopics = await db.query.topics.findMany({
-    where: eq(topics.activo, true),
-  });
+  const [todasRespuestas, historias, allTopics] = await Promise.all([
+    sessionIds.length > 0 ? obtenerRespuestasDeSesiones(sessionIds) : Promise.resolve([]),
+    storyIds.length > 0 ? obtenerHistorias(storyIds) : Promise.resolve([]),
+    db.query.topics.findMany({ where: eq(topics.activo, true) }),
+  ]);
+
   const topicMap = new Map(allTopics.map(t => [t.slug, t]));
-
-  // Mapear session -> story -> topic
   const storyMap = new Map(historias.map(h => [h.id, h]));
+
+  // Pre-build response lookup to avoid O(sessions * responses) quadratic scans.
+  const respuestasPorSesion = new Map<string, typeof todasRespuestas>();
+  for (const r of todasRespuestas) {
+    const list = respuestasPorSesion.get(r.sessionId) ?? [];
+    list.push(r);
+    respuestasPorSesion.set(r.sessionId, list);
+  }
 
   // ─── Tendencia comprension (ultimas 7 sesiones) ───
   const ultimas7 = todasSesiones.slice(0, 7).reverse();
   const tendenciaComprension = ultimas7.map(s => {
-    const respsSesion = todasRespuestas.filter(r => r.sessionId === s.id);
+    const respsSesion = respuestasPorSesion.get(s.id) ?? [];
     const total = respsSesion.length;
     const aciertos = respsSesion.filter(r => r.correcta).length;
     const porcentaje = total > 0 ? Math.round((aciertos / total) * 100) : 0;
@@ -316,7 +316,7 @@ export async function obtenerDashboardNino(estudianteId: string): Promise<Dashbo
   // ─── Topics fuertes y a reforzar ───
   const topicsResumen = calcularTopicsResumen(
     todasSesiones,
-    todasRespuestas,
+    respuestasPorSesion,
     storyMap,
     topicMap,
   );
@@ -355,40 +355,47 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     orderBy: [desc(sessions.iniciadaEn)],
   });
 
+  // Obtener respuestas, stories, topics, skill progress, ajustes y elo en paralelo
   const sessionIds = todasSesiones.map(s => s.id);
-  const todasRespuestas = sessionIds.length > 0
-    ? await obtenerRespuestasDeSesiones(sessionIds)
-    : [];
-
-  // Stories + topics
   const storyIds = todasSesiones
     .map(s => s.storyId)
     .filter((id): id is string => id !== null);
-  const historias = storyIds.length > 0
-    ? await obtenerHistorias(storyIds)
-    : [];
-  const allTopics = await db.query.topics.findMany({
-    where: eq(topics.activo, true),
-  });
+
+  const [todasRespuestas, historias, allTopics, progresoSkillsTopic, ajustes, snapshots] = await Promise.all([
+    sessionIds.length > 0 ? obtenerRespuestasDeSesiones(sessionIds) : Promise.resolve([]),
+    storyIds.length > 0 ? obtenerHistorias(storyIds) : Promise.resolve([]),
+    db.query.topics.findMany({ where: eq(topics.activo, true) }),
+    db.query.skillProgress.findMany({
+      where: and(
+        eq(skillProgress.studentId, estudianteId),
+        eq(skillProgress.categoria, 'topic'),
+      ),
+    }),
+    db.query.difficultyAdjustments.findMany({
+      where: eq(difficultyAdjustments.studentId, estudianteId),
+      orderBy: [desc(difficultyAdjustments.creadoEn)],
+    }),
+    db.query.eloSnapshots.findMany({
+      where: eq(eloSnapshots.studentId, estudianteId),
+      orderBy: [asc(eloSnapshots.creadoEn)],
+      limit: 30,
+    }),
+  ]);
+
   const topicMap = new Map(allTopics.map(t => [t.slug, t]));
   const storyMap = new Map(historias.map(h => [h.id, h]));
-
-  const progresoSkillsTopic = await db.query.skillProgress.findMany({
-    where: and(
-      eq(skillProgress.studentId, estudianteId),
-      eq(skillProgress.categoria, 'topic'),
-    ),
-  });
   const progresoMap = crearMapaProgresoLite(progresoSkillsTopic);
 
-  // Ajustes de dificultad
-  const ajustes = await db.query.difficultyAdjustments.findMany({
-    where: eq(difficultyAdjustments.studentId, estudianteId),
-    orderBy: [desc(difficultyAdjustments.creadoEn)],
-  });
+  // Pre-build response lookup to avoid O(sessions * responses) quadratic scans.
+  const respuestasPorSesionPadre = new Map<string, typeof todasRespuestas>();
+  for (const r of todasRespuestas) {
+    const list = respuestasPorSesionPadre.get(r.sessionId) ?? [];
+    list.push(r);
+    respuestasPorSesionPadre.set(r.sessionId, list);
+  }
 
   // ─── Evolucion semanal (8 semanas) ───
-  const evolucionSemanal = calcularEvolucionSemanal(todasSesiones, todasRespuestas, 8);
+  const evolucionSemanal = calcularEvolucionSemanal(todasSesiones, respuestasPorSesionPadre, 8);
 
   // ─── Evolucion dificultad ───
   const evolucionDificultad = ajustes.slice(0, 20).reverse().map(a => ({
@@ -405,14 +412,14 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
   // ─── Comparativa por topics ───
   const comparativaTopics = calcularComparativaTopics(
     todasSesiones,
-    todasRespuestas,
+    respuestasPorSesionPadre,
     storyMap,
     topicMap,
   );
 
   // ─── Historial de sesiones (ultimas 20) ───
   const historialSesiones = todasSesiones.slice(0, 20).map(s => {
-    const respsSesion = todasRespuestas.filter(r => r.sessionId === s.id);
+    const respsSesion = respuestasPorSesionPadre.get(s.id) ?? [];
     const total = respsSesion.length;
     const aciertos = respsSesion.filter(r => r.correcta).length;
     const story = s.storyId ? storyMap.get(s.storyId) : null;
@@ -468,13 +475,7 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     rd: estudiante.eloRd,
   };
 
-  // ─── Evolucion Elo (ultimos 30 snapshots) ───
-  const snapshots = await db.query.eloSnapshots.findMany({
-    where: eq(eloSnapshots.studentId, estudianteId),
-    orderBy: [asc(eloSnapshots.creadoEn)],
-    limit: 30,
-  });
-
+  // ─── Evolucion Elo (ultimos 30 snapshots, cargados en paralelo arriba) ───
   const eloEvolucion = snapshots.map(s => ({
     fecha: s.creadoEn.toISOString().split('T')[0],
     sessionId: s.sessionId,
@@ -656,31 +657,37 @@ function construirHistorialTopics(
 
 async function obtenerRespuestasDeSesiones(sessionIds: string[]) {
   const db = await getDb();
-  const allResponses: ResponseRow[] = [];
   const CHUNK = 50;
+  const chunks: string[][] = [];
   for (let i = 0; i < sessionIds.length; i += CHUNK) {
-    const chunk = sessionIds.slice(i, i + CHUNK);
-    const resps = await db.query.responses.findMany({
-      where: inArray(responses.sessionId, chunk),
-    });
-    allResponses.push(...resps);
+    chunks.push(sessionIds.slice(i, i + CHUNK));
   }
-  return allResponses;
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      db.query.responses.findMany({
+        where: inArray(responses.sessionId, chunk),
+      }),
+    ),
+  );
+  return results.flat();
 }
 
 async function obtenerHistorias(storyIds: string[]) {
   const db = await getDb();
   const uniqueIds = [...new Set(storyIds)];
-  const all: StoryRow[] = [];
   const CHUNK = 50;
+  const chunks: string[][] = [];
   for (let i = 0; i < uniqueIds.length; i += CHUNK) {
-    const chunk = uniqueIds.slice(i, i + CHUNK);
-    const stories = await db.query.generatedStories.findMany({
-      where: inArray(generatedStories.id, chunk),
-    });
-    all.push(...stories);
+    chunks.push(uniqueIds.slice(i, i + CHUNK));
   }
-  return all;
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      db.query.generatedStories.findMany({
+        where: inArray(generatedStories.id, chunk),
+      }),
+    ),
+  );
+  return results.flat();
 }
 
 /** Calcular ritmo lector comparando primeras vs ultimas sesiones */
@@ -709,7 +716,7 @@ function calcularRitmoLector(
 /** Top 3 topics fuertes + 1 a reforzar */
 function calcularTopicsResumen(
   sesiones: SessionRow[],
-  respuestas: ResponseRow[],
+  respuestasPorSesion: Map<string, ResponseRow[]>,
   storyMap: Map<string, StoryRow>,
   topicMap: Map<string, TopicRow>,
 ) {
@@ -719,7 +726,7 @@ function calcularTopicsResumen(
     const story = s.storyId ? storyMap.get(s.storyId) : null;
     if (!story) continue;
 
-    const resps = respuestas.filter(r => r.sessionId === s.id);
+    const resps = respuestasPorSesion.get(s.id) ?? [];
     const existing = scoresPorTopic.get(story.topicSlug) ?? { total: 0, aciertos: 0 };
     existing.total += resps.length;
     existing.aciertos += resps.filter(r => r.correcta).length;
@@ -793,7 +800,7 @@ function calcularRachaDetallada(sesiones: SessionRow[]) {
 /** Evolucion semanal de comprension */
 function calcularEvolucionSemanal(
   sesiones: SessionRow[],
-  respuestas: ResponseRow[],
+  respuestasPorSesion: Map<string, ResponseRow[]>,
   numSemanas: number,
 ) {
   const hoy = new Date();
@@ -816,7 +823,7 @@ function calcularEvolucionSemanal(
     let scoreMedio = 0;
     if (sesionesSemana.length > 0) {
       const scores = sesionesSemana.map(s => {
-        const resps = respuestas.filter(r => r.sessionId === s.id);
+        const resps = respuestasPorSesion.get(s.id) ?? [];
         const total = resps.length;
         const aciertos = resps.filter(r => r.correcta).length;
         return total > 0 ? (aciertos / total) * 100 : 0;
@@ -840,7 +847,7 @@ function calcularEvolucionSemanal(
 /** Comparativa de score por topics */
 function calcularComparativaTopics(
   sesiones: SessionRow[],
-  respuestas: ResponseRow[],
+  respuestasPorSesion: Map<string, ResponseRow[]>,
   storyMap: Map<string, StoryRow>,
   topicMap: Map<string, TopicRow>,
 ) {
@@ -850,7 +857,7 @@ function calcularComparativaTopics(
     const story = s.storyId ? storyMap.get(s.storyId) : null;
     if (!story) continue;
 
-    const resps = respuestas.filter(r => r.sessionId === s.id);
+    const resps = respuestasPorSesion.get(s.id) ?? [];
     const total = resps.length;
     const aciertos = resps.filter(r => r.correcta).length;
     const score = total > 0 ? Math.round((aciertos / total) * 100) : 0;

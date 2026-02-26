@@ -44,8 +44,8 @@ import {
 import {
   elegirSiguienteSkillTechTree,
   construirContextoTechTree,
-  crearMapaProgresoSkill,
 } from '@/lib/learning/topic-selector';
+import { crearMapaProgresoCompleto as crearMapaProgresoSkill } from '@/lib/skills/progress';
 import { extraerHechosPerfilVivo } from '@/lib/profile/perfil-vivo';
 import {
   crearStoryGenerationTrace,
@@ -55,13 +55,12 @@ import {
   finalizarTraceOk,
   completarEtapasRestantesComoOmitidas,
   extraerTraceMetadata,
+  extraerFunModeConfig,
+  extraerFunModeHistoria,
   type StoryGenerationTrace,
   type StoryGenerationStageId,
 } from '@/lib/story-generation/trace';
-import {
-  extraerFunModeConfig,
-  extraerFunModeHistoria,
-} from '@/lib/story-generation/fun-mode';
+import { mergeSessionMetadata } from '@/lib/types/session-metadata';
 import { mapPreguntaToDTO } from '@/lib/questions/mapper';
 
 // Re-export the trace type so the barrel can still expose it.
@@ -655,11 +654,10 @@ export async function generarPreguntasSesion(datos: {
   await db
     .update(sessions)
     .set({
-      metadata: {
-        ...(sesion.metadata as Record<string, unknown>),
+      metadata: mergeSessionMetadata(sesion.metadata, {
         llmQuestionsModel: result.questions.modelo,
         llmQuestionsUsage: result.questions.llmUsage,
-      },
+      }),
     })
     .where(eq(sessions.id, validado.sessionId));
 

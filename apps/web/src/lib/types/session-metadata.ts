@@ -29,6 +29,10 @@ export interface LlmUsageInfo {
 // ─── Main session metadata shape ───
 
 export interface SessionMetadata {
+  // Index signature required so this type is assignable to Drizzle's Record<string, unknown>
+  // for JSON column writes. All named fields below are still fully typed.
+  [key: string]: unknown;
+
   // Story reference (textoId is the canonical FK; storyId is a DB column, not metadata)
   textoId?: string;
 

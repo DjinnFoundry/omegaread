@@ -96,8 +96,8 @@ describe('student-actions', () => {
     const result = await crearEstudiante(formData);
 
     expect(result.ok).toBe(true);
-    expect(result.estudiante?.nombre).toBe('Juan');
-    expect(result.estudiante?.nivelLectura).toBe(2.0);
+    expect(result.ok && (result.data.estudiante as { nombre: string }).nombre).toBe('Juan');
+    expect(result.ok && (result.data.estudiante as { nivelLectura: number }).nivelLectura).toBe(2.0);
   });
 
   it('debería calcular nivel inicial según edad (edad 4 -> 1.0)', async () => {
@@ -144,7 +144,7 @@ describe('student-actions', () => {
     const result = await crearEstudiante(formData);
 
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('edad debe estar entre 3 y 10');
+    expect(!result.ok && result.code).toBe('STUDENT_INVALID_AGE');
   });
 
   it('debería rechazar estudiante mayor de 10 años', async () => {
@@ -155,7 +155,7 @@ describe('student-actions', () => {
     const result = await crearEstudiante(formData);
 
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('edad debe estar entre 3 y 10');
+    expect(!result.ok && result.code).toBe('STUDENT_INVALID_AGE');
   });
 
   it('debería rechazar si falta nombre', async () => {
@@ -165,7 +165,7 @@ describe('student-actions', () => {
     const result = await crearEstudiante(formData);
 
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('obligatorios');
+    expect(!result.ok && result.code).toBe('AUTH_MISSING_FIELDS');
   });
 
   // ────────────────────────────────────────────────────

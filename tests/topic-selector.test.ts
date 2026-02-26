@@ -5,10 +5,12 @@ import {
   construirContextoTechTree,
   skillDesbloqueada,
   ordenarSkillsPorRuta,
-  crearMapaProgresoSkill,
-  skillDominada,
   INTENTOS_MIN_REFORZAR,
 } from '@/lib/learning/topic-selector';
+import {
+  crearMapaProgresoCompleto as crearMapaProgresoSkill,
+  esSkillDominada as skillDominada,
+} from '@/lib/skills/progress';
 import {
   getSkillBySlug,
   getSkillsDeDominio,

@@ -1,14 +1,11 @@
 /**
  * Pipeline de generacion de historias.
- * Orquesta: prompt → LLM → parseo → QA → resultado.
+ * Orquesta: prompt -> LLM -> parseo -> QA -> resultado.
+ *
+ * Usa callLLM() para la comunicacion con el LLM, eliminando boilerplate
+ * repetido de retry/parseo/JSON en cada funcion generadora.
  */
-import type OpenAI from 'openai';
-import {
-  getOpenAIClient,
-  getLLMModel,
-  getLLMRequestOverrides,
-  OpenAIKeyMissingError,
-} from './openai';
+import { callLLM, type LLMUsageSnapshot, type CallLLMResult } from './call-llm';
 import { normalizarTexto } from '@/lib/utils/text';
 import {
   buildSystemPrompt,
@@ -37,111 +34,15 @@ import {
   type QAResult,
 } from './qa-rubric';
 
+// Re-export for backwards compatibility
+export type { LLMUsageSnapshot } from './call-llm';
+
 // Reintentos automaticos desactivados por UX/latencia.
 // 0 = una sola llamada al LLM y, si falla, el reintento queda en manos del usuario.
 const MAX_REINTENTOS = 0;
 const TIPOS_PREGUNTA_CANONICOS = ['literal', 'inferencia', 'vocabulario', 'resumen'] as const;
 
 type TipoPreguntaCanonico = (typeof TIPOS_PREGUNTA_CANONICOS)[number];
-type ChatCompletion = OpenAI.Chat.Completions.ChatCompletion;
-type ChatParams = OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
-
-interface CompletionSnapshot {
-  finishReason: string | null;
-  contentKind: 'string' | 'array' | 'null' | 'other';
-  contentLength: number;
-  hasReasoningContent: boolean;
-  reasoningLength: number;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  totalTokens: number | null;
-}
-
-export interface LLMUsageSnapshot {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-}
-
-function buildUsageSnapshot(snapshot: CompletionSnapshot): LLMUsageSnapshot {
-  const promptTokens = Math.max(0, snapshot.promptTokens ?? 0);
-  const completionTokens = Math.max(0, snapshot.completionTokens ?? 0);
-  const totalFromUsage = Math.max(0, snapshot.totalTokens ?? 0);
-
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens: totalFromUsage > 0 ? totalFromUsage : promptTokens + completionTokens,
-  };
-}
-
-function buildChatParams(base: ChatParams, overrides: Record<string, unknown>): ChatParams {
-  return {
-    ...base,
-    ...overrides,
-  } as ChatParams;
-}
-
-function extractTextFromContentPart(part: unknown): string {
-  if (typeof part === 'string') return part;
-  if (!part || typeof part !== 'object') return '';
-  const node = part as Record<string, unknown>;
-  if (typeof node.text === 'string') return node.text;
-  return '';
-}
-
-function extractCompletionContent(
-  completion: ChatCompletion,
-): { content: string | null; snapshot: CompletionSnapshot } {
-  const choice = completion.choices[0];
-  const message = (choice?.message ?? {}) as unknown as Record<string, unknown>;
-  const rawContent = message.content;
-
-  let contentKind: CompletionSnapshot['contentKind'] = 'null';
-  let content = '';
-
-  if (typeof rawContent === 'string') {
-    contentKind = 'string';
-    content = rawContent;
-  } else if (Array.isArray(rawContent)) {
-    contentKind = 'array';
-    content = rawContent.map(extractTextFromContentPart).join('');
-  } else if (rawContent !== null && rawContent !== undefined) {
-    contentKind = 'other';
-    content = String(rawContent);
-  }
-
-  const normalized = content.trim();
-  const reasoningContent = typeof message.reasoning_content === 'string' ? message.reasoning_content : '';
-
-  return {
-    content: normalized || null,
-    snapshot: {
-      finishReason: choice?.finish_reason ?? null,
-      contentKind,
-      contentLength: normalized.length,
-      hasReasoningContent: reasoningContent.length > 0,
-      reasoningLength: reasoningContent.length,
-      promptTokens: completion.usage?.prompt_tokens ?? null,
-      completionTokens: completion.usage?.completion_tokens ?? null,
-      totalTokens: completion.usage?.total_tokens ?? null,
-    },
-  };
-}
-
-function formatCompletionSnapshot(snapshot: CompletionSnapshot): string {
-  const parts = [
-    `finish_reason=${snapshot.finishReason ?? 'null'}`,
-    `content_kind=${snapshot.contentKind}`,
-    `content_len=${snapshot.contentLength}`,
-    `prompt_tokens=${snapshot.promptTokens ?? 'n/a'}`,
-    `completion_tokens=${snapshot.completionTokens ?? 'n/a'}`,
-  ];
-  if (snapshot.hasReasoningContent) {
-    parts.push(`reasoning_len=${snapshot.reasoningLength}`);
-  }
-  return parts.join(', ');
-}
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -149,11 +50,6 @@ function envInt(name: string, fallback: number): number {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
-}
-
-function envString(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
 }
 
 function envFlag(name: string, fallback = false): boolean {
@@ -304,6 +200,10 @@ function normalizarPreguntasLLM(data: unknown): QuestionsLLMOutput | null {
   return { preguntas };
 }
 
+// ─────────────────────────────────────────────
+// PUBLIC TYPES
+// ─────────────────────────────────────────────
+
 export interface GeneratedStory {
   titulo: string;
   contenido: string;
@@ -339,135 +239,6 @@ export type StoryGenerationResult =
       error: string;
       code: 'NO_API_KEY' | 'RATE_LIMIT' | 'GENERATION_FAILED' | 'QA_REJECTED';
     };
-
-/**
- * Genera una historia + preguntas via LLM con reintentos y QA.
- */
-export async function generateStory(input: PromptInput): Promise<StoryGenerationResult> {
-  let client;
-  let model: string;
-  let requestOverrides: Record<string, unknown>;
-  const maxTokens = envInt('LLM_MAX_TOKENS_STORY', 1200);
-  try {
-    client = await getOpenAIClient();
-    model = envString('LLM_MODEL_STORY') ?? await getLLMModel();
-    requestOverrides = await getLLMRequestOverrides();
-  } catch (e) {
-    if (e instanceof OpenAIKeyMissingError) {
-      return { ok: false, error: e.message, code: 'NO_API_KEY' };
-    }
-    throw e;
-  }
-
-  const systemPrompt = buildSystemPrompt();
-
-  let lastError = '';
-
-  for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
-    const userPrompt = buildUserPrompt(input, {
-      retryHint: intento > 0 ? lastError : undefined,
-      intento: intento + 1,
-    });
-
-    try {
-      const completion = await client.chat.completions.create(
-        buildChatParams(
-          {
-            model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            temperature: 0.8,
-            max_tokens: maxTokens,
-            response_format: { type: 'json_object' },
-          },
-          requestOverrides,
-        ),
-      );
-
-      const { content, snapshot } = extractCompletionContent(completion);
-      if (!content) {
-        lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
-        console.warn('[llm:generateStory] Respuesta sin contenido', snapshot);
-        continue;
-      }
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        if (snapshot.finishReason === 'length') {
-          lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
-        } else {
-          lastError = 'El LLM devolvio JSON invalido';
-        }
-        console.warn('[llm:generateStory] JSON no parseable', {
-          ...snapshot,
-          preview: content.slice(0, 220),
-        });
-        continue;
-      }
-
-      if (!validarEstructura(parsed)) {
-        lastError = 'Estructura de respuesta invalida';
-        continue;
-      }
-
-      const storyOutput = parsed as StoryLLMOutput;
-      const qa: QAResult = evaluarHistoria(storyOutput, input.nivel, {
-        historiasAnteriores: input.historiasAnteriores,
-      });
-
-      const metadataCalc = calcularMetadataHistoria(
-        storyOutput.contenido,
-        input.edadAnos,
-        input.nivel,
-      );
-
-      const story: GeneratedStory = {
-        titulo: storyOutput.titulo,
-        contenido: storyOutput.contenido,
-        vocabularioNuevo: storyOutput.vocabularioNuevo,
-        metadata: {
-          ...metadataCalc,
-          vocabularioNuevo: storyOutput.vocabularioNuevo,
-        },
-        preguntas: storyOutput.preguntas.map((p) => ({
-          ...p,
-          tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
-          dificultadPregunta: p.dificultadPregunta ?? 3,
-        })),
-        modelo: model,
-        aprobadaQA: qa.aprobada,
-        motivoRechazo: qa.motivo,
-        llmUsage: buildUsageSnapshot(snapshot),
-      };
-
-      if (!qa.aprobada) {
-        // Si el QA fallo, reintentamos
-        lastError = qa.motivo ?? 'QA rechazada sin motivo';
-        continue;
-      }
-
-      return { ok: true, story };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Error desconocido';
-      lastError = `Error de API: ${msg}`;
-      console.error('[llm:generateStory] Error de API', { model, error: msg });
-    }
-  }
-
-  return {
-    ok: false,
-    error: `No se pudo generar historia despues de ${MAX_REINTENTOS + 1} intentos. Ultimo error: ${lastError}`,
-    code: 'GENERATION_FAILED',
-  };
-}
-
-// ─────────────────────────────────────────────
-// FLUJO DIVIDIDO: HISTORIA + PREGUNTAS POR SEPARADO
-// ─────────────────────────────────────────────
 
 export interface GeneratedStoryOnly {
   titulo: string;
@@ -520,126 +291,161 @@ export type QuestionsResult =
       code: 'NO_API_KEY' | 'RATE_LIMIT' | 'GENERATION_FAILED' | 'QA_REJECTED';
     };
 
+// ─────────────────────────────────────────────
+// HELPER: build GeneratedStory from validated LLM output
+// ─────────────────────────────────────────────
+
+function buildGeneratedStory(
+  storyOutput: StoryLLMOutput,
+  qa: QAResult,
+  edadAnos: number,
+  nivel: number,
+  llmResult: CallLLMResult,
+): GeneratedStory {
+  const metadataCalc = calcularMetadataHistoria(storyOutput.contenido, edadAnos, nivel);
+  return {
+    titulo: storyOutput.titulo,
+    contenido: storyOutput.contenido,
+    vocabularioNuevo: storyOutput.vocabularioNuevo,
+    metadata: {
+      ...metadataCalc,
+      vocabularioNuevo: storyOutput.vocabularioNuevo,
+    },
+    preguntas: storyOutput.preguntas.map((p) => ({
+      ...p,
+      tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+      dificultadPregunta: p.dificultadPregunta ?? 3,
+    })),
+    modelo: llmResult.model,
+    aprobadaQA: qa.aprobada,
+    motivoRechazo: qa.motivo,
+    llmUsage: llmResult.usage,
+  };
+}
+
+// ─────────────────────────────────────────────
+// GENERATORS
+// ─────────────────────────────────────────────
+
+/**
+ * Genera una historia + preguntas via LLM con reintentos y QA.
+ */
+export async function generateStory(input: PromptInput): Promise<StoryGenerationResult> {
+  const maxTokens = envInt('LLM_MAX_TOKENS_STORY', 1200);
+  const systemPrompt = buildSystemPrompt();
+  const userPrompt = buildUserPrompt(input, { intento: 1 });
+
+  const outcome = await callLLM({
+    systemPrompt,
+    userMessage: userPrompt,
+    maxRetries: MAX_REINTENTOS,
+    temperature: 0.8,
+    maxTokens,
+    modelEnvVar: 'LLM_MODEL_STORY',
+    logTag: 'generateStory',
+  });
+
+  if (!outcome.ok) {
+    return { ok: false, error: outcome.error, code: outcome.code };
+  }
+
+  const { result } = outcome;
+  const { parsed } = result;
+
+  if (!validarEstructura(parsed)) {
+    return {
+      ok: false,
+      error: 'Estructura de respuesta invalida',
+      code: 'GENERATION_FAILED',
+    };
+  }
+
+  const storyOutput = parsed as StoryLLMOutput;
+  const qa = evaluarHistoria(storyOutput, input.nivel, {
+    historiasAnteriores: input.historiasAnteriores,
+  });
+
+  const story = buildGeneratedStory(storyOutput, qa, input.edadAnos, input.nivel, result);
+
+  if (!qa.aprobada) {
+    return {
+      ok: false,
+      error: qa.motivo ?? 'QA rechazada sin motivo',
+      code: 'GENERATION_FAILED',
+    };
+  }
+
+  return { ok: true, story };
+}
+
 /**
  * Genera SOLO la historia (sin preguntas) via LLM.
  * Mas rapido porque produce menos tokens y el LLM se enfoca en narrativa.
  */
 export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyResult> {
-  let client;
-  let model: string;
-  let requestOverrides: Record<string, unknown>;
   const maxTokens = envInt('LLM_MAX_TOKENS_STORY', 900);
   const fastPromptMode = envFlag('LLM_FAST_STORY_PROMPT', true);
-  try {
-    client = await getOpenAIClient();
-    model = envString('LLM_MODEL_STORY') ?? await getLLMModel();
-    requestOverrides = await getLLMRequestOverrides();
-  } catch (e) {
-    if (e instanceof OpenAIKeyMissingError) {
-      return { ok: false, error: e.message, code: 'NO_API_KEY' };
-    }
-    throw e;
-  }
-
   const systemPrompt = buildStoryOnlySystemPrompt();
+  const userPrompt = buildStoryOnlyUserPrompt(input, {
+    intento: 1,
+    fastMode: fastPromptMode,
+  });
 
-  let lastError = '';
+  const outcome = await callLLM({
+    systemPrompt,
+    userMessage: userPrompt,
+    maxRetries: MAX_REINTENTOS,
+    temperature: 0.8,
+    maxTokens,
+    modelEnvVar: 'LLM_MODEL_STORY',
+    logTag: 'generateStoryOnly',
+  });
 
-  for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
-    const userPrompt = buildStoryOnlyUserPrompt(input, {
-      retryHint: intento > 0 ? lastError : undefined,
-      intento: intento + 1,
-      fastMode: fastPromptMode,
-    });
-
-    try {
-      const completion = await client.chat.completions.create(
-        buildChatParams(
-          {
-            model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            temperature: 0.8,
-            max_tokens: maxTokens,
-            response_format: { type: 'json_object' },
-          },
-          requestOverrides,
-        ),
-      );
-
-      const { content, snapshot } = extractCompletionContent(completion);
-      if (!content) {
-        lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
-        console.warn('[llm:generateStoryOnly] Respuesta sin contenido', snapshot);
-        continue;
-      }
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        if (snapshot.finishReason === 'length') {
-          lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
-        } else {
-          lastError = 'El LLM devolvio JSON invalido';
-        }
-        console.warn('[llm:generateStoryOnly] JSON no parseable', {
-          ...snapshot,
-          preview: content.slice(0, 220),
-        });
-        continue;
-      }
-
-      if (!validarEstructuraHistoria(parsed)) {
-        lastError = 'Estructura de respuesta invalida (historia)';
-        continue;
-      }
-
-      const storyOutput = parsed as StoryOnlyLLMOutput;
-      const qa: QAResult = evaluarHistoriaSinPreguntas(storyOutput, input.nivel, {
-        historiasAnteriores: input.historiasAnteriores,
-      });
-
-      const metadataCalc = calcularMetadataHistoria(
-        storyOutput.contenido,
-        input.edadAnos,
-        input.nivel,
-      );
-
-      const story: GeneratedStoryOnly = {
-        titulo: storyOutput.titulo,
-        contenido: storyOutput.contenido,
-        vocabularioNuevo: storyOutput.vocabularioNuevo,
-        metadata: {
-          ...metadataCalc,
-          vocabularioNuevo: storyOutput.vocabularioNuevo,
-        },
-        modelo: model,
-        aprobadaQA: qa.aprobada,
-        motivoRechazo: qa.motivo,
-        llmUsage: buildUsageSnapshot(snapshot),
-      };
-
-      if (!qa.aprobada) {
-        lastError = qa.motivo ?? 'QA rechazada sin motivo';
-        continue;
-      }
-
-      return { ok: true, story };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Error desconocido';
-      lastError = `Error de API: ${msg}`;
-      console.error('[llm:generateStoryOnly] Error de API', { model, error: msg });
-    }
+  if (!outcome.ok) {
+    return { ok: false, error: outcome.error, code: outcome.code };
   }
 
-  return {
-    ok: false,
-    error: `No se pudo generar historia despues de ${MAX_REINTENTOS + 1} intentos. Ultimo error: ${lastError}`,
-    code: 'GENERATION_FAILED',
+  const { result } = outcome;
+  const { parsed } = result;
+
+  if (!validarEstructuraHistoria(parsed)) {
+    return {
+      ok: false,
+      error: 'Estructura de respuesta invalida (historia)',
+      code: 'GENERATION_FAILED',
+    };
+  }
+
+  const storyOutput = parsed as StoryOnlyLLMOutput;
+  const qa = evaluarHistoriaSinPreguntas(storyOutput, input.nivel, {
+    historiasAnteriores: input.historiasAnteriores,
+  });
+
+  const metadataCalc = calcularMetadataHistoria(storyOutput.contenido, input.edadAnos, input.nivel);
+
+  const story: GeneratedStoryOnly = {
+    titulo: storyOutput.titulo,
+    contenido: storyOutput.contenido,
+    vocabularioNuevo: storyOutput.vocabularioNuevo,
+    metadata: {
+      ...metadataCalc,
+      vocabularioNuevo: storyOutput.vocabularioNuevo,
+    },
+    modelo: result.model,
+    aprobadaQA: qa.aprobada,
+    motivoRechazo: qa.motivo,
+    llmUsage: result.usage,
   };
+
+  if (!qa.aprobada) {
+    return {
+      ok: false,
+      error: qa.motivo ?? 'QA rechazada sin motivo',
+      code: 'GENERATION_FAILED',
+    };
+  }
+
+  return { ok: true, story };
 }
 
 /**
@@ -647,24 +453,11 @@ export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyRe
  * Se ejecuta en background mientras el nino lee.
  */
 export async function generateQuestions(input: QuestionsPromptInput): Promise<QuestionsResult> {
-  let client;
-  let model: string;
-  let requestOverrides: Record<string, unknown>;
   const maxTokens = envInt('LLM_MAX_TOKENS_QUESTIONS', 650);
-  try {
-    client = await getOpenAIClient();
-    model = envString('LLM_MODEL_QUESTIONS') ?? await getLLMModel();
-    requestOverrides = await getLLMRequestOverrides();
-  } catch (e) {
-    if (e instanceof OpenAIKeyMissingError) {
-      return { ok: false, error: e.message, code: 'NO_API_KEY' };
-    }
-    throw e;
-  }
-
   const systemPrompt = buildQuestionsSystemPrompt();
   const userPrompt = buildQuestionsUserPrompt(input);
   const difficultyPlan = getQuestionDifficultyPlan({ nivel: input.nivel, elo: input.elo });
+
   console.info('[llm:generateQuestions] difficulty-plan', {
     nivel: input.nivel,
     subnivel: difficultyPlan.subnivel,
@@ -674,97 +467,64 @@ export async function generateQuestions(input: QuestionsPromptInput): Promise<Qu
     objetivo: difficultyPlan.objetivo,
   });
 
-  let lastError = '';
+  const outcome = await callLLM({
+    systemPrompt,
+    userMessage: userPrompt,
+    maxRetries: MAX_REINTENTOS,
+    temperature: 0.6,
+    maxTokens,
+    modelEnvVar: 'LLM_MODEL_QUESTIONS',
+    logTag: 'generateQuestions',
+  });
 
-  for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
-    try {
-      const completion = await client.chat.completions.create(
-        buildChatParams(
-          {
-            model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            temperature: 0.6,
-            max_tokens: maxTokens,
-            response_format: { type: 'json_object' },
-          },
-          requestOverrides,
-        ),
-      );
-
-      const { content, snapshot } = extractCompletionContent(completion);
-      if (!content) {
-        lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
-        console.warn('[llm:generateQuestions] Respuesta sin contenido', snapshot);
-        continue;
-      }
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        if (snapshot.finishReason === 'length') {
-          lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
-        } else {
-          lastError = 'El LLM devolvio JSON invalido';
-        }
-        console.warn('[llm:generateQuestions] JSON no parseable', {
-          ...snapshot,
-          preview: content.slice(0, 220),
-        });
-        continue;
-      }
-
-      const normalizedQuestions = normalizarPreguntasLLM(parsed);
-
-      if (!normalizedQuestions || !validarEstructuraPreguntas(normalizedQuestions)) {
-        lastError = 'Estructura de preguntas invalida';
-        continue;
-      }
-
-      const questionsOutput: QuestionsLLMOutput = {
-        preguntas: normalizedQuestions.preguntas.map((p) => ({
-          ...p,
-          dificultadPregunta:
-            difficultyPlan.objetivo[p.tipo as keyof typeof difficultyPlan.objetivo]
-            ?? p.dificultadPregunta
-            ?? 3,
-        })),
-      };
-      const qa: QAResult = evaluarPreguntas(questionsOutput);
-
-      const questions: GeneratedQuestions = {
-        preguntas: questionsOutput.preguntas.map((p) => ({
-          ...p,
-          tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
-          dificultadPregunta: p.dificultadPregunta ?? 3,
-        })),
-        modelo: model,
-        aprobadaQA: qa.aprobada,
-        motivoRechazo: qa.motivo,
-        llmUsage: buildUsageSnapshot(snapshot),
-      };
-
-      if (!qa.aprobada) {
-        lastError = qa.motivo ?? 'QA preguntas rechazada sin motivo';
-        continue;
-      }
-
-      return { ok: true, questions };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Error desconocido';
-      lastError = `Error de API: ${msg}`;
-      console.error('[llm:generateQuestions] Error de API', { model, error: msg });
-    }
+  if (!outcome.ok) {
+    return { ok: false, error: outcome.error, code: outcome.code };
   }
 
-  return {
-    ok: false,
-    error: `No se pudieron generar preguntas despues de ${MAX_REINTENTOS + 1} intentos. Ultimo error: ${lastError}`,
-    code: 'GENERATION_FAILED',
+  const { result } = outcome;
+  const { parsed } = result;
+
+  const normalizedQuestions = normalizarPreguntasLLM(parsed);
+  if (!normalizedQuestions || !validarEstructuraPreguntas(normalizedQuestions)) {
+    return {
+      ok: false,
+      error: 'Estructura de preguntas invalida',
+      code: 'GENERATION_FAILED',
+    };
+  }
+
+  const questionsOutput: QuestionsLLMOutput = {
+    preguntas: normalizedQuestions.preguntas.map((p) => ({
+      ...p,
+      dificultadPregunta:
+        difficultyPlan.objetivo[p.tipo as keyof typeof difficultyPlan.objetivo]
+        ?? p.dificultadPregunta
+        ?? 3,
+    })),
   };
+  const qa = evaluarPreguntas(questionsOutput);
+
+  const questions: GeneratedQuestions = {
+    preguntas: questionsOutput.preguntas.map((p) => ({
+      ...p,
+      tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
+      dificultadPregunta: p.dificultadPregunta ?? 3,
+    })),
+    modelo: result.model,
+    aprobadaQA: qa.aprobada,
+    motivoRechazo: qa.motivo,
+    llmUsage: result.usage,
+  };
+
+  if (!qa.aprobada) {
+    return {
+      ok: false,
+      error: qa.motivo ?? 'QA preguntas rechazada sin motivo',
+      code: 'GENERATION_FAILED',
+    };
+  }
+
+  return { ok: true, questions };
 }
 
 /**
@@ -772,120 +532,51 @@ export async function generateQuestions(input: QuestionsPromptInput): Promise<Qu
  * Mantiene personajes y trama, cambia complejidad lexica y longitud.
  */
 export async function rewriteStory(input: RewritePromptInput): Promise<StoryGenerationResult> {
-  let client;
-  let model: string;
-  let requestOverrides: Record<string, unknown>;
   const maxTokens = envInt('LLM_MAX_TOKENS_REWRITE', 1200);
-  try {
-    client = await getOpenAIClient();
-    model = envString('LLM_MODEL_REWRITE') ?? await getLLMModel();
-    requestOverrides = await getLLMRequestOverrides();
-  } catch (e) {
-    if (e instanceof OpenAIKeyMissingError) {
-      return { ok: false, error: e.message, code: 'NO_API_KEY' };
-    }
-    throw e;
-  }
-
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildRewritePrompt(input);
 
-  let lastError = '';
+  const outcome = await callLLM({
+    systemPrompt,
+    userMessage: userPrompt,
+    maxRetries: MAX_REINTENTOS,
+    temperature: 0.7,
+    maxTokens,
+    modelEnvVar: 'LLM_MODEL_REWRITE',
+    logTag: 'rewriteStory',
+  });
 
-  for (let intento = 0; intento <= MAX_REINTENTOS; intento++) {
-    try {
-      const completion = await client.chat.completions.create(
-        buildChatParams(
-          {
-            model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            temperature: 0.7,
-            max_tokens: maxTokens,
-            response_format: { type: 'json_object' },
-          },
-          requestOverrides,
-        ),
-      );
-
-      const { content, snapshot } = extractCompletionContent(completion);
-      if (!content) {
-        lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
-        console.warn('[llm:rewriteStory] Respuesta sin contenido', snapshot);
-        continue;
-      }
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        if (snapshot.finishReason === 'length') {
-          lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
-        } else {
-          lastError = 'El LLM devolvio JSON invalido';
-        }
-        console.warn('[llm:rewriteStory] JSON no parseable', {
-          ...snapshot,
-          preview: content.slice(0, 220),
-        });
-        continue;
-      }
-
-      if (!validarEstructura(parsed)) {
-        lastError = 'Estructura de respuesta invalida';
-        continue;
-      }
-
-      const storyOutput = parsed as StoryLLMOutput;
-      const nivelObjetivo =
-        input.direccion === 'mas_facil'
-          ? Math.max(1.0, input.nivelActual - 0.2)
-          : Math.min(4.8, input.nivelActual + 0.2);
-      const qa: QAResult = evaluarHistoria(storyOutput, nivelObjetivo);
-
-      const metadataCalc = calcularMetadataHistoria(
-        storyOutput.contenido,
-        input.edadAnos,
-        nivelObjetivo,
-      );
-
-      const story: GeneratedStory = {
-        titulo: storyOutput.titulo,
-        contenido: storyOutput.contenido,
-        vocabularioNuevo: storyOutput.vocabularioNuevo,
-        metadata: {
-          ...metadataCalc,
-          vocabularioNuevo: storyOutput.vocabularioNuevo,
-        },
-        preguntas: storyOutput.preguntas.map((p) => ({
-          ...p,
-          tipo: p.tipo as 'literal' | 'inferencia' | 'vocabulario' | 'resumen',
-          dificultadPregunta: p.dificultadPregunta ?? 3,
-        })),
-        modelo: model,
-        aprobadaQA: qa.aprobada,
-        motivoRechazo: qa.motivo,
-        llmUsage: buildUsageSnapshot(snapshot),
-      };
-
-      if (!qa.aprobada) {
-        lastError = qa.motivo ?? 'QA rechazada sin motivo';
-        continue;
-      }
-
-      return { ok: true, story };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Error desconocido';
-      lastError = `Error de API: ${msg}`;
-      console.error('[llm:rewriteStory] Error de API', { model, error: msg });
-    }
+  if (!outcome.ok) {
+    return { ok: false, error: outcome.error, code: outcome.code };
   }
 
-  return {
-    ok: false,
-    error: `No se pudo reescribir historia despues de ${MAX_REINTENTOS + 1} intentos. Ultimo error: ${lastError}`,
-    code: 'GENERATION_FAILED',
-  };
+  const { result } = outcome;
+  const { parsed } = result;
+
+  if (!validarEstructura(parsed)) {
+    return {
+      ok: false,
+      error: 'Estructura de respuesta invalida',
+      code: 'GENERATION_FAILED',
+    };
+  }
+
+  const storyOutput = parsed as StoryLLMOutput;
+  const nivelObjetivo =
+    input.direccion === 'mas_facil'
+      ? Math.max(1.0, input.nivelActual - 0.2)
+      : Math.min(4.8, input.nivelActual + 0.2);
+  const qa = evaluarHistoria(storyOutput, nivelObjetivo);
+
+  const story = buildGeneratedStory(storyOutput, qa, input.edadAnos, nivelObjetivo, result);
+
+  if (!qa.aprobada) {
+    return {
+      ok: false,
+      error: qa.motivo ?? 'QA rechazada sin motivo',
+      code: 'GENERATION_FAILED',
+    };
+  }
+
+  return { ok: true, story };
 }

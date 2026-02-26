@@ -20,14 +20,15 @@ export default function NuevoHijoPage() {
     const formData = new FormData(e.currentTarget);
 
     const result = await crearEstudiante(formData);
-    if (result.ok && result.estudiante) {
+    if (result.ok) {
+      const estudiante = result.data.estudiante as { id: string; nombre: string };
       sessionStorage.setItem(
         'estudianteActivo',
-        JSON.stringify({ id: result.estudiante.id, nombre: result.estudiante.nombre }),
+        JSON.stringify({ id: estudiante.id, nombre: estudiante.nombre }),
       );
       router.push('/jugar/lectura');
     } else {
-      setError(result.error ?? 'Error al crear el perfil');
+      setError(result.message ?? 'Error al crear el perfil');
       setLoading(false);
     }
   }
