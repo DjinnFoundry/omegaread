@@ -13,6 +13,7 @@
  */
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import type { AudioReadingAnalysis } from '@/lib/types/reading';
+import type { WpmConfidence, SanitizedPageWpm } from '@/lib/wpm';
 import { useAudioRecording } from '@/hooks/useAudioRecording';
 import { useReadingTimer } from '@/hooks/useReadingTimer';
 
@@ -22,6 +23,9 @@ export interface WpmData {
   totalPaginas: number;
   fuenteWpm: 'audio' | 'pagina';
   audioAnalisis?: AudioReadingAnalysis | null;
+  wpmRobusto: number;
+  confianza: WpmConfidence;
+  paginasSanitizadas: SanitizedPageWpm[];
 }
 
 export interface AudioAnalisisPayload {
@@ -258,7 +262,7 @@ export default function PantallaLectura({
   }, []);
 
   const handleTerminar = useCallback(async () => {
-    const result = timer.finalizar(totalPaginas, paginas, contarPalabras);
+    const result = timer.finalizar(totalPaginas, paginas, contarPalabras, nivel);
 
     // Try to get audio analysis
     let audioAnalisis: AudioReadingAnalysis | null = null;
@@ -292,10 +296,13 @@ export default function PantallaLectura({
       totalPaginas,
       fuenteWpm: usarAudio ? 'audio' : 'pagina',
       audioAnalisis,
+      wpmRobusto: result.wpmRobusto,
+      confianza: result.confianza,
+      paginasSanitizadas: result.paginasSanitizadas,
     };
 
     onTerminar(result.tiempoTotalMs, payload);
-  }, [onTerminar, totalPaginas, paginas, timer, audio, onAnalizarAudio]);
+  }, [onTerminar, totalPaginas, paginas, nivel, timer, audio, onAnalizarAudio]);
 
   const handlePrint = useCallback(() => {
     setMostrarVersionImpresion(true);

@@ -28,6 +28,7 @@ import { procesarRespuestasElo, inflarRdPorInactividad, type EloRatings, type Re
 import type { TipoPregunta, AudioReadingAnalysis } from '@/lib/types/reading';
 import { serializarAudioAnalisis } from '@/lib/audio/utils';
 import { parseSessionMetadata, mergeSessionMetadata } from '@/lib/types/session-metadata';
+import { sanitizeFromStoredData, computeSessionWpm } from '@/lib/wpm';
 
 // ─── Constants ───
 
@@ -72,9 +73,22 @@ export async function registrarLecturaCompletada(datos: {
 
   const usarAudioParaWpm =
     !!validado.audioAnalisis?.confiable && validado.audioAnalisis.wpmUtil > 0;
+
+  // Server-side WPM sanitization
+  const nivelSesion = metadataBase.nivelTexto ?? 2;
+  let wpmRobusto: number | null = null;
+  let wpmConfianza: 'high' | 'medium' | 'low' | undefined;
+
+  if (!usarAudioParaWpm && validado.wpmPorPagina && validado.wpmPorPagina.length > 0) {
+    const sanitized = sanitizeFromStoredData(validado.wpmPorPagina, nivelSesion);
+    const sessionResult = computeSessionWpm(sanitized);
+    wpmRobusto = sessionResult.wpmRobusto;
+    wpmConfianza = sessionResult.confianza;
+  }
+
   const wpmPromedioFinal = usarAudioParaWpm
     ? (validado.audioAnalisis?.wpmUtil ?? null)
-    : (validado.wpmPromedio ?? null);
+    : (wpmRobusto ?? validado.wpmPromedio ?? null);
 
   await db
     .update(sessions)
@@ -88,6 +102,8 @@ export async function registrarLecturaCompletada(datos: {
         tiempoLecturaMs: validado.tiempoLecturaMs,
         fuenteWpm: usarAudioParaWpm ? 'audio' : 'pagina',
         audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis, metadataBase.audioAnalisis ?? null),
+        wpmRobusto: wpmRobusto ?? undefined,
+        wpmConfianza,
       }),
     })
     .where(eq(sessions.id, validado.sessionId));
@@ -181,11 +197,24 @@ export async function finalizarSesionLectura(datos: {
   const estrellas = ratioAciertos >= UMBRAL_ESTRELLAS_3 ? 3 : ratioAciertos >= UMBRAL_ESTRELLAS_2 ? 2 : ratioAciertos > 0 ? 1 : 0;
   const usarAudioParaWpm =
     !!validado.audioAnalisis?.confiable && validado.audioAnalisis.wpmUtil > 0;
+  const metadataPrev = parseSessionMetadata(sesion.metadata);
+
+  // Server-side WPM sanitization
+  const nivelSesionFinal = metadataPrev.nivelTexto ?? 2;
+  let wpmRobustoFinal: number | null = null;
+  let wpmConfianzaFinal: 'high' | 'medium' | 'low' | undefined;
+
+  if (!usarAudioParaWpm && validado.wpmPorPagina && validado.wpmPorPagina.length > 0) {
+    const sanitized = sanitizeFromStoredData(validado.wpmPorPagina, nivelSesionFinal);
+    const sessionResult = computeSessionWpm(sanitized);
+    wpmRobustoFinal = sessionResult.wpmRobusto;
+    wpmConfianzaFinal = sessionResult.confianza;
+  }
+
   const wpmPromedioFinal = usarAudioParaWpm
     ? (validado.audioAnalisis?.wpmUtil ?? null)
-    : (validado.wpmPromedio ?? null);
+    : (wpmRobustoFinal ?? validado.wpmPromedio ?? null);
   const fuenteWpm = usarAudioParaWpm ? 'audio' : 'pagina';
-  const metadataPrev = parseSessionMetadata(sesion.metadata);
   const lecturaCompletadaEn = metadataPrev.lecturaCompletadaEn ?? new Date().toISOString();
 
   // 4. Calcular ajuste de dificultad
@@ -250,6 +279,8 @@ export async function finalizarSesionLectura(datos: {
         fuenteWpm,
         audioAnalisis: serializarAudioAnalisis(validado.audioAnalisis),
         sessionScore: ajuste.sessionScore,
+        wpmRobusto: wpmRobustoFinal ?? undefined,
+        wpmConfianza: wpmConfianzaFinal,
       },
     })
     .where(eq(sessions.id, validado.sessionId));

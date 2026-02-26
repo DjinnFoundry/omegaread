@@ -8,6 +8,8 @@
  * Extraido de PantallaLectura.tsx para mejorar separacion de concerns.
  */
 import { useRef, useCallback } from 'react';
+import { sanitizePageWpmData, computeSessionWpm } from '@/lib/wpm';
+import type { SanitizedPageWpm, WpmConfidence } from '@/lib/wpm';
 
 // ─── TYPES ───
 
@@ -23,6 +25,12 @@ export interface ReadingTimerResult {
   wpmPorPagina: WpmPorPagina[];
   /** Average WPM (excluding first page) */
   wpmPromedio: number;
+  /** Robust WPM after sanitization */
+  wpmRobusto: number;
+  /** Confidence level of the WPM measurement */
+  confianza: WpmConfidence;
+  /** Sanitized per-page data with flags */
+  paginasSanitizadas: SanitizedPageWpm[];
 }
 
 export interface UseReadingTimerReturn {
@@ -31,9 +39,11 @@ export interface UseReadingTimerReturn {
   /** Record a page transition (call when user advances to next page) */
   registrarAvancePagina: () => void;
   /** Finalize and calculate reading metrics */
-  finalizar: (totalPaginas: number, paginas: string[], contarPalabras: (texto: string) => number) => ReadingTimerResult;
+  finalizar: (totalPaginas: number, paginas: string[], contarPalabras: (texto: string) => number, nivel: number) => ReadingTimerResult;
   /** Get the current max page reached */
   getMaxPagina: () => number;
+  /** Get raw timestamps (needed for sanitization) */
+  getTimestamps: () => number[];
 }
 
 // ─── HOOK ───
@@ -61,6 +71,7 @@ export function useReadingTimer(): UseReadingTimerReturn {
       totalPaginas: number,
       paginas: string[],
       contarPalabras: (texto: string) => number,
+      nivel: number,
     ): ReadingTimerResult => {
       const ahora = Date.now();
 
@@ -89,17 +100,36 @@ export function useReadingTimer(): UseReadingTimerReturn {
         ? Math.round(paginasParaPromedio.reduce((sum, p) => sum + p.wpm, 0) / paginasParaPromedio.length)
         : (wpmPorPagina[0]?.wpm ?? 0);
 
-      return { tiempoTotalMs, wpmPorPagina, wpmPromedio };
+      // Sanitize and compute robust WPM
+      const paginasSanitizadas = sanitizePageWpmData(
+        wpmPorPagina,
+        paginas,
+        timestampsRef.current,
+        nivel,
+        contarPalabras,
+      );
+      const sessionResult = computeSessionWpm(paginasSanitizadas);
+
+      return {
+        tiempoTotalMs,
+        wpmPorPagina,
+        wpmPromedio,
+        wpmRobusto: sessionResult.wpmRobusto,
+        confianza: sessionResult.confianza,
+        paginasSanitizadas,
+      };
     },
     [],
   );
 
   const getMaxPagina = useCallback(() => maxPaginaRef.current, []);
+  const getTimestamps = useCallback(() => [...timestampsRef.current], []);
 
   return {
     iniciar,
     registrarAvancePagina,
     finalizar,
     getMaxPagina,
+    getTimestamps,
   };
 }

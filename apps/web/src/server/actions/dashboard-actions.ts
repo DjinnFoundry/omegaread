@@ -35,6 +35,15 @@ import { extraerPerfilVivo } from '@/lib/profile/perfil-vivo';
 import { recomendarSiguientesSkills } from '@/lib/learning/graph';
 import { DOMINIOS, getSkillBySlug, getSkillsDeDominio } from '@/lib/data/skills';
 import { crearMapaProgresoLite } from '@/lib/skills/progress';
+import {
+  computeWpmTrend,
+  sanitizeFromStoredData,
+  computeSessionWpm,
+  type WpmTrendResult,
+  type SessionWpmSnapshot,
+  type WpmConfidence,
+} from '@/lib/wpm';
+import { parseSessionMetadata } from '@/lib/types/session-metadata';
 
 // ─────────────────────────────────────────────
 // TIPOS
@@ -154,11 +163,8 @@ export interface DashboardPadreData {
     resumen: number;
     rd: number;
   }>;
-  /** Evolucion WPM */
-  wpmEvolucion: Array<{
-    fecha: string;
-    wpm: number;
-  }>;
+  /** Evolucion WPM (smoothed trend) */
+  wpmEvolucion: WpmTrendResult;
   /** Tabla normativa y equivalencias para interpretacion por familias */
   normativa: {
     referenciaEdad: {
@@ -487,15 +493,36 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     rd: s.rdGlobal,
   }));
 
-  // ─── Evolucion WPM ───
-  const wpmEvolucion = todasSesiones
+  // ─── Evolucion WPM (smoothed trend) ───
+  const wpmSnapshots: SessionWpmSnapshot[] = todasSesiones
     .filter(s => s.wpmPromedio != null && s.wpmPromedio > 0)
     .slice(0, 30)
     .reverse()
-    .map(s => ({
-      fecha: s.iniciadaEn.toISOString().split('T')[0],
-      wpm: Math.round(s.wpmPromedio!),
-    }));
+    .map(s => {
+      const meta = parseSessionMetadata(s.metadata);
+      const nivelSesion = meta.nivelTexto ?? nivel;
+
+      // Determine confidence: prefer stored metadata, else derive from wpmPorPagina
+      let confianza: WpmConfidence = 'medium';
+      if (meta.wpmConfianza === 'high' || meta.wpmConfianza === 'medium' || meta.wpmConfianza === 'low') {
+        confianza = meta.wpmConfianza;
+      } else if (s.wpmPorPagina && Array.isArray(s.wpmPorPagina) && s.wpmPorPagina.length > 0) {
+        const sanitized = sanitizeFromStoredData(
+          s.wpmPorPagina as Array<{ pagina: number; wpm: number }>,
+          nivelSesion,
+        );
+        const result = computeSessionWpm(sanitized);
+        confianza = result.confianza;
+      }
+
+      return {
+        fecha: s.iniciadaEn.toISOString().split('T')[0] ?? '',
+        wpmRobusto: meta.wpmRobusto ?? Math.round(s.wpmPromedio!),
+        confianza,
+        nivel: nivelSesion,
+      };
+    });
+  const wpmEvolucion = computeWpmTrend(wpmSnapshots);
 
   // ─── Desglose por tipo con Elo ───
   const desgloseTiposConElo: Record<string, { total: number; aciertos: number; porcentaje: number; elo: number }> = {};

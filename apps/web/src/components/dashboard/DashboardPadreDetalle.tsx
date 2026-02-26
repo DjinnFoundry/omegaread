@@ -75,30 +75,7 @@ function recortarLabel(value: string, max = 16): string {
   return `${value.slice(0, max - 3)}...`;
 }
 
-/**
- * Filters WPM data to remove outlier sessions where the child likely skipped
- * without reading. Uses median-based detection: sessions with WPM > median * 3
- * are considered fake fast and excluded. Returns null if fewer than 3 valid
- * sessions remain (not enough data to show the section).
- */
-function filtrarWpmValidos(
-  wpmEvolucion: DashboardPadreData['wpmEvolucion']
-): DashboardPadreData['wpmEvolucion'] | null {
-  if (wpmEvolucion.length === 0) return null;
-
-  const valores = wpmEvolucion.map(w => w.wpm).sort((a, b) => a - b);
-  const mid = Math.floor(valores.length / 2);
-  const mediana =
-    valores.length % 2 === 0
-      ? ((valores[mid - 1] ?? 0) + (valores[mid] ?? 0)) / 2
-      : (valores[mid] ?? 0);
-
-  const umbral = mediana * 3;
-  const validos = wpmEvolucion.filter(w => w.wpm <= umbral);
-
-  if (validos.length < 3) return null;
-  return validos;
-}
+// filtrarWpmValidos removed: outlier filtering now handled by server-side WPM trend (sanitize + EWA).
 
 // ─────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -130,7 +107,8 @@ export function DashboardPadreDetalle({ data }: Props) {
   const [categoriaHecho, setCategoriaHecho] = useState<'interes' | 'fortaleza' | 'reto' | 'hito' | 'contexto'>('contexto');
 
   const tendencia = getEloTendencia(data.eloEvolucion, data.eloActual.global);
-  const wpmValidos = filtrarWpmValidos(data.wpmEvolucion);
+  const wpmTrend = data.wpmEvolucion;
+  const wpmVisible = wpmTrend.sesionesUsadas >= 3;
   const mostrandoPuntoInicial = data.eloEvolucion.length === 0;
   const eloSerie = mostrandoPuntoInicial
     ? [{
@@ -764,28 +742,31 @@ export function DashboardPadreDetalle({ data }: Props) {
       </SeccionCard>
 
       {/* ────── d) Velocidad de lectura (WPM) ────── */}
-      {wpmValidos !== null && (
+      {wpmVisible && (
         <SeccionCard titulo="Velocidad de lectura" emoji="⚡">
           <div className="flex items-baseline gap-2 mb-2">
             <span className="text-2xl font-extrabold text-texto">
-              {wpmValidos[wpmValidos.length - 1]?.wpm ?? 0}
+              {wpmTrend.wpmActual}
             </span>
             <span className="text-xs text-texto-suave">palabras/min</span>
+            <span className="ml-auto text-[10px] text-texto-suave font-datos">
+              {wpmTrend.sesionesUsadas} sesiones
+            </span>
           </div>
           <Suspense fallback={<ChartFallback />}>
             <LineaEvolucion
-              datos={wpmValidos.map((w, i) => ({
-                label: i === 0 || i === wpmValidos.length - 1
-                  ? w.fecha.slice(5)
+              datos={wpmTrend.puntos.map((p, i) => ({
+                label: i === 0 || i === wpmTrend.puntos.length - 1
+                  ? p.fecha.slice(5)
                   : '',
-                valor: w.wpm,
+                valor: p.wpmSuavizado,
               }))}
               color="#A28BD4"
-              maxValor={Math.max(200, ...wpmValidos.map(w => w.wpm + 20))}
+              maxValor={Math.max(200, ...wpmTrend.puntos.map(p => p.wpmSuavizado + 20))}
             />
           </Suspense>
           <p className="mt-1 text-[10px] text-texto-suave text-center">
-            Evolucion de palabras por minuto
+            Evolucion de palabras por minuto (suavizada)
           </p>
         </SeccionCard>
       )}

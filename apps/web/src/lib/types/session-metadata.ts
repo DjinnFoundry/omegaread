@@ -61,6 +61,10 @@ export interface SessionMetadata {
   tiempoLecturaMs?: number;
   fuenteWpm?: 'audio' | 'pagina';
 
+  // Robust WPM measurement
+  wpmRobusto?: number;
+  wpmConfianza?: 'high' | 'medium' | 'low';
+
   // Audio analysis (serialized subset stored in metadata)
   audioAnalisis?: AudioAnalisisSerialized | null;
 
