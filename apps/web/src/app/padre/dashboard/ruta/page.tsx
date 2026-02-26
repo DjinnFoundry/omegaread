@@ -2,7 +2,8 @@
 
 /**
  * Dashboard del padre - Pagina de Ruta de Aprendizaje.
- * Tech tree SVG + topics recientes + dominios + sugerencias.
+ * Full-screen tech tree map. Heading removed to maximize map space;
+ * the bottom tab bar already identifies this as "Ruta".
  */
 import { useDashboardData } from '@/contexts/DashboardDataContext';
 import { SeccionRutaAprendizaje } from '@/components/dashboard/SeccionRutaAprendizaje';
@@ -21,18 +22,5 @@ export default function RutaPage() {
     );
   }
 
-  return (
-    <>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-texto">
-          Ruta de {dashboard.nombreEstudiante}
-        </h1>
-        <p className="text-sm text-texto-suave">
-          Mapa de aprendizaje, topics explorados y siguientes pasos
-        </p>
-      </div>
-
-      <SeccionRutaAprendizaje data={dashboard} />
-    </>
-  );
+  return <SeccionRutaAprendizaje data={dashboard} />;
 }

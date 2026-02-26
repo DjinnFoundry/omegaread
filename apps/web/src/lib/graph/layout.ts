@@ -246,17 +246,9 @@ export function computeGraphLayout(
     }
   }
 
-  // Build suggestion edges (from most recent completed node to suggestions)
+  // Suggestion edges are computed dynamically in the component based on
+  // the focused (clicked) topic node, so we return an empty array here.
   const suggestionEdges: GraphLayout['suggestionEdges'] = [];
-  if (completedTopics.length > 0) {
-    const mostRecent = completedTopics[0]; // already sorted by fecha desc
-    for (const sug of suggestions) {
-      suggestionEdges.push({
-        from: mostRecent.slug,
-        to: sug.slug,
-      });
-    }
-  }
 
   // Compute bounding box
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

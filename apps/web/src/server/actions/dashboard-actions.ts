@@ -113,6 +113,8 @@ export interface DashboardPadreData {
   /** Historial de sesiones */
   historialSesiones: Array<{
     id: string;
+    storyId: string | null;
+    storyTitulo: string | null;
     fecha: string;
     topicSlug: string;
     topicEmoji: string;
@@ -434,6 +436,8 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
 
     return {
       id: s.id,
+      storyId: s.storyId ?? null,
+      storyTitulo: story?.titulo ?? null,
       fecha: s.iniciadaEn.toISOString().split('T')[0],
       topicSlug: story?.topicSlug ?? 'desconocido',
       topicEmoji: topic?.emoji ?? '📖',

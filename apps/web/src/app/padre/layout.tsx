@@ -1,23 +1,15 @@
-import { obtenerPadreActual } from '@/server/auth';
-import { NavPadre } from '@/components/ui/NavPadre';
-
 export const dynamic = 'force-dynamic';
 
 /**
  * Layout para la zona de padres.
- * Muestra navbar con nombre del padre si esta autenticado.
+ * NavPadre was removed: the DashboardShell provides its own navigation via
+ * DashboardSidebar (desktop) and bottom tab bar (mobile).
+ * Non-dashboard pages (login, registro, nuevo-hijo) have their own headers.
  */
-export default async function PadreLayout({
+export default function PadreLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const padre = await obtenerPadreActual();
-
-  return (
-    <>
-      {padre && <NavPadre nombrePadre={padre.nombre} />}
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }

@@ -22,7 +22,6 @@ export interface UsePanZoomOptions {
 
 interface UsePanZoomReturn {
   containerRef: React.RefObject<HTMLDivElement | null>;
-  contentRef: React.RefObject<HTMLDivElement | null>;
   state: PanZoomState;
   resetView: () => void;
   zoomTo: (scale: number, centerX?: number, centerY?: number) => void;
@@ -50,6 +49,12 @@ function getTouchDistance(touches: TouchList): number {
 
 // ─────────────────────────────────────────────
 // Hook
+//
+// Position-based zoom model: instead of applying a CSS transform
+// that scales all content (which causes pixelation), this hook only
+// tracks a PanZoomState { x, y, scale }. The consuming component
+// uses toScreen(nodeX, nodeY, state) to position elements at native
+// resolution. Nodes stay crisp at any zoom level.
 // ─────────────────────────────────────────────
 
 export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
@@ -62,7 +67,6 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
   } = options;
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
 
   const [state, setState] = useState<PanZoomState>({
     x: initialX,
@@ -133,7 +137,7 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
     [clampScale],
   );
 
-  // ── Mouse handlers ──
+  // ── Mouse & touch handlers ──
 
   useEffect(() => {
     const container = containerRef.current;
@@ -160,7 +164,6 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
 
     // Mouse drag
     function handleMouseDown(e: MouseEvent) {
-      // Ignore clicks on interactive elements (buttons, links, etc.)
       const target = e.target as HTMLElement;
       if (target.closest('button, a, [role="button"]')) return;
 
@@ -209,7 +212,6 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
         const dy = Math.abs(touch.clientY - g.lastTapY);
 
         if (dt < 300 && dx < 30 && dy < 30) {
-          // Double-tap: zoom in/out toggle
           e.preventDefault();
           const rect = container!.getBoundingClientRect();
           const cx = touch.clientX - rect.left;
@@ -225,7 +227,6 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
         g.lastTapX = touch.clientX;
         g.lastTapY = touch.clientY;
 
-        // Single finger: pan
         g.isPanning = true;
         g.isPinching = false;
         const center = getTouchCenter(e.touches);
@@ -235,7 +236,6 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
         g.startStateY = stateRef.current.y;
       } else if (e.touches.length === 2) {
         e.preventDefault();
-        // Two-finger: pinch zoom + pan
         g.isPanning = false;
         g.isPinching = true;
         g.startDistance = getTouchDistance(e.touches);
@@ -263,7 +263,6 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
         const cx = g.startX - rect.left;
         const cy = g.startY - rect.top;
 
-        // Pan delta from center movement
         const panDx = center.x - g.startX;
         const panDy = center.y - g.startY;
 
@@ -277,7 +276,6 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
         const dx = touch.clientX - g.startX;
         const dy = touch.clientY - g.startY;
 
-        // Start pan only after a small threshold to avoid interfering with taps
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
           e.preventDefault();
           setState((prev) => ({
@@ -295,7 +293,6 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
         g.isPanning = false;
         g.isPinching = false;
       } else if (e.touches.length === 1) {
-        // Went from 2 to 1 finger, restart single-finger pan
         g.isPinching = false;
         g.isPanning = true;
         const touch = e.touches[0];
@@ -327,13 +324,8 @@ export function usePanZoom(options: UsePanZoomOptions = {}): UsePanZoomReturn {
     };
   }, [clampScale, zoomTo]);
 
-  // Apply transform to content
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-    content.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
-    content.style.transformOrigin = '0 0';
-  }, [state]);
+  // No CSS transform applied. The component reads `state` directly
+  // and positions elements via toScreen().
 
-  return { containerRef, contentRef, state, resetView, zoomTo };
+  return { containerRef, state, resetView, zoomTo };
 }
