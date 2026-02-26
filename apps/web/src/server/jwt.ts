@@ -8,14 +8,26 @@ import { SignJWT, jwtVerify } from 'jose';
  * Lee AUTH_SECRET del entorno y lo convierte en Uint8Array para jose.
  * Valida que exista y tenga al menos 32 caracteres.
  *
- * Validacion lazy: el error se lanza en la primera peticion que llame a getSecret(),
- * lo que hace que el problema sea visible en los logs del worker desde el primer
- * request de autenticacion. En Cloudflare Workers, process.env solo esta disponible
- * despues de que ensureEnvFromCloudflare() haya copiado los bindings, por lo que
- * no podemos validar en tiempo de inicializacion de modulo.
+ * En Cloudflare Workers los secrets viven en bindings, no en process.env.
+ * Por eso usamos getCloudflareContext() como fuente primaria y process.env como fallback (dev).
  */
-export function getSecret(): Uint8Array {
-  const raw = process.env.AUTH_SECRET;
+let _cachedSecret: Uint8Array | null = null;
+
+export async function getSecret(): Promise<Uint8Array> {
+  if (_cachedSecret) return _cachedSecret;
+
+  let raw = process.env.AUTH_SECRET;
+
+  if (!raw) {
+    try {
+      const { getCloudflareContext } = await import('@opennextjs/cloudflare');
+      const { env } = await getCloudflareContext({ async: true });
+      raw = (env as Record<string, string>).AUTH_SECRET;
+    } catch {
+      // Not in Cloudflare context (local dev)
+    }
+  }
+
   if (!raw) {
     throw new Error(
       'AUTH_SECRET must be set (at least 32 characters). Generate one with: openssl rand -base64 32',
@@ -24,7 +36,8 @@ export function getSecret(): Uint8Array {
   if (raw.length < 32) {
     throw new Error('AUTH_SECRET must be at least 32 characters');
   }
-  return new TextEncoder().encode(raw);
+  _cachedSecret = new TextEncoder().encode(raw);
+  return _cachedSecret;
 }
 
 /**
@@ -36,7 +49,7 @@ export async function createToken(payload: Record<string, unknown>): Promise<str
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(getSecret());
+    .sign(await getSecret());
 }
 
 /**
@@ -44,7 +57,7 @@ export async function createToken(payload: Record<string, unknown>): Promise<str
  */
 export async function verifyToken(token: string): Promise<Record<string, unknown> | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, await getSecret());
     return payload as Record<string, unknown>;
   } catch {
     return null;

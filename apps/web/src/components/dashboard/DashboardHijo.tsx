@@ -7,11 +7,10 @@
  */
 import Link from 'next/link';
 import { BookOpen, Timer, Flame, Star, Library } from 'lucide-react';
-import { calcularEdad } from '@/lib/utils/fecha';
+
 
 interface DashboardHijoProps {
   nombre: string;
-  fechaNacimiento: Date;
   resumen: {
     sesionesHoy: number;
     tiempoHoyMin: number;
@@ -95,17 +94,16 @@ function HeatmapMes({ actividadMes }: { actividadMes: Record<string, number> }) 
   );
 }
 
-export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHijoProps) {
-  const edad = calcularEdad(fechaNacimiento);
+export function DashboardHijo({ nombre, resumen }: DashboardHijoProps) {
 
   if (!resumen) {
     return (
       <div className="rounded-3xl bg-superficie p-5 shadow-sm">
         <h2 className="text-lg font-bold text-texto">
-          {nombre} ({edad} anos)
+          Vamos a leer!
         </h2>
         <p className="mt-2 text-sm text-texto-suave">
-          Aun no hay datos de progreso. Es hora de empezar a leer!
+          Aun no hay datos de progreso. Es hora de empezar!
         </p>
         <Link
           href="/jugar/lectura"
@@ -128,7 +126,7 @@ export function DashboardHijo({ nombre, fechaNacimiento, resumen }: DashboardHij
       {/* Cabecera */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-texto">
-          {nombre} ({edad} anos)
+          Vamos a leer!
         </h2>
         <span className="text-sm text-texto-suave">
           {resumen.sesionesHoy > 0 ? (

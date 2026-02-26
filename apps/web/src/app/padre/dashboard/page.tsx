@@ -10,14 +10,17 @@ import { DashboardHijo } from '@/components/dashboard/DashboardHijo';
 import { SeccionRecomendaciones } from '@/components/dashboard/SeccionRecomendaciones';
 
 export default function ResumenPage() {
-  const { resumenes, dashboard, nombrePadre } = useDashboardData();
+  const { resumenes, dashboard } = useDashboardData();
+
+  // Greeting uses the first child's name for a warmer, kid-centric feel
+  const primerHijo = resumenes[0]?.hijo;
 
   return (
     <>
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-texto">
-          Hola, {nombrePadre}
+          Hola, {primerHijo?.nombre ?? 'familia'}
         </h1>
       </div>
 
@@ -27,7 +30,6 @@ export default function ResumenPage() {
           <DashboardHijo
             key={hijo.id}
             nombre={hijo.nombre}
-            fechaNacimiento={hijo.fechaNacimiento}
             resumen={resumen}
           />
         ))}
