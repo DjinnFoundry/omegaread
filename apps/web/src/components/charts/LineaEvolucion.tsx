@@ -12,6 +12,13 @@ interface PuntoData {
   banda?: number;
 }
 
+interface ZonaData {
+  desde: number;
+  hasta: number;
+  color: string;
+  label: string;
+}
+
 interface LineaEvolucionProps {
   datos: PuntoData[];
   color?: string;
@@ -20,6 +27,8 @@ interface LineaEvolucionProps {
   mostrarValores?: boolean;
   /** Sufijo para valores mostrados (ej: "%" o "") */
   sufijo?: string;
+  /** Colored horizontal zones drawn behind the chart (e.g. ELO ranges) */
+  zonas?: ZonaData[];
 }
 
 export function LineaEvolucion({
@@ -29,12 +38,14 @@ export function LineaEvolucion({
   minValor,
   mostrarValores = false,
   sufijo = '%',
+  zonas,
 }: LineaEvolucionProps) {
   if (datos.length === 0) {
     return <div className="text-center text-texto-suave text-sm py-4">Sin datos todavia</div>;
   }
 
   const tieneBanda = datos.some((d) => d.banda != null && d.banda > 0);
+  const tieneZonas = zonas && zonas.length > 0;
 
   // Calcular rango del eje Y
   const allUpper = datos.map((d) => d.valor + (d.banda ?? 0));
@@ -46,9 +57,9 @@ export function LineaEvolucion({
   const yMin = minValor ?? Math.max(0, autoMin - (autoMax - autoMin) * 0.1);
   const yRange = yMax - yMin || 1;
 
-  const padding = { top: 20, right: 20, bottom: 30, left: 10 };
+  const padding = { top: 20, right: tieneZonas ? 80 : 20, bottom: 30, left: 10 };
   const width = 320;
-  const height = 160;
+  const height = tieneZonas ? 210 : 160;
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
 
@@ -97,8 +108,49 @@ export function LineaEvolucion({
       role="img"
       aria-label="Grafico de evolucion"
     >
+      {/* Zone bands (colored horizontal regions) */}
+      {tieneZonas && zonas.map((zona, idx) => {
+        const clampedDesde = Math.max(zona.desde, yMin);
+        const clampedHasta = Math.min(zona.hasta, yMax);
+        if (clampedDesde >= clampedHasta) return null;
+        const yTop = toY(clampedHasta);
+        const yBottom = toY(clampedDesde);
+        const h = yBottom - yTop;
+        const midY = yTop + h / 2;
+        return (
+          <g key={`zona-${idx}`}>
+            <rect
+              x={padding.left}
+              y={yTop}
+              width={chartW}
+              height={h}
+              fill={zona.color}
+              opacity={0.08}
+            />
+            <line
+              x1={padding.left}
+              y1={yTop}
+              x2={padding.left + chartW}
+              y2={yTop}
+              stroke={zona.color}
+              strokeWidth={0.5}
+              opacity={0.25}
+            />
+            <text
+              x={padding.left + chartW + 4}
+              y={midY + 3}
+              fontSize={7.5}
+              fill={zona.color}
+              fontWeight="600"
+            >
+              {zona.label}
+            </text>
+          </g>
+        );
+      })}
+
       {/* Lineas de referencia */}
-      {refLines.map((v, idx) => {
+      {!tieneZonas && refLines.map((v, idx) => {
         const y = toY(v);
         return (
           <line

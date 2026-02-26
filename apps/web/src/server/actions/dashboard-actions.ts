@@ -452,9 +452,6 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     };
   });
 
-  // ─── Recomendaciones offline ───
-  const recomendaciones = generarRecomendaciones(desgloseTipos, comparativaTopics, todasSesiones);
-
   // ─── Timeline cambios de nivel ───
   const timelineCambiosNivel = ajustes
     .filter(a => a.nivelAnterior !== a.nivelNuevo)
@@ -534,6 +531,17 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
       };
     });
   const wpmEvolucion = computeWpmTrend(wpmSnapshots);
+
+  // ─── Recomendaciones offline ───
+  const recomendaciones = generarRecomendaciones(desgloseTipos, comparativaTopics, todasSesiones, {
+    nivelActual: nivel,
+    wpmEvolucion,
+    historialSesiones: historialSesiones.map(s => ({
+      scorePorcentaje: s.scorePorcentaje,
+      nivel: s.nivel,
+      duracionMin: s.duracionMin,
+    })),
+  });
 
   // ─── Desglose por tipo con Elo ───
   const desgloseTiposConElo: Record<string, { total: number; aciertos: number; porcentaje: number; elo: number }> = {};

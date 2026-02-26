@@ -18,11 +18,11 @@ function ChartFallback() {
   return <div className="h-32 rounded-xl bg-neutro/10 animate-pulse" />;
 }
 
-const RANGOS_COMPRENSION = [
-  { rango: '<800', nivel: 'Principiante', color: '#FF6B6B' },
-  { rango: '800-1100', nivel: 'En desarrollo', color: '#D4880B' },
-  { rango: '1100-1400', nivel: 'Competente', color: '#4ECDC4' },
-  { rango: '>1400', nivel: 'Avanzado', color: '#7BC67E' },
+const ZONAS_ELO = [
+  { desde: 0, hasta: 800, color: '#FF6B6B', label: 'Principiante' },
+  { desde: 800, hasta: 1100, color: '#D4880B', label: 'En desarrollo' },
+  { desde: 1100, hasta: 1400, color: '#4ECDC4', label: 'Competente' },
+  { desde: 1400, hasta: 2000, color: '#7BC67E', label: 'Avanzado' },
 ];
 
 function getEloColor(elo: number): string {
@@ -87,15 +87,6 @@ export function SeccionComprension({ data }: Props) {
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {RANGOS_COMPRENSION.map((rango) => (
-          <div key={rango.rango} className="rounded-xl bg-fondo p-2">
-            <p className="text-[10px] text-texto-suave">{rango.rango}</p>
-            <p className="text-xs font-semibold" style={{ color: rango.color }}>{rango.nivel}</p>
-          </div>
-        ))}
-      </div>
-
       <div className="mt-3">
         <Suspense fallback={<ChartFallback />}>
           <LineaEvolucion
@@ -110,9 +101,10 @@ export function SeccionComprension({ data }: Props) {
             }))}
             color="#4ECDC4"
             maxValor={Math.max(1600, ...eloSerie.map(e => e.global + e.rd + 50))}
-            minValor={Math.max(0, Math.min(...eloSerie.map(e => e.global - e.rd - 50)))}
+            minValor={Math.max(0, Math.min(600, ...eloSerie.map(e => e.global - e.rd - 50)))}
             mostrarValores={false}
             sufijo=""
+            zonas={ZONAS_ELO}
           />
         </Suspense>
       </div>

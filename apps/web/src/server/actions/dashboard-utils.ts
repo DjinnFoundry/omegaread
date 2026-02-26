@@ -5,6 +5,7 @@
  */
 
 import type { DashboardNinoData, DashboardPadreData } from './dashboard-actions';
+import type { WpmTrendResult } from '@/lib/wpm';
 
 // Tipos minimos para las rows de la DB (evita dependencia directa del ORM)
 export interface SessionRow {
@@ -103,74 +104,280 @@ export function calcularDesgloseTipos(respuestas: ResponseRow[]) {
   return tipos;
 }
 
+// ─────────────────────────────────────────────
+// RECOMENDACIONES
+// ─────────────────────────────────────────────
+
+type Rec = DashboardPadreData['recomendaciones'][number];
+type RecWithPriority = Rec & { prioridad: 'high' | 'medium' | 'low' };
+
+export interface RecomendacionesOpciones {
+  nivelActual?: number;
+  wpmEvolucion?: WpmTrendResult;
+  historialSesiones?: Array<{ scorePorcentaje: number; nivel: number; duracionMin: number }>;
+}
+
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+// --- Individual heuristic functions ---
+
+function heuristicTipoDebil(
+  desglose: Record<string, { total: number; aciertos: number; porcentaje: number }>,
+): RecWithPriority | null {
+  const tiposOrdenados = Object.entries(desglose)
+    .filter(([, v]) => v.total >= 3)
+    .sort(([, a], [, b]) => a.porcentaje - b.porcentaje);
+
+  if (tiposOrdenados.length === 0) return null;
+
+  const [tipoDebil, datos] = tiposOrdenados[0];
+  const consejos: Record<string, { mensaje: string; detalle: string }> = {
+    inferencia: {
+      mensaje: 'Practicar inferencias leyendo juntos',
+      detalle: 'Cuando lean juntos, hagan preguntas tipo "Por que crees que el personaje hizo eso?" o "Que crees que pasara despues?". Esto entrena la capacidad de inferir.',
+    },
+    vocabulario: {
+      mensaje: 'Ampliar vocabulario con juegos de palabras',
+      detalle: 'Cuando encuentren una palabra nueva, jueguen a usarla en 3 frases diferentes. Tambien pueden hacer un "diccionario personal" con dibujos.',
+    },
+    literal: {
+      mensaje: 'Reforzar comprension literal con relectura',
+      detalle: 'Despues de leer una pagina, pregunten "Que acaba de pasar?". Si no recuerda, relean juntos sin prisa. La relectura fortalece la comprension.',
+    },
+    resumen: {
+      mensaje: 'Practicar resumenes cortos despues de leer',
+      detalle: 'Al terminar un cuento, pidan que cuente la historia en 3 frases. Pueden usar "Primero..., luego..., al final..." como estructura.',
+    },
+  };
+
+  if (datos.porcentaje < 70 && tipoDebil in consejos) {
+    return { tipo: tipoDebil, ...consejos[tipoDebil], prioridad: 'high' };
+  }
+  return null;
+}
+
+function heuristicTopicDebil(
+  topicsComp: Array<{ topicSlug: string; nombre: string; scoreMedio: number }>,
+): RecWithPriority | null {
+  const topicDebil = topicsComp.filter(t => t.scoreMedio < 60).pop();
+  if (!topicDebil) return null;
+
+  return {
+    tipo: 'topic',
+    mensaje: `Explorar mas sobre "${topicDebil.nombre}" fuera de la app`,
+    detalle: `El score en ${topicDebil.nombre} es ${topicDebil.scoreMedio}%. Busquen libros, videos o actividades sobre este tema para que el nino gane familiaridad y vocabulario especifico.`,
+    prioridad: 'medium',
+  };
+}
+
+function heuristicFrecuencia(sesiones: SessionRow[]): RecWithPriority | null {
+  const hace7 = new Date();
+  hace7.setDate(hace7.getDate() - 7);
+  const sesionesUltimaSemana = sesiones.filter(s => new Date(s.iniciadaEn) >= hace7);
+
+  if (sesionesUltimaSemana.length < 3) {
+    return {
+      tipo: 'frecuencia',
+      mensaje: 'Establecer una rutina diaria de lectura',
+      detalle: 'La practica frecuente es clave. Intenten leer al menos 10 minutos al dia, idealmente a la misma hora (antes de dormir funciona muy bien).',
+      prioridad: 'medium',
+    };
+  }
+  return null;
+}
+
+function heuristicRachaPositiva(
+  sesiones: SessionRow[],
+  historial?: Array<{ scorePorcentaje: number }>,
+): RecWithPriority | null {
+  if (!historial || historial.length < 5) return null;
+
+  const hace7 = new Date();
+  hace7.setDate(hace7.getDate() - 7);
+  const sesionesUltimaSemana = sesiones.filter(s => new Date(s.iniciadaEn) >= hace7);
+  if (sesionesUltimaSemana.length < 5) return null;
+
+  const avgScore = historial.slice(0, 7).reduce((a, s) => a + s.scorePorcentaje, 0) / Math.min(historial.length, 7);
+  if (avgScore < 75) return null;
+
+  return {
+    tipo: 'racha-positiva',
+    mensaje: 'Excelente racha de lectura!',
+    detalle: `Ha leido ${sesionesUltimaSemana.length} veces esta semana con un promedio de ${Math.round(avgScore)}%. Aprovechen este impulso para explorar temas nuevos o subir de nivel.`,
+    prioridad: 'high',
+  };
+}
+
+function heuristicComprensionBajando(
+  historial?: Array<{ scorePorcentaje: number }>,
+): RecWithPriority | null {
+  if (!historial || historial.length < 6) return null;
+
+  const ultimas3 = historial.slice(0, 3);
+  const previas3 = historial.slice(3, 6);
+  const avgReciente = ultimas3.reduce((a, s) => a + s.scorePorcentaje, 0) / 3;
+  const avgPrevio = previas3.reduce((a, s) => a + s.scorePorcentaje, 0) / 3;
+
+  if (avgPrevio - avgReciente >= 15) {
+    return {
+      tipo: 'comprension-bajando',
+      mensaje: 'La comprension ha bajado en las ultimas sesiones',
+      detalle: `El promedio reciente (${Math.round(avgReciente)}%) es menor que el anterior (${Math.round(avgPrevio)}%). Puede ser cansancio o un salto de dificultad. Prueben releer historias favoritas o bajar el nivel temporalmente.`,
+      prioridad: 'high',
+    };
+  }
+  return null;
+}
+
+function heuristicSesionesCortas(
+  historial?: Array<{ duracionMin: number }>,
+): RecWithPriority | null {
+  if (!historial || historial.length < 5) return null;
+
+  const ultimas5 = historial.slice(0, 5);
+  const avgDuracion = ultimas5.reduce((a, s) => a + s.duracionMin, 0) / 5;
+
+  // 120s = 2min
+  if (avgDuracion < 2) {
+    return {
+      tipo: 'sesiones-cortas',
+      mensaje: 'Las sesiones de lectura son muy cortas',
+      detalle: `El promedio de las ultimas 5 sesiones es de ${Math.round(avgDuracion * 60)} segundos. Intenten crear un ambiente tranquilo y sin distracciones para que pueda concentrarse mas tiempo.`,
+      prioridad: 'medium',
+    };
+  }
+  return null;
+}
+
+function heuristicWpmBajando(wpm?: WpmTrendResult): RecWithPriority | null {
+  if (!wpm || wpm.puntos.length < 3) return null;
+
+  const last3 = wpm.puntos.slice(-3);
+  const declining = last3[1].wpmSuavizado <= last3[0].wpmSuavizado * 0.95
+    && last3[2].wpmSuavizado <= last3[1].wpmSuavizado * 0.95;
+
+  if (declining) {
+    return {
+      tipo: 'wpm-bajando',
+      mensaje: 'La velocidad de lectura esta bajando',
+      detalle: 'La velocidad ha ido disminuyendo en las ultimas sesiones. Esto puede ser normal si subio de nivel recientemente. Si persiste, prueben con textos mas sencillos para recuperar fluidez.',
+      prioridad: 'medium',
+    };
+  }
+  return null;
+}
+
+function heuristicWpmMejorando(wpm?: WpmTrendResult): RecWithPriority | null {
+  if (!wpm || wpm.puntos.length < 3) return null;
+
+  const last3 = wpm.puntos.slice(-3);
+  const rising = last3[1].wpmSuavizado >= last3[0].wpmSuavizado * 1.05
+    && last3[2].wpmSuavizado >= last3[1].wpmSuavizado * 1.05;
+
+  if (rising) {
+    return {
+      tipo: 'wpm-mejorando',
+      mensaje: 'La velocidad de lectura esta mejorando!',
+      detalle: 'La fluidez lectora ha mejorado consistentemente. Es un gran indicador de progreso. Sigan con la rutina actual, esta funcionando muy bien.',
+      prioridad: 'medium',
+    };
+  }
+  return null;
+}
+
+function heuristicNivelEstancado(
+  historial?: Array<{ nivel: number }>,
+): RecWithPriority | null {
+  if (!historial || historial.length < 8) return null;
+
+  const ultimas8 = historial.slice(0, 8);
+  const mismoNivel = ultimas8.every(s => s.nivel === ultimas8[0].nivel);
+
+  if (mismoNivel) {
+    return {
+      tipo: 'nivel-estancado',
+      mensaje: 'Lleva varias sesiones en el mismo nivel',
+      detalle: `Las ultimas ${ultimas8.length} sesiones han sido en nivel ${ultimas8[0].nivel}. Pueden reforzar los tipos de pregunta mas debiles para desbloquear el siguiente nivel.`,
+      prioridad: 'low',
+    };
+  }
+  return null;
+}
+
+function heuristicVariedadTemas(
+  topicsComp: Array<{ topicSlug: string }>,
+  sesiones: SessionRow[],
+): RecWithPriority | null {
+  if (sesiones.length < 5 || topicsComp.length === 0) return null;
+
+  const uniqueTopics = new Set(topicsComp.map(t => t.topicSlug));
+  if (uniqueTopics.size <= 2) {
+    return {
+      tipo: 'variedad-temas',
+      mensaje: 'Explorar temas mas variados',
+      detalle: `Solo se han explorado ${uniqueTopics.size} tema(s) diferentes. Probar temas nuevos amplia vocabulario y conocimiento general. Dejen que elija algo que le llame la atencion!`,
+      prioridad: 'low',
+    };
+  }
+  return null;
+}
+
 /** Recomendaciones offline basadas en datos reales */
 export function generarRecomendaciones(
   desglose: Record<string, { total: number; aciertos: number; porcentaje: number }>,
   topicsComp: Array<{ topicSlug: string; nombre: string; scoreMedio: number }>,
   sesiones: SessionRow[],
+  opciones?: RecomendacionesOpciones,
 ): DashboardPadreData['recomendaciones'] {
-  const recs: DashboardPadreData['recomendaciones'] = [];
+  const historial = opciones?.historialSesiones;
+  const wpm = opciones?.wpmEvolucion;
 
-  // Recomendacion por tipo de pregunta debil
-  const tiposOrdenados = Object.entries(desglose)
-    .filter(([, v]) => v.total >= 3)
-    .sort(([, a], [, b]) => a.porcentaje - b.porcentaje);
+  // Collect all candidate recommendations
+  const candidates: RecWithPriority[] = [];
 
-  if (tiposOrdenados.length > 0) {
-    const [tipoDebil, datos] = tiposOrdenados[0];
-    const consejos: Record<string, { mensaje: string; detalle: string }> = {
-      inferencia: {
-        mensaje: 'Practicar inferencias leyendo juntos',
-        detalle: 'Cuando lean juntos, hagan preguntas tipo "Por que crees que el personaje hizo eso?" o "Que crees que pasara despues?". Esto entrena la capacidad de inferir.',
-      },
-      vocabulario: {
-        mensaje: 'Ampliar vocabulario con juegos de palabras',
-        detalle: 'Cuando encuentren una palabra nueva, jueguen a usarla en 3 frases diferentes. Tambien pueden hacer un "diccionario personal" con dibujos.',
-      },
-      literal: {
-        mensaje: 'Reforzar comprension literal con relectura',
-        detalle: 'Despues de leer una pagina, pregunten "Que acaba de pasar?". Si no recuerda, relean juntos sin prisa. La relectura fortalece la comprension.',
-      },
-      resumen: {
-        mensaje: 'Practicar resumenes cortos despues de leer',
-        detalle: 'Al terminar un cuento, pidan que cuente la historia en 3 frases. Pueden usar "Primero..., luego..., al final..." como estructura.',
-      },
-    };
+  const tipoDebil = heuristicTipoDebil(desglose);
+  if (tipoDebil) candidates.push(tipoDebil);
 
-    if (datos.porcentaje < 70 && tipoDebil in consejos) {
-      recs.push({
-        tipo: tipoDebil,
-        ...consejos[tipoDebil],
-      });
-    }
-  }
+  const topicDebil = heuristicTopicDebil(topicsComp);
+  if (topicDebil) candidates.push(topicDebil);
 
-  // Recomendacion por topic debil
-  const topicDebil = topicsComp.filter(t => t.scoreMedio < 60).pop();
-  if (topicDebil) {
-    recs.push({
-      tipo: 'topic',
-      mensaje: `Explorar mas sobre "${topicDebil.nombre}" fuera de la app`,
-      detalle: `El score en ${topicDebil.nombre} es ${topicDebil.scoreMedio}%. Busquen libros, videos o actividades sobre este tema para que el nino gane familiaridad y vocabulario especifico.`,
-    });
-  }
+  const frecuencia = heuristicFrecuencia(sesiones);
+  if (frecuencia) candidates.push(frecuencia);
 
-  // Recomendacion por frecuencia
-  const sesionesUltimaSemana = sesiones.filter(s => {
-    const hace7 = new Date();
-    hace7.setDate(hace7.getDate() - 7);
-    return new Date(s.iniciadaEn) >= hace7;
+  const rachaPos = heuristicRachaPositiva(sesiones, historial);
+  if (rachaPos) candidates.push(rachaPos);
+
+  const compBajando = heuristicComprensionBajando(historial);
+  if (compBajando) candidates.push(compBajando);
+
+  const sesCortas = heuristicSesionesCortas(historial);
+  if (sesCortas) candidates.push(sesCortas);
+
+  const wpmBaj = heuristicWpmBajando(wpm);
+  if (wpmBaj) candidates.push(wpmBaj);
+
+  const wpmMej = heuristicWpmMejorando(wpm);
+  if (wpmMej) candidates.push(wpmMej);
+
+  const nivelEst = heuristicNivelEstancado(historial);
+  if (nivelEst) candidates.push(nivelEst);
+
+  const variedad = heuristicVariedadTemas(topicsComp, sesiones);
+  if (variedad) candidates.push(variedad);
+
+  // Mutual exclusions
+  const tipos = new Set(candidates.map(c => c.tipo));
+  const filtered = candidates.filter(c => {
+    if (c.tipo === 'wpm-mejorando' && tipos.has('wpm-bajando')) return false;
+    if (c.tipo === 'racha-positiva' && tipos.has('comprension-bajando')) return false;
+    if (c.tipo === 'comprension-bajando' && tipos.has('racha-positiva')) return false;
+    return true;
   });
 
-  if (sesionesUltimaSemana.length < 3) {
-    recs.push({
-      tipo: 'frecuencia',
-      mensaje: 'Establecer una rutina diaria de lectura',
-      detalle: 'La practica frecuente es clave. Intenten leer al menos 10 minutos al dia, idealmente a la misma hora (antes de dormir funciona muy bien).',
-    });
-  }
+  // Sort by priority, then return top 6
+  filtered.sort((a, b) => PRIORITY_ORDER[a.prioridad] - PRIORITY_ORDER[b.prioridad]);
 
-  return recs.slice(0, 3);
+  return filtered.slice(0, 6).map(({ prioridad: _, ...rec }) => rec);
 }
 
 // ─────────────────────────────────────────────

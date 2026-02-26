@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * Seccion de comprension por tipo de pregunta con charts expandibles.
+ * Seccion de comprension por tipo de pregunta con charts siempre visibles.
  * Extraida de DashboardPadreDetalle.
  */
-import { useState, lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { Target, FileText, Eye, BookOpen, Lightbulb } from 'lucide-react';
 import type { DashboardPadreData } from '@/server/actions/dashboard-actions';
 import { clasificarElo } from '@/lib/elo';
@@ -15,7 +15,7 @@ const LineaEvolucion = lazy(() =>
 );
 
 function ChartFallback() {
-  return <div className="h-32 rounded-xl bg-neutro/10 animate-pulse" />;
+  return <div className="h-20 rounded-xl bg-neutro/10 animate-pulse" />;
 }
 
 const TIPO_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
@@ -37,23 +37,19 @@ interface Props {
 }
 
 export function SeccionTipos({ data }: Props) {
-  const [tipoExpandido, setTipoExpandido] = useState<string | null>(null);
+  const hayEvolucion = data.eloEvolucion.length > 1;
 
   return (
     <SeccionCard titulo="Comprension por tipo" icon={<Target size={18} className="text-coral" />}>
-      <div className="space-y-2">
+      <div className="space-y-3">
         {Object.entries(TIPO_CONFIG).map(([tipo, config]) => {
           const datos = data.desgloseTipos[tipo];
           if (!datos) return null;
           const elo = datos.elo;
-          const isExpanded = tipoExpandido === tipo;
 
           return (
-            <div key={tipo}>
-              <button
-                onClick={() => setTipoExpandido(isExpanded ? null : tipo)}
-                className="w-full flex items-center gap-2.5 rounded-xl bg-fondo p-2.5 text-left active:scale-[0.99] transition-transform"
-              >
+            <div key={tipo} className="rounded-xl bg-fondo p-2.5">
+              <div className="flex items-center gap-2">
                 <span className="shrink-0">{config.icon}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
@@ -71,12 +67,10 @@ export function SeccionTipos({ data }: Props) {
                     </span>
                   </div>
                 </div>
-                <span className="text-xs text-neutro">{isExpanded ? '▲' : '▼'}</span>
-              </button>
+              </div>
 
-              {/* Grafica expandida de evolucion Elo del tipo */}
-              {isExpanded && data.eloEvolucion.length > 1 && (
-                <div className="mt-1 ml-8 mr-2 rounded-lg bg-superficie p-2 border border-neutro/10">
+              {hayEvolucion && (
+                <div className="mt-1.5">
                   <Suspense fallback={<ChartFallback />}>
                     <LineaEvolucion
                       datos={data.eloEvolucion.map((e, i) => ({

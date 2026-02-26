@@ -24,10 +24,11 @@ interface Props {
 export function SeccionWpm({ data }: Props) {
   const { wpmEvolucion } = data;
 
-  // Hide section if fewer than 3 usable sessions
-  if (wpmEvolucion.sesionesUsadas < 3) return null;
+  // Hide only if there's literally no WPM data at all
+  if (wpmEvolucion.sesionesUsadas === 0) return null;
 
   const { puntos, wpmActual } = wpmEvolucion;
+  const pocaData = puntos.length < 3;
 
   return (
     <SeccionCard titulo="Velocidad de lectura" icon={<Zap size={18} className="text-montana" />}>
@@ -37,23 +38,27 @@ export function SeccionWpm({ data }: Props) {
         </span>
         <span className="text-xs text-texto-suave">palabras/min</span>
         <span className="ml-auto text-[10px] text-texto-suave font-datos">
-          {wpmEvolucion.sesionesUsadas} sesiones
+          {wpmEvolucion.sesionesUsadas} {wpmEvolucion.sesionesUsadas === 1 ? 'sesion' : 'sesiones'}
         </span>
       </div>
-      <Suspense fallback={<ChartFallback />}>
-        <LineaEvolucion
-          datos={puntos.map((p, i) => ({
-            label: i === 0 || i === puntos.length - 1
-              ? p.fecha.slice(5)
-              : '',
-            valor: p.wpmSuavizado,
-          }))}
-          color="#A28BD4"
-          maxValor={Math.max(200, ...puntos.map(p => p.wpmSuavizado + 20))}
-        />
-      </Suspense>
+      {puntos.length > 0 && (
+        <Suspense fallback={<ChartFallback />}>
+          <LineaEvolucion
+            datos={puntos.map((p, i) => ({
+              label: i === 0 || i === puntos.length - 1
+                ? p.fecha.slice(5)
+                : '',
+              valor: p.wpmSuavizado,
+            }))}
+            color="#A28BD4"
+            maxValor={Math.max(200, ...puntos.map(p => p.wpmSuavizado + 20))}
+          />
+        </Suspense>
+      )}
       <p className="mt-1 text-[10px] text-texto-suave text-center">
-        Evolucion de palabras por minuto (suavizada)
+        {pocaData
+          ? 'Necesita mas sesiones para mostrar la tendencia completa'
+          : 'Evolucion de palabras por minuto (suavizada)'}
       </p>
     </SeccionCard>
   );
