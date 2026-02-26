@@ -504,7 +504,12 @@ describe('auth.ts - Error handling', () => {
 
   it('debe lanzar error si AUTH_SECRET no está configurado', async () => {
     delete process.env.AUTH_SECRET;
-    const { loginPadre } = await importAuth();
+
+    // Reset modules to clear the _cachedSecret in jwt.ts. Without this,
+    // earlier tests that set a valid AUTH_SECRET leave the cache populated,
+    // so getSecret() never re-reads process.env and never throws.
+    vi.resetModules();
+    const { loginPadre } = await import('@/server/auth');
 
     mockDb.query.parents.findFirst.mockResolvedValue(createMockParent());
     const bcryptjs = await import('bcryptjs');
@@ -512,7 +517,7 @@ describe('auth.ts - Error handling', () => {
 
     try {
       await loginPadre('padre@test.com', 'password');
-      expect.fail('Debería haber lanzado error');
+      expect.fail('Deberia haber lanzado error');
     } catch (error: any) {
       expect(error.message).toContain('AUTH_SECRET must be set');
     }

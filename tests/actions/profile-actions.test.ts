@@ -55,6 +55,7 @@ vi.mock('@/server/db', () => ({
   })),
 }));
 
+import { requireStudentOwnership } from '@/server/auth';
 import {
   actualizarPerfilEstudiante,
   guardarIntereses,
@@ -117,18 +118,19 @@ describe('profile-actions', () => {
   });
 
   it('debería retornar error si estudiante no existe', async () => {
-    mockFindFirst.mockResolvedValueOnce(null);
+    vi.mocked(requireStudentOwnership).mockRejectedValueOnce(
+      new Error('Acceso no autorizado: el estudiante no pertenece a este padre'),
+    );
 
-    const result = await actualizarPerfilEstudiante({
-      studentId: '00000000-0000-4000-8000-000000000099',
-      curso: '1o-primaria',
-      rutinaLectura: 'diaria',
-      acompanamiento: 'siempre',
-      senalesDificultad: {},
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('Estudiante no encontrado');
+    await expect(
+      actualizarPerfilEstudiante({
+        studentId: '00000000-0000-4000-8000-000000000099',
+        curso: '1o-primaria',
+        rutinaLectura: 'diaria',
+        acompanamiento: 'siempre',
+        senalesDificultad: {},
+      }),
+    ).rejects.toThrow('Acceso no autorizado');
   });
 
   // ────────────────────────────────────────────────────
@@ -168,14 +170,16 @@ describe('profile-actions', () => {
   });
 
   it('debería retornar error si estudiante no pertenece al padre', async () => {
-    mockFindFirst.mockResolvedValueOnce(null);
+    vi.mocked(requireStudentOwnership).mockRejectedValueOnce(
+      new Error('Acceso no autorizado: el estudiante no pertenece a este padre'),
+    );
 
-    const result = await guardarIntereses({
-      studentId: '00000000-0000-4000-8000-000000000099',
-      intereses: ['animales'],
-    });
-
-    expect(result.ok).toBe(false);
+    await expect(
+      guardarIntereses({
+        studentId: '00000000-0000-4000-8000-000000000099',
+        intereses: ['animales'],
+      }),
+    ).rejects.toThrow('Acceso no autorizado');
   });
 
   // ────────────────────────────────────────────────────

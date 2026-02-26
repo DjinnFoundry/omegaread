@@ -157,21 +157,35 @@ const mockReturning = vi.fn(async () => {
 const mockValues = vi.fn(() => ({ returning: mockReturning }));
 const mockInsert = vi.fn(() => ({ values: mockValues }));
 
+const mockUpdate = vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => []) })) }));
+
+const createMockDbShape = () => ({
+  insert: mockInsert,
+  select: mockSelect,
+  update: mockUpdate,
+  query: {
+    generatedStories: { findMany: mockFindMany, findFirst: mockFindFirst },
+    sessions: { findFirst: mockFindFirst, findMany: mockFindMany },
+    storyQuestions: { findMany: mockFindMany },
+    students: { findFirst: mockFindFirst },
+    skillProgress: { findMany: mockFindMany },
+    manualAdjustments: { findFirst: mockFindFirst },
+    eloSnapshots: {},
+  },
+});
+
 vi.mock('@/server/db', () => ({
-  getDb: vi.fn(async () => ({
-    insert: mockInsert,
-    select: mockSelect,
-    update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => []) })) })),
-    query: {
-      generatedStories: { findMany: mockFindMany, findFirst: mockFindFirst },
-      sessions: { findFirst: mockFindFirst, findMany: mockFindMany },
-      storyQuestions: { findMany: mockFindMany },
-      students: { findFirst: mockFindFirst },
-      skillProgress: { findMany: mockFindMany },
-      manualAdjustments: { findFirst: mockFindFirst },
-      eloSnapshots: {},
-    },
-  })),
+  getDb: vi.fn(async () => {
+    const shape = createMockDbShape();
+    return {
+      ...shape,
+      // transaction(cb) executes cb with a tx that has the same shape as db
+      transaction: vi.fn(async (cb: (tx: any) => Promise<void>) => {
+        const tx = createMockDbShape();
+        await cb(tx);
+      }),
+    };
+  }),
 }));
 
 import {
@@ -185,6 +199,20 @@ import {
 describe('story-actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks does NOT flush mockResolvedValueOnce queues.
+    // Unconsumed once-values from previous tests leak into subsequent tests.
+    // Reset shared mocks explicitly and restore their default implementations.
+    mockFindFirst.mockReset().mockImplementation(async () => null);
+    mockFindMany.mockReset().mockImplementation(async () => []);
+    mockWhereSelect.mockReset().mockImplementation(async () => [{ count: 0 }]);
+    mockInsert.mockReset().mockImplementation(() => ({ values: mockValues }));
+    mockValues.mockReset().mockImplementation(() => ({ returning: mockReturning }));
+    mockUpdate.mockReset().mockImplementation(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => []) })) }));
+    mockReturning.mockReset().mockImplementation(async () => {
+      const result = returningQueue[returningIndex] || [{ id: '00000000-0000-4000-8000-000000000040' }];
+      returningIndex++;
+      return result;
+    });
     returningQueue.length = 0;
     returningIndex = 0;
   });

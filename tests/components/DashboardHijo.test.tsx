@@ -12,21 +12,6 @@ vi.mock('next/link', () => ({
     <a href={href}>{children}</a>,
 }));
 
-// Mock de utilidades de fecha
-vi.mock('@/lib/utils/fecha', () => ({
-  calcularEdad: (fecha: Date | string) => {
-    // Parse fecha if it's a string
-    const fechaObj = typeof fecha === 'string' ? new Date(fecha) : fecha;
-    // Fixed date: 2026-02-25
-    const hoy = new Date('2026-02-25');
-    let edad = hoy.getFullYear() - fechaObj.getFullYear();
-    const m = hoy.getMonth() - fechaObj.getMonth();
-    if (m < 0 || (m === 0 && hoy.getDate() < fechaObj.getDate())) {
-      edad--;
-    }
-    return edad;
-  },
-}));
 
 describe('DashboardHijo', () => {
   // ─────────────────────────────────────────────
@@ -37,7 +22,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={null}
       />
     );
@@ -49,20 +33,20 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Maria"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={null}
       />
     );
 
+    // Heading is now "Vamos a leer!" and name appears in the CTA button
     const heading = screen.getByRole('heading');
-    expect(heading.textContent).toContain('Maria');
+    expect(heading.textContent).toContain('Vamos a leer!');
+    expect(screen.getByRole('link', { name: /Maria/i })).toBeDefined();
   });
 
   it('muestra boton para empezar a leer en estado vacio', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={null}
       />
     );
@@ -74,7 +58,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={null}
       />
     );
@@ -104,20 +87,21 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
 
+    // Heading is now "Vamos a leer!" and name appears in the CTA button
     const heading = screen.getByRole('heading');
-    expect(heading.textContent).toContain('Juan');
+    expect(heading.textContent).toContain('Vamos a leer!');
+    expect(screen.getByRole('link', { name: /Juan/i })).toBeDefined();
   });
 
   // ─────────────────────────────────────────────
   // Informacion del nino
   // ─────────────────────────────────────────────
 
-  it('muestra el nombre del nino con su edad', () => {
+  it('muestra el nombre del nino en el boton de lectura', () => {
     const resumen = {
       sesionesHoy: 0,
       tiempoHoyMin: 0,
@@ -130,13 +114,12 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Carlos"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
 
-    // Debe mostrar nombre y edad (hoy 2026-02-25, cumpleaños en 2018-06-15, aun no cumple 8)
-    expect(screen.getByText(/Carlos.*7.*anos/)).toBeDefined();
+    // Name now appears in the CTA button, age is no longer displayed
+    expect(screen.getByRole('link', { name: /Carlos/i })).toBeDefined();
   });
 
   // ─────────────────────────────────────────────
@@ -156,7 +139,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -177,13 +159,14 @@ describe('DashboardHijo', () => {
     const { container } = render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
 
-    const greenIndicator = container.textContent?.includes('🟢');
-    expect(greenIndicator).toBe(true);
+    // Indicator is now a CSS dot with bg-acierto class
+    const greenDot = container.querySelector('.bg-acierto');
+    expect(greenDot).toBeDefined();
+    expect(greenDot).not.toBeNull();
   });
 
   it('muestra indicador gris cuando no hay sesiones hoy', () => {
@@ -199,13 +182,14 @@ describe('DashboardHijo', () => {
     const { container } = render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
 
-    const grayIndicator = container.textContent?.includes('⚪');
-    expect(grayIndicator).toBe(true);
+    // Indicator is now a CSS dot with bg-neutro/30 class
+    const grayDot = container.querySelector('[class*="bg-neutro"]');
+    expect(grayDot).toBeDefined();
+    expect(grayDot).not.toBeNull();
   });
 
   // ─────────────────────────────────────────────
@@ -225,7 +209,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -247,7 +230,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -269,13 +251,13 @@ describe('DashboardHijo', () => {
     const { container } = render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
 
     expect(container.textContent).toContain('28');
-    expect(container.textContent).toContain('⭐');
+    // Component now uses Lucide Star icon instead of emoji
+    expect(screen.getByText('Estrellas')).toBeDefined();
   });
 
   it('muestra total de sesiones completadas', () => {
@@ -291,13 +273,13 @@ describe('DashboardHijo', () => {
     const { container } = render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
 
     expect(container.textContent).toContain('16');
-    expect(container.textContent).toContain('📚');
+    // Component now uses Lucide Library icon instead of emoji
+    expect(screen.getByText('Sesiones')).toBeDefined();
   });
 
   // ─────────────────────────────────────────────
@@ -322,7 +304,6 @@ describe('DashboardHijo', () => {
     const { container } = render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -345,7 +326,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -370,7 +350,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -396,7 +375,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Sofia"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -417,7 +395,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -443,7 +420,6 @@ describe('DashboardHijo', () => {
     const { container } = render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -464,7 +440,6 @@ describe('DashboardHijo', () => {
     render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -485,7 +460,6 @@ describe('DashboardHijo', () => {
     const { container } = render(
       <DashboardHijo
         nombre="Juan Carlos Maria Rodriguez Garcia"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
@@ -493,7 +467,7 @@ describe('DashboardHijo', () => {
     expect(container.textContent).toContain('Juan Carlos Maria Rodriguez Garcia');
   });
 
-  it('muestra emojis de metricas (iconos)', () => {
+  it('muestra labels de metricas (Lucide icons)', () => {
     const resumen = {
       sesionesHoy: 1,
       tiempoHoyMin: 20,
@@ -503,20 +477,18 @@ describe('DashboardHijo', () => {
       actividadMes: {},
     };
 
-    const { container } = render(
+    render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
 
-    // Debe haber emojis para tiempo, racha, estrellas, sesiones
-    const content = container.textContent || '';
-    expect(content).toContain('⏱️');
-    expect(content).toContain('🔥');
-    expect(content).toContain('⭐');
-    expect(content).toContain('📚');
+    // Component now uses Lucide icons with text labels instead of emojis
+    expect(screen.getByText('Tiempo hoy')).toBeDefined();
+    expect(screen.getByText('Racha')).toBeDefined();
+    expect(screen.getByText('Estrellas')).toBeDefined();
+    expect(screen.getByText('Sesiones')).toBeDefined();
   });
 
   it('maneja actividad mes vacia', () => {
@@ -532,12 +504,11 @@ describe('DashboardHijo', () => {
     const { container } = render(
       <DashboardHijo
         nombre="Juan"
-        fechaNacimiento={new Date('2018-06-15')}
         resumen={resumen}
       />
     );
 
-    // No debe crashear
+    // No debe crashear, name appears in CTA button
     expect(container.textContent).toContain('Juan');
   });
 });

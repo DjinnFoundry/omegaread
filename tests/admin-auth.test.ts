@@ -334,13 +334,27 @@ describe('admin-auth.ts - logoutAdmin', () => {
 });
 
 describe('admin-auth.ts - AUTH_SECRET validation', () => {
+  // These tests need a fresh jwt.ts module each time because getSecret()
+  // caches the secret at module level (_cachedSecret). Without resetting
+  // modules, earlier tests that set a valid AUTH_SECRET leave the cache
+  // populated, so getSecret() never re-reads process.env.AUTH_SECRET.
+
+  async function importFreshLoginAdmin() {
+    vi.resetModules();
+    const mod = await import('@/server/admin-auth');
+    return mod.loginAdmin;
+  }
+
   it('debe lanzar error si AUTH_SECRET no está configurado', async () => {
+    delete process.env.AUTH_SECRET;
     process.env.ADMIN_USER = 'customuser';
     process.env.ADMIN_PASSWORD = 'custompass';
 
+    const freshLoginAdmin = await importFreshLoginAdmin();
+
     try {
-      await loginAdmin('customuser', 'custompass');
-      expect.fail('Debería haber lanzado error');
+      await freshLoginAdmin('customuser', 'custompass');
+      expect.fail('Deberia haber lanzado error');
     } catch (error: any) {
       expect(error.message).toContain('AUTH_SECRET must be set');
     }
@@ -351,9 +365,11 @@ describe('admin-auth.ts - AUTH_SECRET validation', () => {
     process.env.ADMIN_USER = 'customuser';
     process.env.ADMIN_PASSWORD = 'custompass';
 
+    const freshLoginAdmin = await importFreshLoginAdmin();
+
     try {
-      await loginAdmin('customuser', 'custompass');
-      expect.fail('Debería haber lanzado error');
+      await freshLoginAdmin('customuser', 'custompass');
+      expect.fail('Deberia haber lanzado error');
     } catch (error: any) {
       expect(error.message).toContain('AUTH_SECRET must be at least 32 characters');
     }
@@ -364,7 +380,8 @@ describe('admin-auth.ts - AUTH_SECRET validation', () => {
     process.env.ADMIN_USER = 'customuser';
     process.env.ADMIN_PASSWORD = 'custompass';
 
-    const result = await loginAdmin('customuser', 'custompass');
+    const freshLoginAdmin = await importFreshLoginAdmin();
+    const result = await freshLoginAdmin('customuser', 'custompass');
 
     expect(result.ok).toBe(true);
   });
@@ -374,7 +391,8 @@ describe('admin-auth.ts - AUTH_SECRET validation', () => {
     process.env.ADMIN_USER = 'customuser';
     process.env.ADMIN_PASSWORD = 'custompass';
 
-    const result = await loginAdmin('customuser', 'custompass');
+    const freshLoginAdmin = await importFreshLoginAdmin();
+    const result = await freshLoginAdmin('customuser', 'custompass');
 
     expect(result.ok).toBe(true);
   });

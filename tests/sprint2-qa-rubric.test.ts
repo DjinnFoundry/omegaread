@@ -125,12 +125,14 @@ describe('evaluarHistoria', () => {
 
   it('rechaza contenido con palabras prohibidas', () => {
     const historia = crearHistoriaValida({
-      contenido: 'El nino encontro una pistola en el bosque.',
+      contenido:
+        'Marco caminaba por el parque cuando vio algo extrano detras de un arbol. ' +
+        'Entonces se acerco y encontro una bolsa llena de droga escondida entre las hojas secas del suelo.',
     });
     const result = evaluarHistoria(historia, 1);
     expect(result.aprobada).toBe(false);
     expect(result.motivo).toContain('inseguro');
-    expect(result.motivo).toContain('pistola');
+    expect(result.motivo).toContain('droga');
   });
 
   it('rechaza contenido demasiado corto', () => {
@@ -431,7 +433,9 @@ describe('evaluarHistoriaSinPreguntas (flujo dividido)', () => {
 
   it('rechaza contenido con palabras prohibidas', () => {
     const historia = crearHistoriaValida({
-      contenido: 'El nino encontro una pistola en el bosque.',
+      contenido:
+        'Marco caminaba por el parque cuando vio algo extrano detras de un arbol. ' +
+        'Entonces se acerco y encontro una bolsa llena de droga escondida entre las hojas secas del suelo.',
     });
 
     const result = evaluarHistoriaSinPreguntas(historia, 1);

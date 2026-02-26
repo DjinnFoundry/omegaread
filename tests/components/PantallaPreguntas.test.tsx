@@ -322,19 +322,14 @@ describe('PantallaPreguntas', () => {
       const opcionCorrecta = PREGUNTAS_MOCK[i].opciones[PREGUNTAS_MOCK[i].respuestaCorrecta];
       fireEvent.click(screen.getByText(opcionCorrecta));
 
-      await waitFor(() => {
-        const btn = screen.queryByRole('button', { name: /Siguiente|Ver mi resultado/i });
-        expect(btn).toBeDefined();
-      });
-
       if (i < PREGUNTAS_MOCK.length - 1) {
-        const btnSiguiente = screen.getByRole('button', { name: /Siguiente/i });
-        fireEvent.click(btnSiguiente);
-      } else {
-        // Ultima pregunta, debe mostrar "Ver mi resultado"
-        const btnResultado = screen.getByRole('button', { name: /Ver mi resultado/i });
-        fireEvent.click(btnResultado);
+        // Non-final questions show "Siguiente" button
+        await waitFor(() => {
+          expect(screen.getByRole('button', { name: /Siguiente/i })).toBeDefined();
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
       }
+      // Last question triggers onComplete immediately on selection
     }
 
     await waitFor(() => {
@@ -355,15 +350,13 @@ describe('PantallaPreguntas', () => {
       const opcionCorrecta = PREGUNTAS_MOCK[i].opciones[PREGUNTAS_MOCK[i].respuestaCorrecta];
       fireEvent.click(screen.getByText(opcionCorrecta));
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /Siguiente|Ver mi resultado/i })).toBeDefined();
-      });
-
       if (i < PREGUNTAS_MOCK.length - 1) {
+        await waitFor(() => {
+          expect(screen.getByRole('button', { name: /Siguiente/i })).toBeDefined();
+        });
         fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
-      } else {
-        fireEvent.click(screen.getByRole('button', { name: /Ver mi resultado/i }));
       }
+      // Last question triggers onComplete immediately on selection
     }
 
     await waitFor(() => {
@@ -402,15 +395,13 @@ describe('PantallaPreguntas', () => {
       const opcionCorrecta = PREGUNTAS_MOCK[i].opciones[PREGUNTAS_MOCK[i].respuestaCorrecta];
       fireEvent.click(screen.getByText(opcionCorrecta));
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /Siguiente|Ver mi resultado/i })).toBeDefined();
-      });
-
       if (i < PREGUNTAS_MOCK.length - 1) {
+        await waitFor(() => {
+          expect(screen.getByRole('button', { name: /Siguiente/i })).toBeDefined();
+        });
         fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
-      } else {
-        fireEvent.click(screen.getByRole('button', { name: /Ver mi resultado/i }));
       }
+      // Last question triggers onComplete immediately on selection
     }
 
     await waitFor(() => {
@@ -503,7 +494,7 @@ describe('PantallaPreguntas', () => {
   // Boton final
   // ─────────────────────────────────────────────
 
-  it('muestra "Siguiente" en la penultima pregunta', async () => {
+  it('muestra "Siguiente" en la penultima pregunta pero no en la ultima', async () => {
     render(
       <PantallaPreguntas
         preguntas={PREGUNTAS_MOCK}
@@ -511,8 +502,8 @@ describe('PantallaPreguntas', () => {
       />
     );
 
-    // Responder las primeras 3 preguntas
-    for (let i = 0; i < 3; i++) {
+    // Responder las primeras 2 preguntas
+    for (let i = 0; i < 2; i++) {
       const opcionCorrecta = PREGUNTAS_MOCK[i].opciones[PREGUNTAS_MOCK[i].respuestaCorrecta];
       fireEvent.click(screen.getByText(opcionCorrecta));
 
@@ -523,13 +514,26 @@ describe('PantallaPreguntas', () => {
       fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
     }
 
-    // Responder la ultima pregunta
-    const opcionCorrecta = PREGUNTAS_MOCK[3].opciones[PREGUNTAS_MOCK[3].respuestaCorrecta];
-    fireEvent.click(screen.getByText(opcionCorrecta));
+    // Penultima pregunta (index 2) - should show "Siguiente"
+    const opcionPenultima = PREGUNTAS_MOCK[2].opciones[PREGUNTAS_MOCK[2].respuestaCorrecta];
+    fireEvent.click(screen.getByText(opcionPenultima));
 
     await waitFor(() => {
-      // Debe mostrar "Ver mi resultado" en lugar de "Siguiente"
-      expect(screen.getByRole('button', { name: /Ver mi resultado/i })).toBeDefined();
+      expect(screen.getByRole('button', { name: /Siguiente/i })).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
+
+    // Ultima pregunta (index 3) - should NOT show "Siguiente";
+    // onComplete fires immediately on answer selection
+    const opcionUltima = PREGUNTAS_MOCK[3].opciones[PREGUNTAS_MOCK[3].respuestaCorrecta];
+    fireEvent.click(screen.getByText(opcionUltima));
+
+    await waitFor(() => {
+      // No "Siguiente" button on the last question
+      expect(screen.queryByRole('button', { name: /Siguiente/i })).toBeNull();
+      // onComplete was called directly
+      expect(onCompleteMock).toHaveBeenCalled();
     });
   });
 });

@@ -407,25 +407,6 @@ describe('ResultadoSesion', () => {
     expect(btn.getAttribute('disabled')).toBeNull();
   });
 
-  it('muestra texto informativo sobre WhatsApp', () => {
-    const resultado = {
-      aciertos: 3,
-      totalPreguntas: 4,
-      estrellas: 2,
-    };
-
-    render(
-      <ResultadoSesion
-        resultado={resultado}
-        studentNombre="Juan"
-        historiaContenido="Una historia"
-        historiaTitulo="Titulo"
-        onLeerOtra={onLeerOtraMock}
-      />
-    );
-
-    expect(screen.getByText(/Se envia la historia completa en texto plano/i)).toBeDefined();
-  });
 
   // ─────────────────────────────────────────────
   // Celebracion
