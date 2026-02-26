@@ -250,6 +250,8 @@ export interface DashboardPadreData {
       tipo: 'profundizar' | 'conectar' | 'aplicar' | 'reforzar';
       motivo: string;
     }>;
+    /** Maps each completed topic slug to its own suggestion slugs */
+    suggestionEdgeMap: Record<string, string[]>;
   };
 }
 
@@ -573,23 +575,44 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
 
   const historialTopics = construirHistorialTopics(todasSesiones, storyMap, topicMap);
   const recientes = historialTopics.slice(0, 8).map((t) => t.slug);
-  const ultimoSlug = historialTopics[0]?.slug;
-  const sugerencias = recomendarSiguientesSkills({
-    edadAnos,
-    intereses: estudiante.intereses ?? [],
-    progresoMap,
-    skillActualSlug: ultimoSlug,
-    recientes,
-    limite: 5,
-    soloDesbloqueadas: true,
-  }).map((s) => ({
-    slug: s.slug,
-    nombre: s.nombre,
-    emoji: s.emoji,
-    dominio: s.dominio,
-    tipo: s.tipo,
-    motivo: s.motivo,
-  }));
+
+  // Compute suggestions per completed topic for accurate edge mapping
+  const suggestionEdgeMap: Record<string, string[]> = {};
+  const allSuggestionsMap = new Map<string, {
+    slug: string;
+    nombre: string;
+    emoji: string;
+    dominio: string;
+    tipo: 'profundizar' | 'conectar' | 'aplicar' | 'reforzar';
+    motivo: string;
+  }>();
+
+  for (const topic of historialTopics.slice(0, 18)) {
+    const topicSugs = recomendarSiguientesSkills({
+      edadAnos,
+      intereses: estudiante.intereses ?? [],
+      progresoMap,
+      skillActualSlug: topic.slug,
+      recientes,
+      limite: 3,
+      soloDesbloqueadas: true,
+    });
+    suggestionEdgeMap[topic.slug] = topicSugs.map((s) => s.slug);
+    for (const s of topicSugs) {
+      if (!allSuggestionsMap.has(s.slug)) {
+        allSuggestionsMap.set(s.slug, {
+          slug: s.slug,
+          nombre: s.nombre,
+          emoji: s.emoji,
+          dominio: s.dominio,
+          tipo: s.tipo,
+          motivo: s.motivo,
+        });
+      }
+    }
+  }
+
+  const sugerencias = Array.from(allSuggestionsMap.values());
 
   const dominiosTocados = DOMINIOS.map((d) => {
     const tocados = historialTopics.filter((t) => t.dominio === d.slug).length;
@@ -648,6 +671,7 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
       historialTopics: historialTopics.slice(0, 18),
       dominiosTocados,
       sugerencias,
+      suggestionEdgeMap,
     },
   };
 }

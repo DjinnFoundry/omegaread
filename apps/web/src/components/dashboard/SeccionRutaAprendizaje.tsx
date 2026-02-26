@@ -161,12 +161,14 @@ const GraphNode = memo(function GraphNode({
   onClick,
   isActive,
   isFocused,
+  isDimmed,
   pz,
 }: {
   node: PositionedNode;
   onClick: () => void;
   isActive: boolean;
   isFocused: boolean;
+  isDimmed: boolean;
   pz: PanZoomState;
 }) {
   const color = getDomainColor(node.dominio);
@@ -187,7 +189,7 @@ const GraphNode = memo(function GraphNode({
         'hover:brightness-110 hover:scale-105 active:scale-95',
         isActive ? 'ring-2 ring-offset-2 ring-offset-fondo' : '',
         isFocused && !isActive ? 'ring-2 ring-offset-1 ring-offset-fondo ring-turquesa/60' : '',
-        isSuggestion ? 'animate-pulse-suggestion' : '',
+        isSuggestion && !isDimmed ? 'animate-pulse-suggestion' : '',
       ].join(' ')}
       style={{
         left: `${screen.x - node.radius}px`,
@@ -195,7 +197,8 @@ const GraphNode = memo(function GraphNode({
         width: `${size}px`,
         height: `${size}px`,
         backgroundColor: isSuggestion ? '#FFE66D' : color,
-        boxShadow: isSuggestion
+        opacity: isDimmed ? 0.35 : 1,
+        boxShadow: isDimmed ? 'none' : isSuggestion
           ? '0 0 12px rgba(255, 230, 109, 0.5)'
           : `0 2px 8px ${color}44`,
         border: isSuggestion ? '2px dashed #D4880B' : `2px solid ${color}`,
@@ -504,17 +507,24 @@ export function SeccionRutaAprendizaje({ data }: Props) {
     };
   }, [containerRef]);
 
-  // Dynamic suggestion edges from the focused completed topic
+  // Dynamic suggestion edges from the focused completed topic (per-node map)
+  const edgeMap = data.techTree.suggestionEdgeMap;
   const dynamicSuggestionEdges = useMemo(() => {
     if (!focusedSlug) return [];
     const focusedNode = layout.nodes.find(
       (n) => n.slug === focusedSlug && !n.isSuggestion,
     );
     if (!focusedNode) return [];
+    const targetSlugs = new Set(edgeMap[focusedSlug] ?? []);
     return layout.nodes
-      .filter((n) => n.isSuggestion)
+      .filter((n) => n.isSuggestion && targetSlugs.has(n.slug))
       .map((n) => ({ from: focusedNode, to: n }));
-  }, [focusedSlug, layout.nodes]);
+  }, [focusedSlug, layout.nodes, edgeMap]);
+
+  // Set of suggestion slugs connected to the focused node (for dimming others)
+  const connectedSuggestionSlugs = useMemo(() => {
+    return new Set(dynamicSuggestionEdges.map((e) => e.to.slug));
+  }, [dynamicSuggestionEdges]);
 
   const handleNodeClick = useCallback(
     (node: PositionedNode) => {
@@ -621,6 +631,7 @@ export function SeccionRutaAprendizaje({ data }: Props) {
                   onClick={() => handleNodeClick(node)}
                   isActive={popover?.node.slug === node.slug}
                   isFocused={node.slug === focusedSlug && !node.isSuggestion}
+                  isDimmed={node.isSuggestion && connectedSuggestionSlugs.size > 0 && !connectedSuggestionSlugs.has(node.slug)}
                   pz={state}
                 />
               ))}
