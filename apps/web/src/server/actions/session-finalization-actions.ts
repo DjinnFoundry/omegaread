@@ -9,7 +9,6 @@ import { getDb } from '@/server/db';
 import {
   sessions,
   responses,
-  skillProgress,
   students,
   storyQuestions,
   eloSnapshots,

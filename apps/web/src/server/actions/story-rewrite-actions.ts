@@ -39,7 +39,7 @@ export async function reescribirHistoria(datos: {
 }) {
   const db = await getDb();
   const validado = reescribirHistoriaSchema.parse(datos);
-  const { estudiante, edadAnos } = await getStudentContext(validado.studentId);
+  const { edadAnos } = await getStudentContext(validado.studentId);
 
   // 1. Verificar API key
   if (!(await hasLLMKey())) {

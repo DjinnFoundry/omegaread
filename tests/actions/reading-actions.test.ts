@@ -50,6 +50,7 @@ vi.mock('@/lib/ai/prompts', () => ({
 // REMOVED: No mock for @/lib/types/reading
 // determinarAjuste is a pure function. The real logic should be tested directly.
 // Test data below is designed to trigger the real function's behavior.
+type TxCallback = (tx: unknown) => unknown | Promise<unknown>;
 
 const mockFindFirst = vi.fn(async () => null);
 const mockFindMany = vi.fn(async () => []);
@@ -57,7 +58,7 @@ const mockReturning = vi.fn(async () => [{ id: 'adj-1' }]);
 const mockValues = vi.fn(() => ({ returning: mockReturning }));
 const mockSet = vi.fn(() => ({ where: vi.fn(async () => []) }));
 const mockWhere = vi.fn(async () => []);
-const mockTransaction = vi.fn(async (fn: Function) => fn({ query: { sessions: { findMany: mockFindMany }, manualAdjustments: { findFirst: mockFindFirst } }, insert: vi.fn(() => ({ values: mockValues })), update: vi.fn(() => ({ set: mockSet })), select: vi.fn(() => ({ from: mockWhere })) }));
+const mockTransaction = vi.fn(async (fn: TxCallback) => fn({ query: { sessions: { findMany: mockFindMany }, manualAdjustments: { findFirst: mockFindFirst } }, insert: vi.fn(() => ({ values: mockValues })), update: vi.fn(() => ({ set: mockSet })), select: vi.fn(() => ({ from: mockWhere })) }));
 
 vi.mock('@/server/db', () => ({
   getDb: vi.fn(async () => ({
@@ -191,7 +192,7 @@ describe('reading-actions', () => {
       update: vi.fn(() => ({ set: mockSet })),
     };
 
-    mockTransaction.mockImplementationOnce(async (fn: Function) => {
+    mockTransaction.mockImplementationOnce(async (fn: TxCallback) => {
       return fn(txDb);
     });
 
@@ -228,7 +229,7 @@ describe('reading-actions', () => {
       update: vi.fn(() => ({ set: mockSet })),
     };
 
-    mockTransaction.mockImplementationOnce(async (fn: Function) => {
+    mockTransaction.mockImplementationOnce(async (fn: TxCallback) => {
       return fn(txDb);
     });
 
@@ -264,7 +265,7 @@ describe('reading-actions', () => {
       update: vi.fn(() => ({ set: mockSet })),
     };
 
-    mockTransaction.mockImplementationOnce(async (fn: Function) => {
+    mockTransaction.mockImplementationOnce(async (fn: TxCallback) => {
       return fn(txDb);
     });
 
@@ -298,7 +299,7 @@ describe('reading-actions', () => {
       update: vi.fn(() => ({ set: mockSet })),
     };
 
-    mockTransaction.mockImplementationOnce(async (fn: Function) => {
+    mockTransaction.mockImplementationOnce(async (fn: TxCallback) => {
       return fn(txDb);
     });
 
@@ -342,7 +343,7 @@ describe('reading-actions', () => {
       update: vi.fn(() => ({ set: mockSet })),
     };
 
-    mockTransaction.mockImplementationOnce(async (fn: Function) => {
+    mockTransaction.mockImplementationOnce(async (fn: TxCallback) => {
       return fn(txDb);
     });
 
@@ -370,7 +371,7 @@ describe('reading-actions', () => {
       update: vi.fn(() => ({ set: mockSet })),
     };
 
-    mockTransaction.mockImplementationOnce(async (fn: Function) => {
+    mockTransaction.mockImplementationOnce(async (fn: TxCallback) => {
       return fn(txDb);
     });
 

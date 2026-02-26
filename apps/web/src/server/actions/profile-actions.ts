@@ -26,7 +26,7 @@ import {
   MICRO_PREGUNTAS_PERFIL,
   crearHechoDesdeMicroRespuesta,
 } from '@/lib/profile/micro-profile';
-import { extraerPerfilVivo, crearPerfilVivoVacio } from '@/lib/profile/perfil-vivo';
+import { extraerPerfilVivo } from '@/lib/profile/perfil-vivo';
 
 
 /**

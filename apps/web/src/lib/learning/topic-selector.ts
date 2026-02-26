@@ -13,7 +13,6 @@ import {
 import { recomendarSiguientesSkills, type SkillProgressLite } from '@/lib/learning/graph';
 import {
   UMBRAL_SKILL_DOMINADA,
-  crearMapaProgresoCompleto,
   esSkillDominada,
 } from '@/lib/skills/progress';
 import { inferirEstrategiaPedagogica, type TechTreeContext } from '@/lib/ai/prompts';

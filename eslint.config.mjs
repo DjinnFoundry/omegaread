@@ -17,6 +17,7 @@ export default tseslint.config(
       '**/output/**',
       '**/dist/**',
       '**/.turbo/**',
+      '**/coverage/**',
       '**/next-env.d.ts',
     ],
   },
@@ -70,6 +71,15 @@ export default tseslint.config(
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
       '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+
+  // Tests: allow looser typing/mocks to keep lint signal focused on app code.
+  {
+    files: ['tests/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 

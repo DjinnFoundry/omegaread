@@ -13,6 +13,8 @@ export interface NormalizarTextoOpts {
   preservarEnie?: boolean;
 }
 
+const ENIE_PLACEHOLDER = '\uE000';
+
 /**
  * Normaliza texto para comparacion y busqueda:
  * - Minusculas
@@ -28,16 +30,14 @@ export function normalizarTexto(value: string, opts?: NormalizarTextoOpts): stri
     // Sustituir temporalmente la n con virgulilla antes de eliminar diacriticos,
     // luego restaurarla para que el replace de no-alfanumericos la permita.
     const conPlaceholder = value
-      .replace(/\u00f1/g, '\x00') // n minuscula con virgulilla
-      .replace(/\u00d1/g, '\x01'); // N mayuscula con virgulilla (la normaliza a minuscula)
+      .toLowerCase()
+      .replaceAll('ñ', ENIE_PLACEHOLDER);
 
     return conPlaceholder
-      .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\x00/g, 'n\u0303') // restaurar como NFD para volver a compose
+      .replaceAll(ENIE_PLACEHOLDER, 'n\u0303') // restaurar como NFD para volver a compose
       .normalize('NFC') // recomponer: 'n' + combinacion -> n con virgulilla
-      .replace(/\x01/g, 'n\u0303')
       .normalize('NFC')
       .replace(/[^a-z0-9\u00f1\s]/g, ' ')
       .replace(/\s+/g, ' ')

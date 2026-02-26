@@ -32,7 +32,7 @@ import {
 } from './dashboard-utils';
 import { seleccionarPreguntaPerfilActiva } from '@/lib/profile/micro-profile';
 import { extraerPerfilVivo } from '@/lib/profile/perfil-vivo';
-import { recomendarSiguientesSkills, type SkillProgressLite } from '@/lib/learning/graph';
+import { recomendarSiguientesSkills } from '@/lib/learning/graph';
 import { DOMINIOS, getSkillBySlug, getSkillsDeDominio } from '@/lib/data/skills';
 import { crearMapaProgresoLite } from '@/lib/skills/progress';
 
@@ -250,7 +250,7 @@ export interface DashboardPadreData {
 
 export async function obtenerDashboardNino(estudianteId: string): Promise<DashboardNinoData> {
   const db = await getDb();
-  const { estudiante, nivel } = await getStudentContext(estudianteId);
+  const { nivel } = await getStudentContext(estudianteId);
 
   // Obtener sesiones de lectura completadas
   const todasSesiones = await db.query.sessions.findMany({

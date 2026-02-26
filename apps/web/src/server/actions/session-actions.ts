@@ -27,7 +27,7 @@ import {
   actualizarProgresoSchema,
   cargarProgresoSchema,
 } from '../validation';
-import { ok, err, type ActionResult } from '@/lib/types/errors';
+import { ok, type ActionResult } from '@/lib/types/errors';
 
 // ─────────────────────────────────────────────
 // INICIAR SESION
