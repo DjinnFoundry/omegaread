@@ -177,6 +177,8 @@ export async function guardarAjustesLectura(datos: {
     modoTDAH?: boolean;
     altoContraste?: boolean;
     duracionSesionMin?: number;
+    lecturaSinTildes?: boolean;
+    lecturaAllCaps?: boolean;
   };
 }) {
   const db = await getDb();
@@ -217,6 +219,12 @@ export async function guardarAjustesLectura(datos: {
     if (validado.accesibilidad.duracionSesionMin !== undefined) {
       accesibilidadFinal.duracionSesionMin = validado.accesibilidad.duracionSesionMin;
     }
+    if (validado.accesibilidad.lecturaSinTildes !== undefined) {
+      accesibilidadFinal.lecturaSinTildes = validado.accesibilidad.lecturaSinTildes;
+    }
+    if (validado.accesibilidad.lecturaAllCaps !== undefined) {
+      accesibilidadFinal.lecturaAllCaps = validado.accesibilidad.lecturaAllCaps;
+    }
 
     await db
       .update(students)
@@ -236,6 +244,8 @@ export async function guardarAjustesLectura(datos: {
         modoTDAH: accesibilidadFinal.modoTDAH === true,
         altoContraste: accesibilidadFinal.altoContraste === true,
         duracionSesionMin: accesibilidadFinal.duracionSesionMin ?? null,
+        lecturaSinTildes: accesibilidadFinal.lecturaSinTildes === true,
+        lecturaAllCaps: accesibilidadFinal.lecturaAllCaps === true,
       },
     },
   };

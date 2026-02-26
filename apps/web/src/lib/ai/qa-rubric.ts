@@ -51,6 +51,8 @@ export interface QAResult {
 
 export interface QAContext {
   historiasAnteriores?: string[];
+  /** Si true, permitimos español sin tildes (modo primeros lectores). */
+  permitirSinTildes?: boolean;
 }
 
 const PALABRAS_PROHIBIDAS = [
@@ -120,7 +122,7 @@ function evaluarContenidoHistoria(
   contenido: string,
   titulo: string,
   nivel: number,
-  titulosPrevios?: string[],
+  context?: QAContext,
 ): QAResult {
   // 1. Contenido seguro
   const textoCompleto = `${titulo} ${contenido}`.toLowerCase();
@@ -155,6 +157,7 @@ function evaluarContenidoHistoria(
   }
 
   // 4. Evitar titulos repetidos en historial reciente
+  const titulosPrevios = context?.historiasAnteriores;
   if (titulosPrevios && titulosPrevios.length > 0) {
     const tituloActual = normalizarTexto(titulo);
     for (const tituloAnterior of titulosPrevios) {
@@ -192,7 +195,8 @@ function evaluarContenidoHistoria(
   const textoParaIdioma = `${titulo} ${contenido}`;
   const esLargo = textoParaIdioma.length >= 120;
   const tieneDiacriticos = /[áéíóúÁÉÍÓÚñÑüÜ]/.test(textoParaIdioma);
-  if (esLargo && !tieneDiacriticos) {
+  const permitirSinTildes = context?.permitirSinTildes === true;
+  if (!permitirSinTildes && esLargo && !tieneDiacriticos) {
     return {
       aprobada: false,
       motivo: 'Español sin tildes: reescribe con acentos correctos (qué, cómo, más, niño, etc.)',
@@ -279,7 +283,7 @@ export function evaluarHistoria(
     story.contenido,
     story.titulo,
     nivel,
-    context?.historiasAnteriores,
+    context,
   );
   if (!resultadoContenido.aprobada) return resultadoContenido;
 
@@ -355,7 +359,7 @@ export function evaluarHistoriaSinPreguntas(
     story.contenido,
     story.titulo,
     nivel,
-    context?.historiasAnteriores,
+    context,
   );
 }
 

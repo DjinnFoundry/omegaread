@@ -50,6 +50,7 @@ interface PantallaLecturaProps {
   preferenciasAccesibilidad?: {
     modoTDAH?: boolean;
     altoContraste?: boolean;
+    allCaps?: boolean;
   };
   onTerminar: (tiempoLecturaMs: number, wpmData: WpmData) => void;
   onAnalizarAudio?: AudioAnalisisHandler;
@@ -190,6 +191,7 @@ export default function PantallaLectura({
       : 'var(--font-lectura-normal)';
   const modoTDAH = preferenciasAccesibilidad?.modoTDAH === true;
   const altoContraste = preferenciasAccesibilidad?.altoContraste === true;
+  const allCaps = preferenciasAccesibilidad?.allCaps === true;
 
   // Persistir preferencia de fuente
   useEffect(() => {
@@ -330,7 +332,8 @@ export default function PantallaLectura({
   const esPrimeraPagina = paginaActual === 0;
   const procesandoAudio = audio.estado === 'processing';
   const textoPaginaActual = paginas[paginaActual] ?? '';
-  const parrafos = textoPaginaActual
+  const textoPaginaRender = allCaps ? textoPaginaActual.toUpperCase() : textoPaginaActual;
+  const parrafos = textoPaginaRender
     .split('\n\n')
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
@@ -358,7 +361,7 @@ export default function PantallaLectura({
         className="text-3xl sm:text-4xl font-bold text-texto text-center mb-5 leading-snug"
         style={{ fontFamily: 'var(--font-lectura-normal)' }}
       >
-        {titulo}
+        {allCaps ? titulo.toUpperCase() : titulo}
       </h1>
 
       {/* Barra superior compacta */}

@@ -170,6 +170,8 @@ export const guardarAjustesLecturaSchema = z
         modoTDAH: z.boolean().optional(),
         altoContraste: z.boolean().optional(),
         duracionSesionMin: z.number().int().min(5).max(120).optional(),
+        lecturaSinTildes: z.boolean().optional(),
+        lecturaAllCaps: z.boolean().optional(),
       })
       .optional(),
   })

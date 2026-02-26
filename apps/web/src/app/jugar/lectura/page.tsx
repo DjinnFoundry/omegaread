@@ -648,6 +648,7 @@ export default function LecturaPage() {
           preferenciasAccesibilidad={{
             modoTDAH: datosEstudiante.accesibilidad.modoTDAH,
             altoContraste: datosEstudiante.accesibilidad.altoContraste,
+            allCaps: datosEstudiante.accesibilidad.lecturaAllCaps,
           }}
           onTerminar={handleTerminarLectura}
           onAnalizarAudio={handleAnalizarAudio}

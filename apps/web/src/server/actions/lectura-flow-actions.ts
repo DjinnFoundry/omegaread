@@ -27,6 +27,8 @@ export interface DatosEstudianteLectura {
     fuenteDislexia: boolean;
     modoTDAH: boolean;
     altoContraste: boolean;
+    lecturaSinTildes: boolean;
+    lecturaAllCaps: boolean;
   };
 }
 
@@ -63,6 +65,8 @@ export async function obtenerEstadoLectura(studentId: string): Promise<{
       fuenteDislexia: accesibilidad.fuenteDislexia === true,
       modoTDAH: accesibilidad.modoTDAH === true,
       altoContraste: accesibilidad.altoContraste === true,
+      lecturaSinTildes: accesibilidad.lecturaSinTildes === true,
+      lecturaAllCaps: accesibilidad.lecturaAllCaps === true,
     },
   };
 

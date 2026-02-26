@@ -20,6 +20,7 @@ import {
   gte,
   desc,
   sql,
+  type AccesibilidadConfig,
 } from '@zetaread/db';
 import { requireStudentOwnership } from '../auth';
 import { getStudentContext } from '../student-context';
@@ -462,11 +463,14 @@ export async function generarHistoria(datos: {
         })
       : undefined;
 
+    const accesibilidad = (estudiante.accesibilidad ?? {}) as AccesibilidadConfig;
+
     const promptInput: PromptInput = {
       edadAnos,
       nivel,
       topicNombre: topic.nombre,
       topicDescripcion: topic.descripcion,
+      lecturaSinTildes: accesibilidad.lecturaSinTildes === true,
       conceptoNucleo: skill?.conceptoNucleo,
       dominio: dominio?.nombre,
       modo: getModoFromCategoria(topic.categoria),

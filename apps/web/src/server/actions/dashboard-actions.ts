@@ -223,6 +223,8 @@ export interface DashboardPadreData {
       modoTDAH: boolean;
       altoContraste: boolean;
       duracionSesionMin: number | null;
+      lecturaSinTildes: boolean;
+      lecturaAllCaps: boolean;
     };
   };
   techTree: {
@@ -662,6 +664,8 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
         modoTDAH: accesibilidad.modoTDAH === true,
         altoContraste: accesibilidad.altoContraste === true,
         duracionSesionMin: accesibilidad.duracionSesionMin ?? null,
+        lecturaSinTildes: accesibilidad.lecturaSinTildes === true,
+        lecturaAllCaps: accesibilidad.lecturaAllCaps === true,
       },
     },
     techTree: {

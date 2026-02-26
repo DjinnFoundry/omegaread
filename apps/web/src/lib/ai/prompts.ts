@@ -771,6 +771,12 @@ export interface PromptInput {
   contextoPersonal?: string;
   historiasAnteriores?: string[];
   techTreeContext?: TechTreeContext;
+
+  /**
+   * Modo primeros lectores: si true, el texto debe ir SIN tildes/diacriticos.
+   * (Esto afecta al contenido generado; no es solo renderizado.)
+   */
+  lecturaSinTildes?: boolean;
 }
 
 export function inferirEstrategiaPedagogica(
@@ -865,7 +871,8 @@ La primera frase decide si el nino sigue leyendo o abandona. NO hay segunda opor
 
 ## REGLAS DE IDIOMA
 - Espanol correcto (es-ES), sin regionalismos fuertes
-- Tildes correctas, puntuacion natural
+- **Por defecto:** tildes correctas, puntuacion natural
+- Si el input indica lecturaSinTildes=true: escribir en espanol SIN tildes/diacriticos (que/como/mas/nino), pero manteniendo puntuacion natural.
 - Dialogo con raya (--) o comillas, consistente en toda la historia
 - Lenguaje vivo y natural, no de libro de texto
 
@@ -954,6 +961,13 @@ export function buildUserPrompt(
 
   // Perfil del nino
   partes.push(`\nLECTOR: nino de ${input.edadAnos} anos, nivel de lectura ${input.nivel}/4.8.`);
+
+  // Preferencias de lectura (primeros lectores)
+  if (input.lecturaSinTildes === true) {
+    partes.push(`\nMODO PRIMEROS LECTORES (IMPORTANTE):`);
+    partes.push(`- Escribe TODO el texto en español SIN tildes/diacríticos (que/como/mas/nino).`);
+    partes.push(`- Mantén la puntuación natural (puntos, comas, signos de interrogación si procede).`);
+  }
 
   // Personalizacion
   if (input.intereses.length > 0) {

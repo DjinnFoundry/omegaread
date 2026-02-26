@@ -24,6 +24,8 @@ export function SeccionAjustesLectura({ data }: Props) {
   const [fuenteDislexia, setFuenteDislexia] = useState(data.ajustes.accesibilidad.fuenteDislexia);
   const [modoTDAH, setModoTDAH] = useState(data.ajustes.accesibilidad.modoTDAH);
   const [altoContraste, setAltoContraste] = useState(data.ajustes.accesibilidad.altoContraste);
+  const [lecturaSinTildes, setLecturaSinTildes] = useState(data.ajustes.accesibilidad.lecturaSinTildes);
+  const [lecturaAllCaps, setLecturaAllCaps] = useState(data.ajustes.accesibilidad.lecturaAllCaps);
 
   const handleGuardarAjustes = async () => {
     setGuardandoAjustes(true);
@@ -37,6 +39,8 @@ export function SeccionAjustesLectura({ data }: Props) {
           fuenteDislexia,
           modoTDAH,
           altoContraste,
+          lecturaSinTildes,
+          lecturaAllCaps,
         },
       });
 
@@ -102,6 +106,26 @@ export function SeccionAjustesLectura({ data }: Props) {
             className="h-4 w-4 rounded border-neutro/30 text-turquesa focus:ring-turquesa"
           />
           <span className="text-xs text-texto">Alto contraste</span>
+        </label>
+
+        <label className="flex items-center gap-3 rounded-xl bg-fondo p-3">
+          <input
+            type="checkbox"
+            checked={lecturaSinTildes}
+            onChange={(e) => setLecturaSinTildes(e.target.checked)}
+            className="h-4 w-4 rounded border-neutro/30 text-turquesa focus:ring-turquesa"
+          />
+          <span className="text-xs text-texto">Lectura sin tildes (primeros lectores)</span>
+        </label>
+
+        <label className="flex items-center gap-3 rounded-xl bg-fondo p-3">
+          <input
+            type="checkbox"
+            checked={lecturaAllCaps}
+            onChange={(e) => setLecturaAllCaps(e.target.checked)}
+            className="h-4 w-4 rounded border-neutro/30 text-turquesa focus:ring-turquesa"
+          />
+          <span className="text-xs text-texto">Texto en MAYÚSCULAS (primeros lectores)</span>
         </label>
 
         <button

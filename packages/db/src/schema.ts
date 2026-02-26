@@ -464,6 +464,18 @@ export type AccesibilidadConfig = {
   modoTDAH?: boolean;
   altoContraste?: boolean;
   duracionSesionMin?: number;
+
+  /**
+   * Para primeros lectores: simplifica ortografia eliminando tildes/diacriticos.
+   * (Ej: "que" en vez de "qué").
+   */
+  lecturaSinTildes?: boolean;
+
+  /**
+   * Para primeros lectores: muestra el texto en MAYUSCULAS en UI.
+   * Importante: esto es una preferencia de renderizado.
+   */
+  lecturaAllCaps?: boolean;
 };
 
 export type SenalesDificultad = {

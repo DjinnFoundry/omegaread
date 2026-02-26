@@ -366,6 +366,7 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
     const storyOutput = parsed as StoryLLMOutput;
     const qa = evaluarHistoria(storyOutput, input.nivel, {
       historiasAnteriores: input.historiasAnteriores,
+      permitirSinTildes: input.lecturaSinTildes === true,
     });
 
     if (!qa.aprobada) {
@@ -424,6 +425,7 @@ export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyRe
     const storyOutput = parsed as StoryOnlyLLMOutput;
     const qa = evaluarHistoriaSinPreguntas(storyOutput, input.nivel, {
       historiasAnteriores: input.historiasAnteriores,
+      permitirSinTildes: input.lecturaSinTildes === true,
     });
 
     if (!qa.aprobada) {
