@@ -14,6 +14,7 @@ import {
   eloSnapshots,
   eq,
   and,
+  desc,
 } from '@zetaread/db';
 import { requireStudentOwnership } from '../auth';
 import {
@@ -23,7 +24,7 @@ import {
 import { getNivelConfig } from '@/lib/ai/prompts';
 import { calcularAjusteDificultad } from './reading-actions';
 import { actualizarProgresoInmediato } from './session-actions';
-import { procesarRespuestasElo, type EloRatings, type RespuestaElo } from '@/lib/elo';
+import { procesarRespuestasElo, inflarRdPorInactividad, type EloRatings, type RespuestaElo } from '@/lib/elo';
 import type { TipoPregunta, AudioReadingAnalysis } from '@/lib/types/reading';
 import { serializarAudioAnalisis } from '@/lib/audio/utils';
 import { parseSessionMetadata, mergeSessionMetadata } from '@/lib/types/session-metadata';
@@ -280,7 +281,7 @@ export async function finalizarSesionLectura(datos: {
 
       if (estudianteElo) {
         eloPrevioGlobal = estudianteElo.eloGlobal;
-        const eloActual: EloRatings = {
+        const eloRaw: EloRatings = {
           global: estudianteElo.eloGlobal,
           literal: estudianteElo.eloLiteral,
           inferencia: estudianteElo.eloInferencia,
@@ -288,6 +289,20 @@ export async function finalizarSesionLectura(datos: {
           resumen: estudianteElo.eloResumen,
           rd: estudianteElo.eloRd,
         };
+
+        // Inflar RD si hubo inactividad (Glicko standard: uncertainty grows over time)
+        const ultimaSesionPrevia = await db.query.sessions.findFirst({
+          where: and(
+            eq(sessions.studentId, validado.studentId),
+            eq(sessions.completada, true),
+          ),
+          orderBy: [desc(sessions.finalizadaEn)],
+          columns: { finalizadaEn: true },
+        });
+        const eloActual = inflarRdPorInactividad(
+          eloRaw,
+          ultimaSesionPrevia?.finalizadaEn ?? null,
+        );
 
         const nivelTexto = metadataPrev.nivelTexto ?? 2;
 

@@ -72,6 +72,21 @@ const RD_MIN = 75;
 const RD_MAX = 350;
 
 /**
+ * RD inflation per day of inactivity (Glicko standard feature).
+ *
+ * If a kid doesn't read for a while, we become less sure about their level
+ * (maybe they improved from school, or regressed from vacation).
+ * RD inflates ~5 points per day, capped at RD_MAX.
+ *
+ * Examples:
+ * - 1 day off: +5 RD (negligible)
+ * - 1 week off: +35 RD (mild recalibration)
+ * - 2 weeks off: +70 RD (noticeable recalibration)
+ * - 1 month off: +150 RD (near-full recalibration)
+ */
+const RD_INFLATION_PER_DAY = 5;
+
+/**
  * Brier score "neutral" (baseline).
  *
  * Un Brier de 0.25 equivale a predecir 50/50 siempre.
@@ -312,6 +327,38 @@ export function procesarRespuestasElo(
     },
     cambios,
   };
+}
+
+/**
+ * Infla el RD segun dias de inactividad (Glicko standard).
+ *
+ * Llamar ANTES de procesarRespuestasElo para que la sesion actual
+ * se procese con la incertidumbre correcta.
+ *
+ * @param elo - ELO ratings actuales del estudiante
+ * @param ultimaSesionFecha - fecha de la ultima sesion completada (o null si primera)
+ * @returns ELO ratings con RD potencialmente inflado
+ */
+export function inflarRdPorInactividad(
+  elo: EloRatings,
+  ultimaSesionFecha: Date | string | null,
+): EloRatings {
+  if (!ultimaSesionFecha) return elo; // primera sesion, RD ya esta alto
+
+  const ahora = new Date();
+  const ultima = typeof ultimaSesionFecha === 'string'
+    ? new Date(ultimaSesionFecha)
+    : ultimaSesionFecha;
+  const diasInactivo = Math.max(0, (ahora.getTime() - ultima.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diasInactivo < 1) return elo; // sesion reciente, sin inflacion
+
+  const inflacion = Math.round(diasInactivo * RD_INFLATION_PER_DAY);
+  const nuevoRd = Math.min(RD_MAX, elo.rd + inflacion);
+
+  if (nuevoRd === elo.rd) return elo;
+
+  return { ...elo, rd: nuevoRd };
 }
 
 /**

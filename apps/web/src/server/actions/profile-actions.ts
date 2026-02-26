@@ -270,6 +270,39 @@ export async function guardarAjustesLectura(datos: {
 }
 
 /**
+ * Elimina un hecho del perfil vivo por su ID.
+ * Usado desde el dashboard del padre para gestionar la memoria util.
+ */
+export async function eliminarHecho(datos: {
+  studentId: string;
+  hechoId: string;
+}) {
+  const db = await getDb();
+  const padre = await requireAuth();
+
+  const estudiante = await db.query.students.findFirst({
+    where: and(eq(students.id, datos.studentId), eq(students.parentId, padre.id)),
+  });
+  if (!estudiante) {
+    return { ok: false as const, error: 'Estudiante no encontrado' };
+  }
+
+  const senalesActuales = (estudiante.senalesDificultad ?? {}) as Record<string, unknown>;
+  const perfilVivo = extraerPerfilVivo(senalesActuales.perfilVivo);
+  perfilVivo.hechos = perfilVivo.hechos.filter((h) => h.id !== datos.hechoId);
+
+  await db
+    .update(students)
+    .set({
+      senalesDificultad: { ...senalesActuales, perfilVivo },
+      actualizadoEn: new Date(),
+    })
+    .where(eq(students.id, datos.studentId));
+
+  return { ok: true as const };
+}
+
+/**
  * Guarda la respuesta a una micro-pregunta del padre y la convierte en hecho util para prompts.
  */
 export async function responderMicroPreguntaPerfil(datos: {

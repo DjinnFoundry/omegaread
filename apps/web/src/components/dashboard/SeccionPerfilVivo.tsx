@@ -3,40 +3,80 @@
 /**
  * Seccion de perfil vivo: contexto, personajes, temas a evitar, micro-preguntas, hechos.
  * Extraida de DashboardPadreDetalle.
+ *
+ * v2: categoria selector reemplazado por pills tapeables. Hechos con tag-cloud + borrado por X.
  */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Fingerprint } from 'lucide-react';
+import { Fingerprint, X } from 'lucide-react';
 import type { DashboardPadreData } from '@/server/actions/dashboard-actions';
 import {
   guardarPerfilVivo,
   responderMicroPreguntaPerfil,
+  eliminarHecho,
 } from '@/server/actions/profile-actions';
 import { SeccionCard } from './SeccionCard';
 
-function categoriaHechoLabel(cat: string): string {
-  if (cat === 'interes') return 'Interes';
-  if (cat === 'fortaleza') return 'Fortaleza';
-  if (cat === 'reto') return 'Reto';
-  if (cat === 'hito') return 'Hito';
-  return 'Contexto';
+// ─────────────────────────────────────────────
+// Tipos y constantes
+// ─────────────────────────────────────────────
+
+type CategoriaHecho = 'interes' | 'fortaleza' | 'reto' | 'hito' | 'contexto';
+
+interface CategoriaOption {
+  value: CategoriaHecho;
+  label: string;
+  color: string;
+}
+
+const CATEGORIAS: CategoriaOption[] = [
+  { value: 'contexto',   label: 'Contexto',   color: 'bg-neutro/30 text-texto-suave' },
+  { value: 'interes',    label: 'Interes',     color: 'bg-turquesa/20 text-turquesa' },
+  { value: 'fortaleza',  label: 'Fortaleza',   color: 'bg-acierto/20 text-acierto' },
+  { value: 'reto',       label: 'Reto',        color: 'bg-coral/20 text-coral' },
+  { value: 'hito',       label: 'Hito',        color: 'bg-amarillo/50 text-ambar' },
+];
+
+const CATEGORIA_SELECTED_CLASS = 'bg-turquesa text-white';
+
+function getCategoriaColor(cat: string): string {
+  return CATEGORIAS.find((c) => c.value === cat)?.color ?? 'bg-neutro/30 text-texto-suave';
+}
+
+function getCategoriaLabel(cat: string): string {
+  return CATEGORIAS.find((c) => c.value === cat)?.label ?? 'Contexto';
 }
 
 interface Props {
   data: DashboardPadreData;
 }
 
+// ─────────────────────────────────────────────
+// Componente principal
+// ─────────────────────────────────────────────
+
 export function SeccionPerfilVivo({ data }: Props) {
   const router = useRouter();
+
+  // Formulario de perfil
   const [guardandoPerfil, setGuardandoPerfil] = useState(false);
-  const [respondiendoMicro, setRespondiendoMicro] = useState(false);
   const [mensajePerfil, setMensajePerfil] = useState<string | null>(null);
   const [errorPerfil, setErrorPerfil] = useState<string | null>(null);
   const [contextoEdit, setContextoEdit] = useState(data.perfilVivo.contextoPersonal);
   const [personajesEdit, setPersonajesEdit] = useState(data.perfilVivo.personajesFavoritos);
   const [temasEvitarEdit, setTemasEvitarEdit] = useState((data.perfilVivo.temasEvitar ?? []).join(', '));
+
+  // Nuevo hecho
   const [nuevoHecho, setNuevoHecho] = useState('');
-  const [categoriaHecho, setCategoriaHecho] = useState<'interes' | 'fortaleza' | 'reto' | 'hito' | 'contexto'>('contexto');
+  const [categoriaHecho, setCategoriaHecho] = useState<CategoriaHecho>('contexto');
+
+  // Micro-pregunta
+  const [respondiendoMicro, setRespondiendoMicro] = useState(false);
+
+  // Eliminacion de hechos
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+
+  // ─── Handlers ───────────────────────────────
 
   const handleGuardarPerfil = async () => {
     setGuardandoPerfil(true);
@@ -97,9 +137,33 @@ export function SeccionPerfilVivo({ data }: Props) {
     }
   };
 
+  const handleEliminarHecho = async (hechoId: string) => {
+    setEliminandoId(hechoId);
+    setErrorPerfil(null);
+    try {
+      const result = await eliminarHecho({
+        studentId: data.studentId,
+        hechoId,
+      });
+      if (!result.ok) {
+        setErrorPerfil(result.error ?? 'No se pudo eliminar el hecho');
+        return;
+      }
+      router.refresh();
+    } catch {
+      setErrorPerfil('No se pudo eliminar el hecho');
+    } finally {
+      setEliminandoId(null);
+    }
+  };
+
+  // ─── Render ─────────────────────────────────
+
   return (
     <SeccionCard titulo="Perfil vivo del lector" icon={<Fingerprint size={18} className="text-turquesa" />}>
       <div className="space-y-3">
+
+        {/* Contexto personal */}
         <div>
           <label className="text-[11px] font-semibold text-texto-suave">Contexto personal</label>
           <textarea
@@ -111,6 +175,7 @@ export function SeccionPerfilVivo({ data }: Props) {
           />
         </div>
 
+        {/* Personajes favoritos */}
         <div>
           <label className="text-[11px] font-semibold text-texto-suave">Personajes favoritos</label>
           <input
@@ -121,6 +186,7 @@ export function SeccionPerfilVivo({ data }: Props) {
           />
         </div>
 
+        {/* Temas a evitar */}
         <div>
           <label className="text-[11px] font-semibold text-texto-suave">Temas a evitar (coma separada)</label>
           <input
@@ -131,24 +197,39 @@ export function SeccionPerfilVivo({ data }: Props) {
           />
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+        {/* Nuevo hecho: texto + selector de categoria */}
+        <div className="space-y-2">
           <input
             value={nuevoHecho}
             onChange={(e) => setNuevoHecho(e.target.value)}
             className="w-full rounded-xl border border-neutro/20 bg-fondo px-3 py-2 text-xs text-texto outline-none focus:border-turquesa"
             placeholder="Nuevo dato util para personalizar historias..."
           />
-          <select
-            value={categoriaHecho}
-            onChange={(e) => setCategoriaHecho(e.target.value as typeof categoriaHecho)}
-            className="rounded-xl border border-neutro/20 bg-fondo px-3 py-2 text-xs text-texto"
-          >
-            <option value="contexto">Contexto</option>
-            <option value="interes">Interes</option>
-            <option value="fortaleza">Fortaleza</option>
-            <option value="reto">Reto</option>
-            <option value="hito">Hito</option>
-          </select>
+
+          {/* Selector de categoria como pills */}
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-texto-suave">
+              Categoria del dato
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIAS.map((cat) => (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => setCategoriaHecho(cat.value)}
+                  className={[
+                    'rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors',
+                    'min-h-[36px]', // touch target generoso
+                    categoriaHecho === cat.value
+                      ? CATEGORIA_SELECTED_CLASS
+                      : cat.color,
+                  ].join(' ')}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <button
@@ -164,6 +245,7 @@ export function SeccionPerfilVivo({ data }: Props) {
         {errorPerfil && <p className="text-[11px] text-coral">{errorPerfil}</p>}
       </div>
 
+      {/* Micro-pregunta activa */}
       {data.perfilVivo.microPreguntaActiva && (
         <div className="mt-4 rounded-2xl bg-amarillo/15 p-3">
           <p className="text-[11px] font-semibold text-texto">
@@ -188,24 +270,47 @@ export function SeccionPerfilVivo({ data }: Props) {
         </div>
       )}
 
-      <div className="mt-3">
+      {/* Memoria util: tag cloud con borrado */}
+      <div className="mt-4">
         <p className="text-[11px] font-semibold text-texto-suave">
           Memoria util ({data.perfilVivo.totalHechos} hechos)
         </p>
-        <div className="mt-1 space-y-1.5">
-          {data.perfilVivo.hechosRecientes.length === 0 ? (
-            <p className="text-[11px] text-texto-suave">Sin hechos recientes aun.</p>
-          ) : (
-            data.perfilVivo.hechosRecientes.map((h) => (
-              <div key={h.id} className="rounded-xl bg-fondo p-2">
-                <p className="text-[10px] font-semibold text-texto-suave">
-                  {categoriaHechoLabel(h.categoria)} · {h.fuente}
-                </p>
-                <p className="mt-0.5 text-[11px] text-texto">{h.texto}</p>
+
+        {data.perfilVivo.hechosRecientes.length === 0 ? (
+          <p className="mt-1 text-[11px] text-texto-suave">Sin hechos recientes aun.</p>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {data.perfilVivo.hechosRecientes.map((h) => (
+              <div
+                key={h.id}
+                className={[
+                  'flex items-center gap-1.5 rounded-full px-2.5 py-1',
+                  getCategoriaColor(h.categoria),
+                ].join(' ')}
+              >
+                <span className="text-[10px] font-semibold opacity-70">
+                  {getCategoriaLabel(h.categoria)}
+                </span>
+                <span className="text-[11px]">{h.texto}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleEliminarHecho(h.id)}
+                  disabled={eliminandoId === h.id}
+                  aria-label={`Eliminar: ${h.texto}`}
+                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full opacity-60 transition-opacity hover:opacity-100 disabled:opacity-30"
+                >
+                  <X size={10} />
+                </button>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {data.perfilVivo.totalHechos > data.perfilVivo.hechosRecientes.length && (
+          <p className="mt-2 text-[10px] text-texto-suave">
+            Mostrando {data.perfilVivo.hechosRecientes.length} de {data.perfilVivo.totalHechos} hechos.
+          </p>
+        )}
       </div>
     </SeccionCard>
   );
