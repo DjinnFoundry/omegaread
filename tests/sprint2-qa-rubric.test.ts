@@ -20,47 +20,47 @@ import {
 
 function crearHistoriaValida(overrides: Partial<StoryLLMOutput> = {}): StoryLLMOutput {
   return {
-    titulo: 'El viaje de Luna',
+    titulo: 'La aventura de Luna y el árbol brillante',
     contenido:
-      'Luna era una gatita curiosa que vivia en un pueblo pequeno. ' +
-      'Un dia decidio explorar el bosque cercano. ' +
-      'Encontro un rio cristalino y vio peces de colores. ' +
-      'Luna se quedo mirando el agua durante un buen rato. ' +
-      'Cuando regreso a casa, su familia la estaba esperando con alegria.',
+      'Luna era una gatita curiosa que vivía en un pueblo pequeño. ' +
+      'Un día decidió explorar el bosque cercano. ' +
+      'Encontró un río cristalino y vio peces de colores. ' +
+      'Luna se quedó mirando el agua durante un buen rato. ' +
+      'Cuando regresó a casa, su familia la estaba esperando con alegría.',
     vocabularioNuevo: ['cristalino', 'explorar'],
     preguntas: [
       {
         tipo: 'literal',
-        pregunta: 'Donde vivia Luna?',
-        opciones: ['En una ciudad', 'En un pueblo pequeno', 'En el bosque', 'En la playa'],
+        pregunta: '¿Dónde vivía Luna?',
+        opciones: ['En una ciudad', 'En un pueblo pequeño', 'En el bosque', 'En la playa'],
         respuestaCorrecta: 1,
-        explicacion: 'El texto dice que Luna vivia en un pueblo pequeno.',
+        explicacion: 'El texto dice que Luna vivía en un pueblo pequeño.',
       },
       {
         tipo: 'inferencia',
-        pregunta: 'Por que crees que la familia estaba esperando a Luna?',
+        pregunta: '¿Por qué crees que la familia estaba esperando a Luna?',
         opciones: [
           'Porque estaban preocupados',
-          'Porque tenian hambre',
-          'Porque querian jugar',
-          'Porque tenian sueno',
+          'Porque tenían hambre',
+          'Porque querían jugar',
+          'Porque tenían sueño',
         ],
         respuestaCorrecta: 0,
         explicacion: 'Si Luna se fue al bosque, es probable que su familia se preocupara.',
       },
       {
         tipo: 'vocabulario',
-        pregunta: 'Que significa "cristalino"?',
-        opciones: ['Oscuro', 'Transparente y claro', 'Frio', 'Profundo'],
+        pregunta: '¿Qué significa "cristalino"?',
+        opciones: ['Oscuro', 'Transparente y claro', 'Frío', 'Profundo'],
         respuestaCorrecta: 1,
         explicacion: 'Cristalino quiere decir que es muy claro, como el cristal.',
       },
       {
         tipo: 'resumen',
-        pregunta: 'De que trata esta historia?',
+        pregunta: '¿De qué trata esta historia?',
         opciones: [
           'De una gatita que explora el bosque y regresa a casa',
-          'De un rio con peces de colores',
+          'De un río con peces de colores',
           'De una familia que busca a su gato',
           'De un pueblo donde viven muchos gatos',
         ],
@@ -216,9 +216,9 @@ describe('evaluarHistoria', () => {
   });
 
   it('rechaza titulo repetido contra historial reciente', () => {
-    const historia = crearHistoriaValida({ titulo: 'El viaje de Luna' });
+    const historia = crearHistoriaValida({ titulo: 'La aventura de Luna y el árbol brillante' });
     const result = evaluarHistoria(historia, 1, {
-      historiasAnteriores: ['El viaje de Luna', 'Otro titulo'],
+      historiasAnteriores: ['La aventura de Luna y el árbol brillante', 'Otro título'],
     });
     expect(result.aprobada).toBe(false);
     expect(result.motivo?.toLowerCase()).toContain('repetido');
@@ -257,7 +257,7 @@ describe('calcularMetadataHistoria', () => {
 describe('validarEstructuraHistoria (flujo dividido)', () => {
   it('acepta estructura valida sin preguntas', () => {
     const historia: StoryOnlyLLMOutput = {
-      titulo: 'El viaje de Luna',
+      titulo: 'La aventura de Luna y el árbol brillante',
       contenido: 'Luna era una gatita curiosa que vivia en un pueblo pequeno. Exploro el bosque y encontro un rio cristalino.',
       vocabularioNuevo: ['cristalino', 'explorar'],
     };
@@ -412,7 +412,7 @@ describe('validarEstructuraPreguntas (flujo dividido)', () => {
 describe('evaluarHistoriaSinPreguntas (flujo dividido)', () => {
   function crearHistoriaValida(overrides: Partial<StoryOnlyLLMOutput> = {}): StoryOnlyLLMOutput {
     return {
-      titulo: 'El viaje de Luna',
+      titulo: 'La aventura de Luna y el árbol brillante',
       contenido:
         'Luna era una gatita curiosa que vivia en un pueblo pequeno. ' +
         'Un dia decidio explorar el bosque cercano. ' +

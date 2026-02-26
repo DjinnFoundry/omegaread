@@ -185,6 +185,20 @@ function evaluarContenidoHistoria(
     };
   }
 
+  // 7. Calidad de idioma: exigir tildes/diacriticos en español.
+  // Si una historia completa no contiene NI UN solo caracter con diacritico,
+  // casi seguro que el modelo esta "hablando español" sin acentos (mala UX).
+  // Permitimos excepciones para textos muy cortos.
+  const textoParaIdioma = `${titulo} ${contenido}`;
+  const esLargo = textoParaIdioma.length >= 120;
+  const tieneDiacriticos = /[áéíóúÁÉÍÓÚñÑüÜ]/.test(textoParaIdioma);
+  if (esLargo && !tieneDiacriticos) {
+    return {
+      aprobada: false,
+      motivo: 'Español sin tildes: reescribe con acentos correctos (qué, cómo, más, niño, etc.)',
+    };
+  }
+
   return { aprobada: true };
 }
 
