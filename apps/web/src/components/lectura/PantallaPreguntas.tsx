@@ -97,12 +97,9 @@ export default function PantallaPreguntas({
     const nuevas = [...respuestasAcumuladas, respuesta];
     setRespuestasAcumuladas(nuevas);
 
-    if (preguntaActual >= preguntas.length - 1) {
-      // Last question: call onComplete with the freshly computed array,
-      // not the stale respuestasAcumuladas state value.
-      onComplete(nuevas);
-    }
-  }, [mostrandoFeedback, pregunta, respuestasAcumuladas, preguntaActual, preguntas.length, onComplete]);
+    // Non-final questions advance via the "Siguiente" button.
+    // Final question shows feedback first, then a "Ver resultado" button.
+  }, [mostrandoFeedback, pregunta, respuestasAcumuladas]);
 
   const handleSiguiente = useCallback(() => {
     setPreguntaActual(prev => prev + 1);
@@ -312,26 +309,44 @@ export default function PantallaPreguntas({
         </div>
       )}
 
-      {/* Boton siguiente - only shown on non-final questions; the last
-          question completes immediately on answer selection */}
-      {mostrandoFeedback && preguntaActual + 1 < preguntas.length && (
+      {/* Boton siguiente / ver resultado */}
+      {mostrandoFeedback && (
         <div className="text-center animate-fade-in">
-          <button
-            type="button"
-            onClick={handleSiguiente}
-            className="
-              inline-flex items-center gap-2
-              bg-turquesa text-white
-              font-bold text-lg
-              px-8 py-3.5 rounded-3xl
-              shadow-[0_4px_0_#3BA89F,0_6px_16px_rgba(0,0,0,0.1)]
-              active:scale-95 transition-transform
-              touch-manipulation
-            "
-          >
-            <span className="font-datos">Siguiente</span>
-            <span>→</span>
-          </button>
+          {preguntaActual + 1 < preguntas.length ? (
+            <button
+              type="button"
+              onClick={handleSiguiente}
+              className="
+                inline-flex items-center gap-2
+                bg-turquesa text-white
+                font-bold text-lg
+                px-8 py-3.5 rounded-3xl
+                shadow-[0_4px_0_#3BA89F,0_6px_16px_rgba(0,0,0,0.1)]
+                active:scale-95 transition-transform
+                touch-manipulation
+              "
+            >
+              <span className="font-datos">Siguiente</span>
+              <span>→</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onComplete(respuestasAcumuladas)}
+              className="
+                inline-flex items-center gap-2
+                bg-bosque text-white
+                font-bold text-lg
+                px-8 py-3.5 rounded-3xl
+                shadow-[0_4px_0_#2D7A3E,0_6px_16px_rgba(0,0,0,0.1)]
+                active:scale-95 transition-transform
+                touch-manipulation
+              "
+            >
+              <span className="font-datos">Ver resultado</span>
+              <span>⭐</span>
+            </button>
+          )}
         </div>
       )}
     </div>

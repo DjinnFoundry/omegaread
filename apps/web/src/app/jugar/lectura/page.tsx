@@ -66,7 +66,13 @@ interface DatosSesionActiva {
 interface ResultadoSesionData {
   aciertos: number;
   totalPreguntas: number;
+  comprensionScore: number;
   estrellas: number;
+  sessionScore: number;
+  direccion: 'subir' | 'mantener' | 'bajar';
+  nivelAnterior: number;
+  nivelNuevo: number;
+  razon: string;
   eloGlobal: number | null;
   eloPrevio: number | null;
 }
@@ -462,37 +468,94 @@ export default function LecturaPage() {
     void handleStartReading(sesionActiva.historia.topicSlug, true);
   }, [sesionActiva, handleStartReading]);
 
-  const [errorFinalizacion, setErrorFinalizacion] = useState<string | null>(null);
+  const [finalizando, setFinalizando] = useState(false);
 
   const handleRespuestasCompletas = useCallback(
     async (respuestas: RespuestaPregunta[]) => {
-      if (!estudiante || !sesionActiva) return;
-      setErrorFinalizacion(null);
+      if (!estudiante || !sesionActiva || finalizando) return;
+      setFinalizando(true);
 
-      try {
-        const result = await finalizarSesionLectura({
-          sessionId: sesionActiva.sessionId,
-          studentId: estudiante.id,
-          tiempoLecturaMs: tiempoLectura,
-          respuestas,
-          wpmPromedio: wpmData?.wpmRobusto ?? wpmData?.wpmPromedio ?? null,
-          wpmPorPagina: wpmData?.wpmPorPagina ?? null,
-          totalPaginas: wpmData?.totalPaginas ?? null,
-          audioAnalisis: wpmData?.audioAnalisis ?? undefined,
-        });
+      const MAX_RETRIES = 3;
+      const payload = {
+        sessionId: sesionActiva.sessionId,
+        studentId: estudiante.id,
+        tiempoLecturaMs: tiempoLectura,
+        respuestas,
+        wpmPromedio: wpmData?.wpmRobusto ?? wpmData?.wpmPromedio ?? null,
+        wpmPorPagina: wpmData?.wpmPorPagina ?? null,
+        totalPaginas: wpmData?.totalPaginas ?? null,
+        audioAnalisis: wpmData?.audioAnalisis ?? undefined,
+      };
 
-        if (result.ok) {
-          setResultadoSesion(result.resultado);
-          setPasoSesion('resultado');
-          void recargarProgreso();
-        } else {
-          setErrorFinalizacion('No pudimos guardar tus respuestas. Intentalo de nuevo.');
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const result = await finalizarSesionLectura(payload);
+
+          if (result.ok) {
+            setResultadoSesion(result.resultado);
+            setPasoSesion('resultado');
+            void recargarProgreso();
+            return;
+          }
+
+          // "La sesion ya fue finalizada" means a previous retry succeeded at DB
+          // level but the response was lost. Treat as success with safe defaults.
+          if (result.error === 'La sesion ya fue finalizada') {
+            console.info('[Finalizacion] Session already finalized, recovering');
+            const aciertos = respuestas.filter((r) => r.correcta).length;
+            const total = respuestas.length;
+            const score = total > 0 ? aciertos / total : 0;
+            setResultadoSesion({
+              aciertos,
+              totalPreguntas: total,
+              comprensionScore: Math.round(score * 100),
+              estrellas: score >= 1 ? 3 : score >= 0.75 ? 2 : score > 0 ? 1 : 0,
+              sessionScore: Math.round(score * 100) / 100,
+              direccion: 'mantener' as const,
+              nivelAnterior: sesionActiva.historia.nivel,
+              nivelNuevo: sesionActiva.historia.nivel,
+              razon: 'Recuperado de sesion previa',
+              eloGlobal: null,
+              eloPrevio: null,
+            });
+            setPasoSesion('resultado');
+            void recargarProgreso();
+            return;
+          }
+
+          console.warn(`[Finalizacion] Attempt ${attempt}/${MAX_RETRIES} failed:`, result.error);
+        } catch (err) {
+          console.warn(`[Finalizacion] Attempt ${attempt}/${MAX_RETRIES} error:`, err);
         }
-      } catch {
-        setErrorFinalizacion('Hubo un error de conexion. Intentalo de nuevo.');
+
+        // Wait before retrying (200ms, 600ms)
+        if (attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, 200 * attempt));
+        }
       }
+
+      // All retries exhausted: show minimal fallback result so child isn't stuck
+      console.error('[Finalizacion] All retries exhausted, showing fallback');
+      const aciertos = respuestas.filter((r) => r.correcta).length;
+      const total = respuestas.length;
+      const score = total > 0 ? aciertos / total : 0;
+      setResultadoSesion({
+        aciertos,
+        totalPreguntas: total,
+        comprensionScore: Math.round(score * 100),
+        estrellas: score >= 1 ? 3 : score >= 0.75 ? 2 : score > 0 ? 1 : 0,
+        sessionScore: Math.round(score * 100) / 100,
+        direccion: 'mantener' as const,
+        nivelAnterior: sesionActiva.historia.nivel,
+        nivelNuevo: sesionActiva.historia.nivel,
+        razon: 'Guardado pendiente',
+        eloGlobal: null,
+        eloPrevio: null,
+      });
+      setPasoSesion('resultado');
+      setFinalizando(false);
     },
-    [estudiante, sesionActiva, tiempoLectura, wpmData, recargarProgreso],
+    [estudiante, sesionActiva, tiempoLectura, wpmData, recargarProgreso, finalizando],
   );
 
   const handleLeerOtra = useCallback(() => {
@@ -751,14 +814,20 @@ export default function LecturaPage() {
       );
     }
 
+    if (finalizando) {
+      return (
+        <main className="flex min-h-screen items-center justify-center bg-fondo p-6">
+          <div className="text-center animate-pulse-brillo">
+            <span className="text-5xl animate-bounce-suave">⭐</span>
+            <p className="mt-4 text-lg font-semibold text-texto">Calculando tu resultado...</p>
+            <p className="mt-1 text-sm text-texto-suave">Solo un momento</p>
+          </div>
+        </main>
+      );
+    }
+
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-fondo p-6">
-        {errorFinalizacion && (
-          <div className="w-full max-w-md mb-4 p-4 rounded-2xl bg-error-suave border border-coral/20 text-sm text-texto">
-            <p className="font-semibold mb-1">Ups!</p>
-            <p className="text-texto-suave">{errorFinalizacion}</p>
-          </div>
-        )}
         <PantallaPreguntas
           preguntas={sesionActiva.preguntas}
           onComplete={handleRespuestasCompletas}

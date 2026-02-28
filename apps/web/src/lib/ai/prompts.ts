@@ -793,9 +793,9 @@ const JSON_SCHEMA = `{
   "contenido": "string (parrafos separados por \\n\\n)",
   "vocabularioNuevo": ["palabra1", "palabra2"],
   "preguntas": [
-    {"tipo": "literal", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 0, "explicacion": "...", "dificultadPregunta": 2},
-    {"tipo": "inferencia", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 0, "explicacion": "...", "dificultadPregunta": 4},
-    {"tipo": "vocabulario", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 0, "explicacion": "...", "dificultadPregunta": 3},
+    {"tipo": "literal", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 2, "explicacion": "...", "dificultadPregunta": 2},
+    {"tipo": "inferencia", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 1, "explicacion": "...", "dificultadPregunta": 4},
+    {"tipo": "vocabulario", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 3, "explicacion": "...", "dificultadPregunta": 3},
     {"tipo": "resumen", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 0, "explicacion": "...", "dificultadPregunta": 3}
   ]
 }`;
@@ -895,6 +895,7 @@ Genera 4 preguntas, una de cada tipo:
 
 Reglas de preguntas:
 - "dificultadPregunta" (1-5): 1=obvia, 3=requiere comprension, 5=razonamiento complejo.
+- "respuestaCorrecta" es un entero 0-3. IMPORTANTE: varia la posicion de la respuesta correcta entre las 4 preguntas (no pongas siempre 0).
 - Las 3 opciones incorrectas son plausibles pero claramente incorrectas (sin ambiguedad).
 - Las preguntas deben poder responderse SOLO con el texto (no con conocimiento externo).
 - La pregunta de vocabulario elige una palabra que el nino pueda inferir por contexto.
@@ -1116,10 +1117,10 @@ const JSON_SCHEMA_STORY_ONLY = `{
 
 const JSON_SCHEMA_QUESTIONS_ONLY = `{
   "preguntas": [
-    {"tipo": "literal", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 0, "explicacion": "...", "dificultadPregunta": 2},
+    {"tipo": "literal", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 3, "explicacion": "...", "dificultadPregunta": 2},
     {"tipo": "inferencia", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 0, "explicacion": "...", "dificultadPregunta": 4},
-    {"tipo": "vocabulario", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 0, "explicacion": "...", "dificultadPregunta": 3},
-    {"tipo": "resumen", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 0, "explicacion": "...", "dificultadPregunta": 3}
+    {"tipo": "vocabulario", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 1, "explicacion": "...", "dificultadPregunta": 3},
+    {"tipo": "resumen", "pregunta": "...", "opciones": ["a","b","c","d"], "respuestaCorrecta": 2, "explicacion": "...", "dificultadPregunta": 3}
   ]
 }`;
 
@@ -1269,7 +1270,7 @@ Genera exactamente 4 preguntas, una de cada tipo:
 
 ## REGLAS
 - "dificultadPregunta" (1-5): 1=obvia, 3=requiere comprension, 5=razonamiento complejo.
-- "respuestaCorrecta" debe ser un entero 0, 1, 2 o 3 (nunca letra ni texto).
+- "respuestaCorrecta" debe ser un entero 0, 1, 2 o 3 (nunca letra ni texto). IMPORTANTE: varia la posicion de la respuesta correcta entre las 4 preguntas (no pongas siempre 0).
 - Las 3 opciones incorrectas son plausibles pero claramente incorrectas (sin ambiguedad).
 - Las preguntas deben poder responderse SOLO con el texto (no con conocimiento externo).
 - La pregunta de vocabulario elige una palabra que el nino pueda inferir por contexto.

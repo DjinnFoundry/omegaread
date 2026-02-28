@@ -486,16 +486,20 @@ export async function finalizarSesionLectura(datos: {
         },
       );
     } else {
-      // Test/local fallback for environments without db.transaction.
       await persistirSesionYElo(db, { inflarRd: false });
     }
-  } catch (persistError) {
-    // Never return false positives. If persistence fails, caller can retry.
-    console.error('[FinalizarSesion] Error al guardar sesion/Elo:', persistError);
-    return {
-      ok: false as const,
-      error: 'No se pudo finalizar la sesion. Intentalo de nuevo.',
-    };
+  } catch (txError) {
+    // Transaction failed: fallback to sequential writes (no atomicity but data is saved).
+    console.warn('[FinalizarSesion] Transaction failed, falling back to sequential writes:', txError);
+    try {
+      await persistirSesionYElo(db, { inflarRd: false });
+    } catch (fallbackError) {
+      console.error('[FinalizarSesion] Sequential fallback also failed:', fallbackError);
+      return {
+        ok: false as const,
+        error: 'No se pudo finalizar la sesion. Intentalo de nuevo.',
+      };
+    }
   }
 
   return {

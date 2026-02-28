@@ -309,7 +309,7 @@ describe('PantallaPreguntas', () => {
   // Completar cuestionario
   // ─────────────────────────────────────────────
 
-  it('llama onComplete cuando se responden todas las preguntas', async () => {
+  it('llama onComplete cuando se responden todas las preguntas y se pulsa Ver resultado', async () => {
     render(
       <PantallaPreguntas
         preguntas={PREGUNTAS_MOCK}
@@ -323,14 +323,18 @@ describe('PantallaPreguntas', () => {
       fireEvent.click(screen.getByText(opcionCorrecta));
 
       if (i < PREGUNTAS_MOCK.length - 1) {
-        // Non-final questions show "Siguiente" button
         await waitFor(() => {
           expect(screen.getByRole('button', { name: /Siguiente/i })).toBeDefined();
         });
         fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
       }
-      // Last question triggers onComplete immediately on selection
     }
+
+    // Last question shows "Ver resultado" button
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ver resultado/i })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Ver resultado/i }));
 
     await waitFor(() => {
       expect(onCompleteMock).toHaveBeenCalled();
@@ -356,8 +360,13 @@ describe('PantallaPreguntas', () => {
         });
         fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
       }
-      // Last question triggers onComplete immediately on selection
     }
+
+    // Click "Ver resultado" on last question
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ver resultado/i })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Ver resultado/i }));
 
     await waitFor(() => {
       expect(onCompleteMock).toHaveBeenCalledWith(expect.any(Array));
@@ -401,8 +410,13 @@ describe('PantallaPreguntas', () => {
         });
         fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
       }
-      // Last question triggers onComplete immediately on selection
     }
+
+    // Click "Ver resultado" on last question
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ver resultado/i })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Ver resultado/i }));
 
     await waitFor(() => {
       const respuestas = onCompleteMock.mock.calls[0][0] as RespuestaPregunta[];
@@ -494,7 +508,133 @@ describe('PantallaPreguntas', () => {
   // Boton final
   // ─────────────────────────────────────────────
 
-  it('muestra "Siguiente" en la penultima pregunta pero no en la ultima', async () => {
+  it('does NOT call onComplete on last question answer selection (requires Ver resultado click)', async () => {
+    render(
+      <PantallaPreguntas
+        preguntas={PREGUNTAS_MOCK}
+        onComplete={onCompleteMock}
+      />
+    );
+
+    // Answer all but last
+    for (let i = 0; i < PREGUNTAS_MOCK.length - 1; i++) {
+      const opcionCorrecta = PREGUNTAS_MOCK[i].opciones[PREGUNTAS_MOCK[i].respuestaCorrecta];
+      fireEvent.click(screen.getByText(opcionCorrecta));
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Siguiente/i })).toBeDefined();
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
+    }
+
+    // Answer last question
+    const lastQ = PREGUNTAS_MOCK[PREGUNTAS_MOCK.length - 1];
+    fireEvent.click(screen.getByText(lastQ.opciones[lastQ.respuestaCorrecta]));
+
+    // Feedback should be visible, but onComplete should NOT have been called yet
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ver resultado/i })).toBeDefined();
+    });
+    expect(onCompleteMock).not.toHaveBeenCalled();
+  });
+
+  it('works with a single question', async () => {
+    const singleQ = [PREGUNTAS_MOCK[0]];
+    render(
+      <PantallaPreguntas
+        preguntas={singleQ}
+        onComplete={onCompleteMock}
+      />
+    );
+
+    // Answer the only question
+    fireEvent.click(screen.getByText('En un pueblo pequeno'));
+
+    // Should show "Ver resultado" (not "Siguiente")
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Siguiente/i })).toBeNull();
+      expect(screen.getByRole('button', { name: /Ver resultado/i })).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Ver resultado/i }));
+
+    await waitFor(() => {
+      expect(onCompleteMock).toHaveBeenCalledTimes(1);
+      const respuestas = onCompleteMock.mock.calls[0][0] as RespuestaPregunta[];
+      expect(respuestas).toHaveLength(1);
+      expect(respuestas[0].correcta).toBe(true);
+    });
+  });
+
+  it('includes tiempoMs for each respuesta', async () => {
+    render(
+      <PantallaPreguntas
+        preguntas={PREGUNTAS_MOCK}
+        onComplete={onCompleteMock}
+      />
+    );
+
+    // Answer all
+    for (let i = 0; i < PREGUNTAS_MOCK.length; i++) {
+      const opcionCorrecta = PREGUNTAS_MOCK[i].opciones[PREGUNTAS_MOCK[i].respuestaCorrecta];
+      fireEvent.click(screen.getByText(opcionCorrecta));
+
+      if (i < PREGUNTAS_MOCK.length - 1) {
+        await waitFor(() => {
+          expect(screen.getByRole('button', { name: /Siguiente/i })).toBeDefined();
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
+      }
+    }
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ver resultado/i })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Ver resultado/i }));
+
+    await waitFor(() => {
+      const respuestas = onCompleteMock.mock.calls[0][0] as RespuestaPregunta[];
+      respuestas.forEach((r) => {
+        expect(r.tiempoMs).toBeGreaterThanOrEqual(0);
+        expect(typeof r.tiempoMs).toBe('number');
+      });
+    });
+  });
+
+  it('preserves tipo field for each question in responses', async () => {
+    render(
+      <PantallaPreguntas
+        preguntas={PREGUNTAS_MOCK}
+        onComplete={onCompleteMock}
+      />
+    );
+
+    for (let i = 0; i < PREGUNTAS_MOCK.length; i++) {
+      const opcionCorrecta = PREGUNTAS_MOCK[i].opciones[PREGUNTAS_MOCK[i].respuestaCorrecta];
+      fireEvent.click(screen.getByText(opcionCorrecta));
+
+      if (i < PREGUNTAS_MOCK.length - 1) {
+        await waitFor(() => {
+          expect(screen.getByRole('button', { name: /Siguiente/i })).toBeDefined();
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
+      }
+    }
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Ver resultado/i })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Ver resultado/i }));
+
+    await waitFor(() => {
+      const respuestas = onCompleteMock.mock.calls[0][0] as RespuestaPregunta[];
+      expect(respuestas[0].tipo).toBe('literal');
+      expect(respuestas[1].tipo).toBe('inferencia');
+      expect(respuestas[2].tipo).toBe('vocabulario');
+      expect(respuestas[3].tipo).toBe('resumen');
+    });
+  });
+
+  it('muestra "Siguiente" en la penultima pregunta y "Ver resultado" en la ultima', async () => {
     render(
       <PantallaPreguntas
         preguntas={PREGUNTAS_MOCK}
@@ -524,15 +664,19 @@ describe('PantallaPreguntas', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
 
-    // Ultima pregunta (index 3) - should NOT show "Siguiente";
-    // onComplete fires immediately on answer selection
+    // Ultima pregunta (index 3) - should show "Ver resultado" instead of "Siguiente"
     const opcionUltima = PREGUNTAS_MOCK[3].opciones[PREGUNTAS_MOCK[3].respuestaCorrecta];
     fireEvent.click(screen.getByText(opcionUltima));
 
     await waitFor(() => {
-      // No "Siguiente" button on the last question
       expect(screen.queryByRole('button', { name: /Siguiente/i })).toBeNull();
-      // onComplete was called directly
+      expect(screen.getByRole('button', { name: /Ver resultado/i })).toBeDefined();
+    });
+
+    // Click "Ver resultado" to trigger onComplete
+    fireEvent.click(screen.getByRole('button', { name: /Ver resultado/i }));
+
+    await waitFor(() => {
       expect(onCompleteMock).toHaveBeenCalled();
     });
   });
