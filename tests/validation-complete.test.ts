@@ -80,18 +80,18 @@ describe('generarHistoriaSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rechaza topicSlug > 50 caracteres', () => {
+  it('rechaza topicSlug > 100 caracteres', () => {
     const result = generarHistoriaSchema.safeParse({
       studentId: UUID_VALIDO,
-      topicSlug: 'a'.repeat(51),
+      topicSlug: 'a'.repeat(101),
     });
     expect(result.success).toBe(false);
   });
 
-  it('acepta topicSlug de 50 caracteres exactos', () => {
+  it('acepta topicSlug de 100 caracteres exactos', () => {
     const result = generarHistoriaSchema.safeParse({
       studentId: UUID_VALIDO,
-      topicSlug: 'a'.repeat(50),
+      topicSlug: 'a'.repeat(100),
     });
     expect(result.success).toBe(true);
   });

@@ -107,7 +107,7 @@ vi.mock('@/lib/data/skills', () => ({
     { slug: 'sistema-solar', nombre: 'Sistema Solar', categoria: 'universo', emoji: '🪐', edadMinima: 5, edadMaxima: 10, descripcion: 'Space' },
   ],
   CATEGORIAS: [],
-  getSkillBySlug: vi.fn(() => ({ slug: 'animales', nombre: 'Animales', dominio: 'naturaleza' })),
+  getSkillBySlug: vi.fn(() => ({ slug: 'animales', nombre: 'Animales', dominio: 'naturaleza', prerequisitos: [] })),
   getSkillsDeDominio: vi.fn(() => []),
   getSkillsPorEdad: vi.fn(() => []),
   DOMINIOS: [],
@@ -249,8 +249,8 @@ describe('story-actions', () => {
         nivel: 2.0,
         reutilizable: true,
         aprobadaQA: true,
-        questions: [{ id: 'q1', orden: 0 }],
-        metadata: { generationFlags: { funMode: false } },
+        questions: [{ id: 'q1', orden: 0, tipo: 'literal', pregunta: 'Test?', opciones: ['A', 'B', 'C', 'D'], respuestaCorrecta: 0, explicacion: 'Exp' }],
+        metadata: { generationFlags: { funMode: false, tonoHistoria: 3 } },
       },
     ]);
     // Queue session insert returning
@@ -308,8 +308,8 @@ describe('story-actions', () => {
         nivel: 2.0,
         reutilizable: true,
         aprobadaQA: true,
-        questions: [{ id: 'q1', orden: 0 }],
-        metadata: { generationFlags: { funMode: false } },
+        questions: [{ id: 'q1', orden: 0, tipo: 'literal', pregunta: 'Test?', opciones: ['A', 'B', 'C', 'D'], respuestaCorrecta: 0, explicacion: 'Exp' }],
+        metadata: { generationFlags: { funMode: false, tonoHistoria: 3 } },
       },
     ]);
     // Queue session insert returning
@@ -340,8 +340,8 @@ describe('story-actions', () => {
         nivel: 2.0,
         reutilizable: true,
         aprobadaQA: true,
-        questions: [{ id: 'q1', orden: 0 }],
-        metadata: { generationFlags: { funMode: false } },
+        questions: [{ id: 'q1', orden: 0, tipo: 'literal', pregunta: 'Test?', opciones: ['A', 'B', 'C', 'D'], respuestaCorrecta: 0, explicacion: 'Exp' }],
+        metadata: { generationFlags: { funMode: false, tonoHistoria: 3 } },
       },
     ]);
     // Queue session insert returning
@@ -625,10 +625,13 @@ describe('story-actions', () => {
     expect(result.error).toContain('ya fue finalizada');
   });
 
-  it('debería devolver error si falla la persistencia final en transacción', async () => {
+  it('debería devolver error si falla la persistencia final en transacción y fallback', async () => {
+    // Both transaction and sequential fallback must fail for ok=false
+    const failingUpdate = vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => { throw new Error('update failed'); }) })) }));
     const dbModule = await vi.importMock<any>('@/server/db');
     dbModule.getDb.mockImplementationOnce(async () => ({
       ...createMockDbShape(),
+      update: failingUpdate,
       transaction: vi.fn(async () => {
         throw new Error('tx failed');
       }),
