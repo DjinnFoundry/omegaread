@@ -27,6 +27,7 @@ import {
   finalizarSesionLectura,
   analizarLecturaAudio,
 } from '@/server/actions/story-actions';
+import { guardarAjustesLectura } from '@/server/actions/profile-actions';
 import type { StoryGenerationTrace } from '@/lib/story-generation/trace';
 import SelectorIntereses from '@/components/perfil/SelectorIntereses';
 import FormularioContexto from '@/components/perfil/FormularioContexto';
@@ -142,6 +143,9 @@ export default function LecturaPage() {
   const [generando, setGenerando] = useState(false);
   const [traceGeneracion, setTraceGeneracion] = useState<StoryGenerationTrace | null>(null);
 
+  // Tono de historia (slider)
+  const [tonoHistoria, setTonoHistoria] = useState(3);
+
   // Estado de generacion de preguntas en background (por sesion)
   const [preguntasGenerandoPara, setPreguntasGenerandoPara] = useState<string | null>(null);
   const [errorPreguntas, setErrorPreguntas] = useState<string | null>(null);
@@ -166,6 +170,7 @@ export default function LecturaPage() {
       if (result) {
         setEstado(result.estado);
         setDatosEstudiante(result.estudiante);
+        setTonoHistoria(result.estudiante.accesibilidad.tonoHistoria ?? 3);
       }
     } catch (err) {
       console.error('Error cargando estado de lectura:', err);
@@ -203,6 +208,20 @@ export default function LecturaPage() {
   }, [storyIdFromQuery, topicFromQuery, estado, pasoSesion, generando, estudiante]);
 
   // ─── Handlers de sesion ───
+
+  const handleTonoChange = useCallback(
+    (nuevoTono: number) => {
+      setTonoHistoria(nuevoTono);
+      // Persist in background
+      if (estudiante) {
+        void guardarAjustesLectura({
+          studentId: estudiante.id,
+          accesibilidad: { tonoHistoria: nuevoTono },
+        });
+      }
+    },
+    [estudiante],
+  );
 
   const cargarPreguntasDeSesion = useCallback(
     async (sessionId: string, storyId: string, studentId: string) => {
@@ -879,6 +898,8 @@ export default function LecturaPage() {
         edadAnos={datosEstudiante.edadAnos}
         onStart={handleStartReading}
         generando={generando}
+        tonoHistoria={tonoHistoria}
+        onTonoChange={handleTonoChange}
       />
     </main>
   );

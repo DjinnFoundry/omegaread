@@ -13,6 +13,30 @@
 
 export type ModoHistoria = 'educativo' | 'ficcion';
 
+export type TonoHistoria = 1 | 2 | 3 | 4 | 5;
+
+/**
+ * Instrucciones de tono para el prompt de generacion de historias.
+ * Cada posicion del slider tiene su propia directiva.
+ */
+export const TONO_PROMPT: Record<TonoHistoria, string> = {
+  1: `TONO: DESCUBRE (educativo puro).
+Historia educativa. Hechos y datos como protagonistas. Personaje curioso que descubre y explica. Tono serio-curioso. El concepto es el centro absoluto de la narrativa.
+Genera una HISTORIA EDUCATIVA y 4 preguntas de comprension.`,
+  2: `TONO: EXPLORA (educativo con narrativa).
+Educativo con narrativa. El personaje explora activamente, datos reales dentro de una aventura ligera. El concepto se presenta como descubrimiento natural del protagonista.
+Genera una HISTORIA EDUCATIVA con tono narrativo y 4 preguntas de comprension.`,
+  3: `TONO: MEZCLA (equilibrio 50/50).
+Equilibrio entre educacion y ficcion. Aventura donde el concepto es clave para resolver un problema. El personaje lo VIVE, no se lo explican.
+Genera una HISTORIA y 4 preguntas de comprension.`,
+  4: `TONO: AVENTURA (ficcion con toques educativos).
+Ficcion con toques educativos. Protagonista con personalidad, humor, sorpresa. El concepto esta vivido e integrado en la trama, no explicado. Prioriza humor y energia narrativa. Incluye al menos 2 momentos claramente divertidos.
+Genera un CUENTO de ficcion y 4 preguntas de comprension.`,
+  5: `TONO: IMAGINA (maxima creatividad).
+Maxima creatividad. Mundos fantasticos, giros inesperados, humor. El concepto educativo esta entretejido sutilmente en la trama, nunca explicado. Prioriza sorpresa, imaginacion y diversion. Incluye giros inesperados y humor.
+Genera un CUENTO de ficcion y 4 preguntas de comprension.`,
+};
+
 export interface NivelConfig {
   palabrasMin: number;
   palabrasMax: number;
@@ -764,8 +788,12 @@ export interface PromptInput {
   topicDescripcion: string;
   conceptoNucleo?: string;
   dominio?: string;
-  modo: ModoHistoria;
+  /** @deprecated Use `tono` instead. Kept for backward compat. */
+  modo?: ModoHistoria;
+  /** @deprecated Use `tono` instead. Kept for backward compat. */
   funMode?: boolean;
+  /** Tono de historia (1-5). Default 3. Replaces modo + funMode. */
+  tono?: TonoHistoria;
   intereses: string[];
   personajesFavoritos?: string;
   contextoPersonal?: string;
@@ -944,20 +972,18 @@ export function buildUserPrompt(
 
   const partes: string[] = [];
 
-  // Modo e instruccion principal
   const concepto = input.conceptoNucleo ?? input.topicDescripcion;
-  if (input.modo === 'ficcion') {
-    partes.push(`Genera un CUENTO de ficcion y 4 preguntas de comprension.`);
-    partes.push(`\nSemilla tematica: "${input.topicNombre}"`);
-    partes.push(`Concepto a integrar en la trama: ${concepto}`);
-    if (input.dominio) partes.push(`Dominio: ${input.dominio}`);
+  const tono = resolverTonoPrompt(input);
+  partes.push(TONO_PROMPT[tono]);
+  partes.push(`\nSemilla tematica: "${input.topicNombre}"`);
+  partes.push(`Concepto a integrar: ${concepto}`);
+  if (input.dominio) partes.push(`Dominio: ${input.dominio}`);
+  if (tono <= 2) {
+    partes.push(`Crea un personaje que DESCUBRE el concepto a traves de una experiencia directa. Los datos cientificos aparecen como hallazgos del personaje, nunca como exposicion del narrador.`);
+  } else if (tono >= 4) {
     partes.push(`Crea una historia con un protagonista con personalidad, un problema real, y un desenlace satisfactorio. El concepto se aprende porque el personaje lo VIVE, no porque alguien se lo explica.`);
   } else {
-    partes.push(`Genera una HISTORIA EDUCATIVA y 4 preguntas de comprension.`);
-    partes.push(`\nTema: "${input.topicNombre}"`);
-    partes.push(`Concepto nucleo: ${concepto}`);
-    if (input.dominio) partes.push(`Dominio: ${input.dominio}`);
-    partes.push(`Crea un personaje que DESCUBRE el concepto a traves de una experiencia directa. Los datos cientificos aparecen como hallazgos del personaje, nunca como exposicion del narrador. El nino termina entendiendo el concepto porque lo vivio con el protagonista.`);
+    partes.push(`El personaje descubre el concepto mientras resuelve un problema. Equilibrio entre narrativa y aprendizaje.`);
   }
 
   // Perfil del nino
@@ -994,13 +1020,6 @@ export function buildUserPrompt(
 
   // Estrategia pedagogica
   partes.push(`\n${getInstruccionesEstrategia(estrategia)}`);
-
-  if (input.funMode) {
-    partes.push(`\nMODO DIVERSION ACTIVADO:`);
-    partes.push(`- Prioriza humor, sorpresa y energia narrativa.`);
-    partes.push(`- Incluye al menos 2 momentos claramente divertidos.`);
-    partes.push(`- Mantener aprendizaje correcto, sin sonar academico.`);
-  }
 
   // Historial
   if (input.historiasAnteriores && input.historiasAnteriores.length > 0) {
@@ -1163,12 +1182,14 @@ export function buildStoryOnlyUserPrompt(
 
   const partes: string[] = [];
 
-  // Modo e instruccion principal (version compacta para menor latencia)
   const concepto = input.conceptoNucleo ?? input.topicDescripcion;
-  if (input.modo === 'ficcion') {
+  const tono = resolverTonoPrompt(input);
+  if (tono >= 4) {
     partes.push(`Escribe un CUENTO de ficcion.`);
-  } else {
+  } else if (tono <= 2) {
     partes.push(`Escribe una HISTORIA EDUCATIVA.`);
+  } else {
+    partes.push(`Escribe una HISTORIA que equilibre aventura y aprendizaje.`);
   }
   partes.push(`Tema: "${input.topicNombre}"`);
   partes.push(`Concepto clave a integrar: ${concepto}`);
@@ -1206,8 +1227,10 @@ export function buildStoryOnlyUserPrompt(
     partes.push(`Estrategia: equilibrio historia + descubrimiento (50/50).`);
   }
 
-  if (input.funMode) {
-    partes.push(`Modo diversion activado: subir humor y sorpresa, sin perder exactitud del concepto.`);
+  if (tono >= 4) {
+    partes.push(`Prioridad: humor, sorpresa y energia narrativa, sin perder exactitud del concepto.`);
+  } else if (tono <= 2) {
+    partes.push(`Prioridad: precision educativa, el concepto es el centro de la historia.`);
   }
 
   // Historial
@@ -1424,6 +1447,18 @@ HISTORIA - "${input.storyTitulo}":
 ${input.storyContenido}
 
 JSON:${JSON_SCHEMA_QUESTIONS_ONLY}`;
+}
+
+/**
+ * Resolves the effective tono from PromptInput, with backward compat for
+ * deprecated modo + funMode fields.
+ */
+function resolverTonoPrompt(input: PromptInput): TonoHistoria {
+  if (input.tono != null) return input.tono;
+
+  // Legacy fallback: modo + funMode -> tono
+  if (input.modo === 'ficcion') return input.funMode ? 5 : 4;
+  return input.funMode ? 4 : 3;
 }
 
 /** Categorias que son ficcion (el resto son educativas) */

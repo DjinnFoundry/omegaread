@@ -18,6 +18,25 @@ export function extraerFunModeHistoria(metadata: unknown): boolean {
   return storyMetadata.generationFlags?.funMode === true;
 }
 
+export function extraerTonoHistoria(metadata: unknown): number {
+  if (!metadata || typeof metadata !== 'object') return 3;
+  const storyMetadata = metadata as StoryMetadata;
+  const flags = storyMetadata.generationFlags;
+  if (flags?.tonoHistoria != null) return flags.tonoHistoria;
+  return flags?.funMode === true ? 4 : 3;
+}
+
+/**
+ * Derives the effective tono (1-5) from accesibilidad config + legacy funMode.
+ * Canonical fallback: accesibilidad.tonoHistoria ?? (funMode ? 4 : 3).
+ */
+export function derivarTonoEfectivo(
+  tonoHistoria: number | null | undefined,
+  funModeActivo: boolean,
+): number {
+  return tonoHistoria ?? (funModeActivo ? 4 : 3);
+}
+
 // ─── Types ───
 
 export type StoryGenerationStageId =

@@ -29,6 +29,7 @@ export interface DatosEstudianteLectura {
     altoContraste: boolean;
     lecturaSinTildes: boolean;
     lecturaAllCaps: boolean;
+    tonoHistoria: number | null;
   };
 }
 
@@ -67,6 +68,7 @@ export async function obtenerEstadoLectura(studentId: string): Promise<{
       altoContraste: accesibilidad.altoContraste === true,
       lecturaSinTildes: accesibilidad.lecturaSinTildes === true,
       lecturaAllCaps: accesibilidad.lecturaAllCaps === true,
+      tonoHistoria: accesibilidad.tonoHistoria ?? null,
     },
   };
 

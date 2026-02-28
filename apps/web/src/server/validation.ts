@@ -172,6 +172,7 @@ export const guardarAjustesLecturaSchema = z
         duracionSesionMin: z.number().int().min(5).max(120).optional(),
         lecturaSinTildes: z.boolean().optional(),
         lecturaAllCaps: z.boolean().optional(),
+        tonoHistoria: z.number().int().min(1).max(5).optional(),
       })
       .optional(),
   })
@@ -244,7 +245,7 @@ export const registrarRespuestaComprensionSchema = z.object({
 /** Schema: generarHistoria */
 export const generarHistoriaSchema = z.object({
   studentId: uuid,
-  topicSlug: z.string().min(1).max(50).optional(),
+  topicSlug: z.string().min(1).max(100).optional(),
   /** Forzar regeneracion aunque exista historia cacheada */
   forceRegenerate: z.boolean().optional(),
   /** Token para reportar progreso en tiempo real al cliente */

@@ -225,6 +225,7 @@ export interface DashboardPadreData {
       duracionSesionMin: number | null;
       lecturaSinTildes: boolean;
       lecturaAllCaps: boolean;
+      tonoHistoria: number | null;
     };
   };
   techTree: {
@@ -666,6 +667,7 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
         duracionSesionMin: accesibilidad.duracionSesionMin ?? null,
         lecturaSinTildes: accesibilidad.lecturaSinTildes === true,
         lecturaAllCaps: accesibilidad.lecturaAllCaps === true,
+        tonoHistoria: accesibilidad.tonoHistoria ?? null,
       },
     },
     techTree: {

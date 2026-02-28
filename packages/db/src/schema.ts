@@ -476,6 +476,12 @@ export type AccesibilidadConfig = {
    * Importante: esto es una preferencia de renderizado.
    */
   lecturaAllCaps?: boolean;
+
+  /**
+   * Tono de las historias generadas (1-5).
+   * 1=Descubre (educativo puro), 3=Mezcla (default), 5=Imagina (maxima creatividad).
+   */
+  tonoHistoria?: number;
 };
 
 export type SenalesDificultad = {
@@ -534,6 +540,7 @@ export type StoryMetadata = {
   tiempoEsperadoMs: number;
   generationFlags?: {
     funMode?: boolean;
+    tonoHistoria?: number;
   };
   llmUsage?: {
     promptTokens: number;

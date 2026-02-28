@@ -35,9 +35,9 @@ import { generateStoryOnly, generateQuestions } from '@/lib/ai/story-generator';
 import { hasLLMKey } from '@/lib/ai/openai';
 import {
   getNivelConfig,
-  getModoFromCategoria,
   normalizarSubnivel,
   type PromptInput,
+  type TonoHistoria,
 } from '@/lib/ai/prompts';
 import {
   TOPICS_SEED,
@@ -62,7 +62,8 @@ import {
   completarEtapasRestantesComoOmitidas,
   extraerTraceMetadata,
   extraerFunModeConfig,
-  extraerFunModeHistoria,
+  extraerTonoHistoria,
+  derivarTonoEfectivo,
   type StoryGenerationTrace,
   type StoryGenerationStageId,
 } from '@/lib/story-generation/trace';
@@ -97,6 +98,18 @@ const LEGACY_TOPIC_SLUG_MAP: Record<string, string> = {
   naturaleza: 'plantas-que-crecen',
   arte: 'como-se-transmiten-tradiciones',
 };
+
+// ─── Custom topic helpers ───
+
+const CUSTOM_TOPIC_PREFIX = 'custom:';
+
+function isCustomTopic(slug: string | undefined): slug is string {
+  return !!slug && slug.startsWith(CUSTOM_TOPIC_PREFIX);
+}
+
+function parseCustomTopic(slug: string): string {
+  return slug.slice(CUSTOM_TOPIC_PREFIX.length).trim();
+}
 
 // ─── Internal helpers ───
 
@@ -240,7 +253,9 @@ export async function generarHistoria(datos: {
   const validado = generarHistoriaSchema.parse(datos);
   const { estudiante, padre, edadAnos, nivel: nivelElo } = await getStudentContext(validado.studentId);
   const nivel = normalizarSubnivel(validado.nivelOverride ?? nivelElo);
+  const accesibilidad = (estudiante.accesibilidad ?? {}) as AccesibilidadConfig;
   const funModeActivo = extraerFunModeConfig(padre.config);
+  const tono = derivarTonoEfectivo(accesibilidad.tonoHistoria, funModeActivo) as TonoHistoria;
   const traceId = validado.progressTraceId;
   const trace = crearStoryGenerationTrace();
 
@@ -289,7 +304,7 @@ export async function generarHistoria(datos: {
       studentId: validado.studentId,
       topicSlug: validado.topicSlug ?? null,
       forceRegenerate: !!validado.forceRegenerate,
-      funMode: funModeActivo,
+      tono,
     });
 
     await avanzarEtapa('validaciones', 'Comprobando API key y limites de uso', true);
@@ -331,52 +346,89 @@ export async function generarHistoria(datos: {
     const skillActualSlug = historialReciente[0];
 
     let topicSlug = validado.topicSlug;
-    if (!topicSlug) {
-      const skillSiguiente = elegirSiguienteSkillTechTree({
-        edadAnos,
-        intereses,
-        progresoMap,
-        skillActualSlug,
-        historialReciente,
-      });
-      if (skillSiguiente) {
-        topicSlug = skillSiguiente.slug;
+    let topicNombre: string;
+    let topicDescripcion: string;
+    let topicEmoji: string;
+    let skill: ReturnType<typeof getSkillBySlug>;
+    let dominio: (typeof DOMINIOS)[number] | undefined;
+    let techTreeContext: ReturnType<typeof construirContextoTechTree> | undefined;
+    const customTopic = isCustomTopic(topicSlug);
+
+    if (customTopic && topicSlug) {
+      const textoLibre = parseCustomTopic(topicSlug);
+      if (!textoLibre) {
+        return await finalizarConError('ruta', 'El tema libre esta vacio', 'GENERATION_FAILED');
       }
+      topicNombre = textoLibre;
+      topicDescripcion = textoLibre;
+      topicEmoji = '✏️';
+      skill = undefined;
+      dominio = undefined;
+      techTreeContext = undefined;
+      await completarEtapa('ruta', `Tema libre: ${textoLibre}`);
+    } else {
+      if (!topicSlug) {
+        const skillSiguiente = elegirSiguienteSkillTechTree({
+          edadAnos,
+          intereses,
+          progresoMap,
+          skillActualSlug,
+          historialReciente,
+        });
+        if (skillSiguiente) {
+          topicSlug = skillSiguiente.slug;
+        }
+      }
+
+      if (!topicSlug) {
+        const topicsPorEdad = TOPICS_SEED.filter(
+          (t) => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
+        );
+        topicSlug =
+          topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ??
+          TOPICS_SEED[0]?.slug;
+      }
+
+      if (!topicSlug) {
+        return await finalizarConError('ruta', 'No hay topics disponibles para esta edad', 'GENERATION_FAILED');
+      }
+      const topicResolved = resolverTopicPorSlug(topicSlug, edadAnos);
+      if (!topicResolved) {
+        return await finalizarConError('ruta', 'Topic no encontrado', 'GENERATION_FAILED');
+      }
+      topicSlug = topicResolved.topicSlug;
+      const topic = topicResolved.topic;
+      if (topicResolved.remapped && validado.topicSlug) {
+        console.info('[story-generation] topic remapeado por compatibilidad', {
+          from: validado.topicSlug,
+          to: topicSlug,
+        });
+      }
+
+      topicNombre = topic.nombre;
+      topicDescripcion = topic.descripcion;
+      topicEmoji = topic.emoji;
+      skill = getSkillBySlug(topicSlug);
+      dominio = skill ? DOMINIOS.find((d) => d.slug === skill!.dominio) : undefined;
+      techTreeContext = skill
+        ? construirContextoTechTree({
+            skill,
+            progresoMap,
+            edadAnos,
+            nivel,
+          })
+        : undefined;
+      await completarEtapa('ruta', `Topic seleccionado: ${topicNombre}`);
     }
 
-    if (!topicSlug) {
-      const topicsPorEdad = TOPICS_SEED.filter(
-        (t) => edadAnos >= t.edadMinima && edadAnos <= t.edadMaxima,
-      );
-      topicSlug =
-        topicsPorEdad[Math.floor(Math.random() * topicsPorEdad.length)]?.slug ??
-        TOPICS_SEED[0]?.slug;
-    }
-
-    if (!topicSlug) {
-      return await finalizarConError('ruta', 'No hay topics disponibles para esta edad', 'GENERATION_FAILED');
-    }
-    const topicResolved = resolverTopicPorSlug(topicSlug, edadAnos);
-    if (!topicResolved) {
-      return await finalizarConError('ruta', 'Topic no encontrado', 'GENERATION_FAILED');
-    }
-    topicSlug = topicResolved.topicSlug;
-    const topic = topicResolved.topic;
-    if (topicResolved.remapped && validado.topicSlug) {
-      console.info('[story-generation] topic remapeado por compatibilidad', {
-        from: validado.topicSlug,
-        to: topicSlug,
-      });
-    }
-    await completarEtapa('ruta', `Topic seleccionado: ${topic.nombre}`);
-
+    const skipCache = validado.forceRegenerate || customTopic;
     await avanzarEtapa(
       'cache',
-      validado.forceRegenerate
-        ? 'Regeneracion forzada, se omite cache'
+      skipCache
+        ? (customTopic ? 'Tema libre, se omite cache' : 'Regeneracion forzada, se omite cache')
         : 'Buscando historia reutilizable',
     );
-    if (!validado.forceRegenerate) {
+    if (!skipCache) {
       const ttlDate = new Date();
       ttlDate.setDate(ttlDate.getDate() - CACHE_TTL_DIAS);
       const nivelCacheMin = Math.max(1, nivel - CACHE_LEVEL_WINDOW);
@@ -396,7 +448,7 @@ export async function generarHistoria(datos: {
         with: { questions: true },
       });
       const cacheCompatibles = cacheCandidates.filter(
-        (story) => extraerFunModeHistoria(story.metadata) === funModeActivo,
+        (story) => extraerTonoHistoria(story.metadata) === tono,
       );
       const cached = cacheCompatibles.sort((a, b) => {
         const scoreA = Math.abs(a.nivel - nivel) + (a.questions.length > 0 ? 0 : 0.15);
@@ -428,10 +480,11 @@ export async function generarHistoria(datos: {
               textoId: cached.id,
               nivelTexto: nivel,
               topicSlug,
-              skillSlug: getSkillBySlug(topicSlug)?.slug ?? topicSlug,
+              skillSlug: customTopic ? 'custom-topic' : (getSkillBySlug(topicSlug)?.slug ?? topicSlug),
               tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
               fromCache: true,
-              funMode: funModeActivo,
+              tonoHistoria: tono,
+              funMode: tono >= 4,
             },
           })
           .returning();
@@ -449,8 +502,8 @@ export async function generarHistoria(datos: {
             contenido: cached.contenido,
             nivel,
             topicSlug,
-            topicEmoji: topic.emoji,
-            topicNombre: topic.nombre,
+            topicEmoji: topicEmoji,
+            topicNombre: topicNombre,
             tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
           },
           preguntas: cached.questions.length > 0
@@ -474,29 +527,15 @@ export async function generarHistoria(datos: {
     });
     const titulosPrevios = historiasPrevias.map((h) => h.titulo);
 
-    const skill = getSkillBySlug(topicSlug);
-    const dominio = skill ? DOMINIOS.find((d) => d.slug === skill.dominio) : undefined;
-    const techTreeContext = skill
-      ? construirContextoTechTree({
-          skill,
-          progresoMap,
-          edadAnos,
-          nivel,
-        })
-      : undefined;
-
-    const accesibilidad = (estudiante.accesibilidad ?? {}) as AccesibilidadConfig;
-
     const promptInput: PromptInput = {
       edadAnos,
       nivel,
-      topicNombre: topic.nombre,
-      topicDescripcion: topic.descripcion,
+      topicNombre,
+      topicDescripcion,
       lecturaSinTildes: accesibilidad.lecturaSinTildes === true,
       conceptoNucleo: skill?.conceptoNucleo,
       dominio: dominio?.nombre,
-      modo: getModoFromCategoria(topic.categoria),
-      funMode: funModeActivo,
+      tono,
       intereses: intereses
         .map((slug) => CATEGORIAS.find((c) => c.slug === slug)?.nombre)
         .filter((n): n is string => !!n)
@@ -524,9 +563,9 @@ export async function generarHistoria(datos: {
       traceId: traceId ?? null,
       topicSlug,
       nivel,
+      tono,
       skillSlug: promptInput.techTreeContext?.skillSlug ?? null,
       estrategia: promptInput.techTreeContext?.estrategia ?? null,
-      funMode: promptInput.funMode === true,
     });
     await completarEtapa('prompt', 'Prompt listo');
 
@@ -563,7 +602,8 @@ export async function generarHistoria(datos: {
           ...story.metadata,
           generationFlags: {
             ...(story.metadata.generationFlags ?? {}),
-            funMode: funModeActivo,
+            tonoHistoria: tono,
+            funMode: tono >= 4,
           },
           llmUsage: story.llmUsage,
         },
@@ -590,10 +630,11 @@ export async function generarHistoria(datos: {
           textoId: storyRow.id,
           nivelTexto: nivel,
           topicSlug,
-          skillSlug: skill?.slug ?? topicSlug,
+          skillSlug: customTopic ? 'custom-topic' : (skill?.slug ?? topicSlug),
           objetivoSesion: techTreeContext?.objetivoSesion,
           estrategiaPedagogica: techTreeContext?.estrategia,
-          funMode: funModeActivo,
+          tonoHistoria: tono,
+          funMode: tono >= 4,
           tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
           llmStoryModel: story.modelo,
           llmStoryUsage: story.llmUsage,
@@ -614,8 +655,8 @@ export async function generarHistoria(datos: {
         contenido: story.contenido,
         nivel,
         topicSlug,
-        topicEmoji: topic.emoji,
-        topicNombre: topic.nombre,
+        topicEmoji: topicEmoji,
+        topicNombre: topicNombre,
         tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
       },
       preguntas: undefined,
@@ -840,7 +881,9 @@ export async function cargarHistoriaExistente(datos: {
     return { ok: false as const, error: 'Historia no encontrada' };
   }
 
-  const topic = TOPICS_SEED.find((t) => t.slug === historia.topicSlug);
+  const isCustom = isCustomTopic(historia.topicSlug);
+  const topic = isCustom ? null : TOPICS_SEED.find((t) => t.slug === historia.topicSlug);
+  const customNombre = isCustom ? parseCustomTopic(historia.topicSlug) : undefined;
   const nivelConfig = getNivelConfig(historia.nivel);
 
   const [sesion] = await db
@@ -856,7 +899,7 @@ export async function cargarHistoriaExistente(datos: {
         textoId: historia.id,
         nivelTexto: historia.nivel,
         topicSlug: historia.topicSlug,
-        skillSlug: getSkillBySlug(historia.topicSlug)?.slug ?? historia.topicSlug,
+        skillSlug: isCustom ? 'custom-topic' : (getSkillBySlug(historia.topicSlug)?.slug ?? historia.topicSlug),
         tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
         fromCache: true,
         reRead: true,
@@ -874,8 +917,8 @@ export async function cargarHistoriaExistente(datos: {
       contenido: historia.contenido,
       nivel: historia.nivel,
       topicSlug: historia.topicSlug,
-      topicEmoji: topic?.emoji ?? '',
-      topicNombre: topic?.nombre ?? historia.topicSlug,
+      topicEmoji: isCustom ? '✏️' : (topic?.emoji ?? ''),
+      topicNombre: customNombre ?? topic?.nombre ?? historia.topicSlug,
       tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
     },
     preguntas: historia.questions.length > 0

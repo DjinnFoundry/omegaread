@@ -14,6 +14,7 @@ import {
   type DominioInfo,
   type SkillDef,
 } from '@/lib/data/skills';
+import SelectorTono from '@/components/ui/SelectorTono';
 
 interface InicioSesionProps {
   studentNombre: string;
@@ -21,6 +22,8 @@ interface InicioSesionProps {
   edadAnos: number;
   onStart: (skillSlug: string) => void;
   generando: boolean;
+  tonoHistoria: number;
+  onTonoChange: (tono: number) => void;
 }
 
 export default function InicioSesion({
@@ -29,9 +32,12 @@ export default function InicioSesion({
   edadAnos,
   onStart,
   generando,
+  tonoHistoria,
+  onTonoChange,
 }: InicioSesionProps) {
   const router = useRouter();
   const [dominioAbierto, setDominioAbierto] = useState<string | null>(null);
+  const [textoLibre, setTextoLibre] = useState('');
 
   // Skills filtradas por edad
   const skillsPorEdad = useMemo(
@@ -85,6 +91,12 @@ export default function InicioSesion({
     onStart(slug);
   }, [generando, onStart]);
 
+  const handleTextoLibre = useCallback(() => {
+    const trimmed = textoLibre.trim();
+    if (generando || !trimmed) return;
+    onStart(`custom:${trimmed}`);
+  }, [generando, textoLibre, onStart]);
+
   return (
     <div className="animate-fade-in w-full max-w-md mx-auto">
       {/* Header */}
@@ -119,6 +131,57 @@ export default function InicioSesion({
           <span className="text-xl">🎲</span>
           <span className="font-datos">Sorprendeme!</span>
         </button>
+      </div>
+
+      {/* Selector de tono */}
+      <div className="mb-5">
+        <p className="text-[11px] text-texto-suave text-center mb-2">Tipo de historia</p>
+        <SelectorTono
+          value={tonoHistoria}
+          onChange={onTonoChange}
+          disabled={generando}
+        />
+      </div>
+
+      {/* Tema libre */}
+      <div className="mb-5">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={textoLibre}
+            onChange={(e) => setTextoLibre(e.target.value.slice(0, 60))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleTextoLibre();
+            }}
+            placeholder="Escribe un tema..."
+            aria-label="Escribe un tema libre para tu historia"
+            disabled={generando}
+            className="
+              flex-1 px-4 py-3 rounded-2xl
+              bg-superficie border-2 border-transparent
+              text-sm text-texto placeholder:text-texto-suave/50
+              focus:border-turquesa/40 focus:outline-none
+              transition-colors duration-150
+              disabled:opacity-50
+            "
+            maxLength={60}
+          />
+          <button
+            type="button"
+            onClick={handleTextoLibre}
+            disabled={generando || !textoLibre.trim()}
+            className="
+              px-5 py-3 rounded-2xl
+              bg-turquesa text-white font-bold text-sm
+              shadow-sm hover:shadow-md
+              transition-all duration-150
+              active:scale-[0.98] touch-manipulation
+              disabled:opacity-40
+            "
+          >
+            Generar
+          </button>
+        </div>
       </div>
 
       {/* Skill selector */}

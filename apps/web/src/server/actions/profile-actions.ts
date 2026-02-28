@@ -179,6 +179,7 @@ export async function guardarAjustesLectura(datos: {
     duracionSesionMin?: number;
     lecturaSinTildes?: boolean;
     lecturaAllCaps?: boolean;
+    tonoHistoria?: number;
   };
 }) {
   const db = await getDb();
@@ -206,24 +207,13 @@ export async function guardarAjustesLectura(datos: {
   }
 
   if (validado.accesibilidad) {
+    // Merge only the fields that were explicitly provided (not undefined)
+    const campos = validado.accesibilidad;
     accesibilidadFinal = { ...accesibilidadActual };
-    if (validado.accesibilidad.fuenteDislexia !== undefined) {
-      accesibilidadFinal.fuenteDislexia = validado.accesibilidad.fuenteDislexia;
-    }
-    if (validado.accesibilidad.modoTDAH !== undefined) {
-      accesibilidadFinal.modoTDAH = validado.accesibilidad.modoTDAH;
-    }
-    if (validado.accesibilidad.altoContraste !== undefined) {
-      accesibilidadFinal.altoContraste = validado.accesibilidad.altoContraste;
-    }
-    if (validado.accesibilidad.duracionSesionMin !== undefined) {
-      accesibilidadFinal.duracionSesionMin = validado.accesibilidad.duracionSesionMin;
-    }
-    if (validado.accesibilidad.lecturaSinTildes !== undefined) {
-      accesibilidadFinal.lecturaSinTildes = validado.accesibilidad.lecturaSinTildes;
-    }
-    if (validado.accesibilidad.lecturaAllCaps !== undefined) {
-      accesibilidadFinal.lecturaAllCaps = validado.accesibilidad.lecturaAllCaps;
+    for (const [key, value] of Object.entries(campos)) {
+      if (value !== undefined) {
+        (accesibilidadFinal as Record<string, unknown>)[key] = value;
+      }
     }
 
     await db
@@ -246,6 +236,7 @@ export async function guardarAjustesLectura(datos: {
         duracionSesionMin: accesibilidadFinal.duracionSesionMin ?? null,
         lecturaSinTildes: accesibilidadFinal.lecturaSinTildes === true,
         lecturaAllCaps: accesibilidadFinal.lecturaAllCaps === true,
+        tonoHistoria: accesibilidadFinal.tonoHistoria ?? null,
       },
     },
   };
