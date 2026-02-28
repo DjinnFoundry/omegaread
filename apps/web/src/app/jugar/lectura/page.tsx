@@ -78,6 +78,38 @@ function stageStatusIcon(status: StoryGenerationTrace['stages'][number]['status'
   return '-';
 }
 
+function mapGenerationErrorToUserMessage(error: string, code?: string): string {
+  if (code === 'NO_API_KEY') {
+    return 'El servicio de historias no esta disponible ahora mismo. Intenta mas tarde.';
+  }
+  if (code === 'RATE_LIMIT') {
+    return 'Hoy ya se generaron muchas historias. Prueba de nuevo en unas horas.';
+  }
+  if (code === 'QA_REJECTED') {
+    return 'La historia no paso nuestros controles de calidad. Vamos a intentar otra.';
+  }
+
+  const normalized = error.toLowerCase();
+  if (
+    normalized.includes('json') ||
+    normalized.includes('api') ||
+    normalized.includes('timeout') ||
+    normalized.includes('timed out') ||
+    normalized.includes('rate limit')
+  ) {
+    return 'Tuvimos un problema tecnico al crear la historia. Intenta de nuevo.';
+  }
+
+  return 'No pudimos crear tu historia. Intentalo de nuevo.';
+}
+
+function mapQuestionsErrorToUserMessage(error: string, code?: string): string {
+  if (code === 'NO_API_KEY') {
+    return 'Ahora no podemos crear preguntas automaticamente. Reintenta en un momento.';
+  }
+  return mapGenerationErrorToUserMessage(error, code);
+}
+
 export default function LecturaPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -179,7 +211,12 @@ export default function LecturaPage() {
         });
 
         if (!qResult.ok) {
-          setErrorPreguntas(qResult.error || 'No pudimos preparar tus preguntas');
+          setErrorPreguntas(
+            mapQuestionsErrorToUserMessage(
+              qResult.error || 'No pudimos preparar tus preguntas',
+              qResult.code,
+            ),
+          );
           return;
         }
 
@@ -198,6 +235,15 @@ export default function LecturaPage() {
 
   const iniciarPollingProgreso = useCallback((studentId: string, progressTraceId: string) => {
     let activo = true;
+    let intervalId: number | null = null;
+
+    const detener = () => {
+      if (!activo) return;
+      activo = false;
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+      }
+    };
 
     const poll = async () => {
       if (!activo) return;
@@ -208,6 +254,9 @@ export default function LecturaPage() {
         });
         if (result.ok) {
           setTraceGeneracion(result.trace);
+          if (result.trace.status !== 'running') {
+            detener();
+          }
         }
       } catch {
         // Silencioso: la UI ya muestra etapa actual, reintentamos en el siguiente tick.
@@ -215,14 +264,11 @@ export default function LecturaPage() {
     };
 
     void poll();
-    const intervalId = window.setInterval(() => {
+    intervalId = window.setInterval(() => {
       void poll();
-    }, 900);
+    }, 1800);
 
-    return () => {
-      activo = false;
-      window.clearInterval(intervalId);
-    };
+    return detener;
   }, []);
 
   const handleStartReading = useCallback(
@@ -251,7 +297,7 @@ export default function LecturaPage() {
         }
 
         if (!result.ok) {
-          setErrorGeneracion(result.error);
+          setErrorGeneracion(mapGenerationErrorToUserMessage(result.error, result.code));
           setPasoSesion('elegir-topic');
           return;
         }
@@ -300,7 +346,7 @@ export default function LecturaPage() {
         });
 
         if (!result.ok) {
-          setErrorGeneracion(result.error);
+          setErrorGeneracion(mapGenerationErrorToUserMessage(result.error));
           setPasoSesion('elegir-topic');
           return;
         }

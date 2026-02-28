@@ -88,12 +88,14 @@ vi.mock('@zetaread/db', () => ({
   eq: vi.fn((...args: unknown[]) => args),
   and: vi.fn((...args: unknown[]) => args),
   gte: vi.fn((...args: unknown[]) => args),
+  lte: vi.fn((...args: unknown[]) => args),
   desc: vi.fn(),
   sql: vi.fn((...args: unknown[]) => ({ raw: vi.fn() })),
 }));
 
 vi.mock('@/lib/ai/prompts', () => ({
   getNivelConfig: vi.fn(() => ({ tiempoEsperadoMs: 180000, wpmEsperado: 95 })),
+  normalizarSubnivel: vi.fn((nivel: number) => nivel),
   calcularNivelReescritura: vi.fn((nivel: number, dir: string) => dir === 'mas_facil' ? nivel - 0.4 : nivel + 0.4),
   getModoFromCategoria: vi.fn(() => 'narrativo'),
   inferirEstrategiaPedagogica: vi.fn(() => 'basico'),

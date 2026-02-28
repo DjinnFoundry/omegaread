@@ -1185,7 +1185,10 @@ export function buildStoryOnlyUserPrompt(
     partes.push(`Referentes del protagonista: ${input.personajesFavoritos} (inspirar rasgos, no copiar).`);
   }
   if (input.contextoPersonal) {
-    partes.push(`Semilla de contexto personal (solo inspiracion): ${input.contextoPersonal}`);
+    const contextoCompacto = fastMode
+      ? input.contextoPersonal.slice(0, 220)
+      : input.contextoPersonal;
+    partes.push(`Semilla de contexto personal (solo inspiracion): ${contextoCompacto}`);
   }
   if (input.techTreeContext) {
     const ctx = input.techTreeContext;
@@ -1217,13 +1220,16 @@ export function buildStoryOnlyUserPrompt(
   partes.push(`- Longitud: ${config.palabrasMin}-${config.palabrasMax} palabras.`);
   partes.push(`- Longitud media de oracion: ${config.oracionMin}-${config.oracionMax} palabras.`);
   partes.push(`- Dialogo minimo: ${config.dialogoPorcentaje}% del texto.`);
-  partes.push(`- Lexico: ${config.complejidadLexica}`);
-  partes.push(`- Densidad de ideas: ${config.densidadIdeas}`);
   partes.push(`- Hook modelo de apertura: "${perfilDeterminista.story.hookModelo}"`);
-  partes.push(`- Tono modelo: ${perfilDeterminista.story.tonoModelo}`);
-  partes.push(`- Vocabulario modelo: ${perfilDeterminista.story.vocabModelo}`);
-  partes.push(`- Objetivo de comprension de la historia: ${perfilDeterminista.story.objetivoComprension}`);
-  if (!fastMode) {
+  if (fastMode) {
+    partes.push(`- Lexico: usa vocabulario acorde al nivel, claro y natural.`);
+    partes.push(`- Densidad: una progresion simple de conflicto y resolucion.`);
+  } else {
+    partes.push(`- Lexico: ${config.complejidadLexica}`);
+    partes.push(`- Densidad de ideas: ${config.densidadIdeas}`);
+    partes.push(`- Tono modelo: ${perfilDeterminista.story.tonoModelo}`);
+    partes.push(`- Vocabulario modelo: ${perfilDeterminista.story.vocabModelo}`);
+    partes.push(`- Objetivo de comprension de la historia: ${perfilDeterminista.story.objetivoComprension}`);
     partes.push(`- Refuerzo de estilo: ${config.estiloNarrativo}`);
     partes.push(`- Tecnicas sugeridas: ${config.tecnicasEngagement.slice(0, 2).join(' | ')}`);
   }
@@ -1232,8 +1238,10 @@ export function buildStoryOnlyUserPrompt(
   partes.push(`\nREQUISITOS:`);
   partes.push(`- Longitud: ${config.palabrasMin}-${config.palabrasMax} palabras`);
   partes.push(`- Oraciones: promedio ${config.oracionMin}-${config.oracionMax} palabras`);
-  partes.push(`- Lexico: ${config.complejidadLexica}`);
-  partes.push(`- Densidad: ${config.densidadIdeas}`);
+  if (!fastMode) {
+    partes.push(`- Lexico: ${config.complejidadLexica}`);
+    partes.push(`- Densidad: ${config.densidadIdeas}`);
+  }
 
   if (options?.retryHint) {
     partes.push(`REINTENTO #${intento}: corrige el fallo anterior: "${options.retryHint}".`);

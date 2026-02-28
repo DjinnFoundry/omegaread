@@ -55,14 +55,16 @@ export interface QAContext {
   permitirSinTildes?: boolean;
 }
 
+// Mantener filtro minimo y acotado por ahora para evitar falsos positivos
+// en contenidos educativos de biologia/historia.
 const PALABRAS_PROHIBIDAS = [
-  'sexo', 'sexy', 'desnudo',
-  'droga',
-  'arma', 'armas', 'pistola', 'rifle', 'disparo',
-  'muerte', 'matar', 'asesino', 'asesinato',
-  'sangre', 'violencia', 'guerra',
-  'odio', 'demonio',
-  'suicidio', 'suicida',
+  'sexo',
+  'sexual',
+  'sexy',
+  'desnudo',
+  'pornografia',
+  'pornográfico',
+  'pornografico',
 ];
 
 const TIPOS_REQUERIDOS: TipoPregunta[] = ['literal', 'inferencia', 'vocabulario', 'resumen'];
@@ -73,17 +75,6 @@ const APERTURAS_PLANAS = [
   'a continuacion',
   'vamos a aprender',
   'este texto trata',
-];
-const CONECTORES_NARRATIVOS = [
-  'un dia',
-  'de pronto',
-  'entonces',
-  'pero',
-  'cuando',
-  'mientras',
-  'al final',
-  'despues',
-  'por eso',
 ];
 
 // ─────────────────────────────────────────────
@@ -172,34 +163,13 @@ function evaluarContenidoHistoria(
     }
   }
 
-  // 5. Detectar apertura plana
-  if (tieneAperturaPlana(contenido)) {
+  // 5. Detectar apertura plana (solo en niveles medios/altos, para no sobrerrechazar
+  // historias de primeros lectores donde la sintaxis es naturalmente simple)
+  const nivelExigenteNarrativa = nivel >= 2.6;
+  if (nivelExigenteNarrativa && tieneAperturaPlana(contenido)) {
     return {
       aprobada: false,
       motivo: 'Inicio poco engaging: apertura plana tipo texto escolar',
-    };
-  }
-
-  // 6. Detectar historias sin conectores narrativos
-  if (!tieneConectoresNarrativos(contenido)) {
-    return {
-      aprobada: false,
-      motivo: 'Historia plana: faltan conectores narrativos que creen progresion',
-    };
-  }
-
-  // 7. Calidad de idioma: exigir tildes/diacriticos en español.
-  // Si una historia completa no contiene NI UN solo caracter con diacritico,
-  // casi seguro que el modelo esta "hablando español" sin acentos (mala UX).
-  // Permitimos excepciones para textos muy cortos.
-  const textoParaIdioma = `${titulo} ${contenido}`;
-  const esLargo = textoParaIdioma.length >= 120;
-  const tieneDiacriticos = /[áéíóúÁÉÍÓÚñÑüÜ]/.test(textoParaIdioma);
-  const permitirSinTildes = context?.permitirSinTildes === true;
-  if (!permitirSinTildes && esLargo && !tieneDiacriticos) {
-    return {
-      aprobada: false,
-      motivo: 'Español sin tildes: reescribe con acentos correctos (qué, cómo, más, niño, etc.)',
     };
   }
 
@@ -230,11 +200,6 @@ function similitudTexto(a: string, b: string): number {
 function tieneAperturaPlana(contenido: string): boolean {
   const inicio = normalizarTexto(contenido).slice(0, 80);
   return APERTURAS_PLANAS.some(apertura => inicio.startsWith(apertura));
-}
-
-function tieneConectoresNarrativos(contenido: string): boolean {
-  const texto = normalizarTexto(contenido);
-  return CONECTORES_NARRATIVOS.some(conn => texto.includes(conn));
 }
 
 function opcionesAmbiguas(

@@ -37,10 +37,11 @@ import {
 // Re-export for backwards compatibility
 export type { LLMUsageSnapshot } from './call-llm';
 
-// Reintentos automaticos desactivados por UX/latencia.
-// 0 = una sola llamada al LLM y, si falla, el reintento queda en manos del usuario.
-const MAX_REINTENTOS = 0;
-const MAX_QA_RETRIES = 2;
+// Reintentos balanceados para mejorar fiabilidad sin disparar latencia:
+// - Llamada LLM: 1 retry transitorio (2 intentos max).
+// - QA de historia: 1 reintento (2 intentos max).
+const MAX_REINTENTOS = 1;
+const MAX_QA_RETRIES = 1;
 const TIPOS_PREGUNTA_CANONICOS = ['literal', 'inferencia', 'vocabulario', 'resumen'] as const;
 
 type TipoPreguntaCanonico = (typeof TIPOS_PREGUNTA_CANONICOS)[number];
@@ -338,7 +339,11 @@ export async function generateStory(input: PromptInput): Promise<StoryGeneration
 
   let lastError = '';
   for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
-    const userPrompt = buildUserPrompt(input, { intento: attempt + 1 });
+    const retryHint = attempt > 0 ? lastError : undefined;
+    const userPrompt = buildUserPrompt(input, {
+      intento: attempt + 1,
+      retryHint,
+    });
 
     const outcome = await callLLM({
       systemPrompt,
@@ -394,8 +399,10 @@ export async function generateStoryOnly(input: PromptInput): Promise<StoryOnlyRe
 
   let lastError = '';
   for (let attempt = 0; attempt <= MAX_QA_RETRIES; attempt++) {
+    const retryHint = attempt > 0 ? lastError : undefined;
     const userPrompt = buildStoryOnlyUserPrompt(input, {
       intento: attempt + 1,
+      retryHint,
       fastMode: fastPromptMode,
     });
 

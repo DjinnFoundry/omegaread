@@ -70,6 +70,8 @@ interface CompletionSnapshot {
   totalTokens: number | null;
 }
 
+const RETRY_BACKOFF_BASE_MS = 220;
+
 function extractTextFromContentPart(part: unknown): string {
   if (typeof part === 'string') return part;
   if (!part || typeof part !== 'object') return '';
@@ -158,6 +160,44 @@ function envString(name: string): string | undefined {
   return value ? value : undefined;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== 'object') return null;
+  const node = error as Record<string, unknown>;
+  if (typeof node.status === 'number' && Number.isFinite(node.status)) {
+    return node.status;
+  }
+  return null;
+}
+
+function isTransientApiError(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  if (status !== null) {
+    return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+  }
+
+  const node = error && typeof error === 'object'
+    ? (error as Record<string, unknown>)
+    : null;
+  const code = typeof node?.code === 'string' ? node.code.toLowerCase() : '';
+  if (code) {
+    const transientCodes = ['etimedout', 'econnreset', 'econnrefused', 'enotfound', 'eai_again', 'ecanceled'];
+    if (transientCodes.some((c) => code.includes(c))) return true;
+  }
+
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('network') ||
+    message.includes('socket') ||
+    message.includes('temporar')
+  );
+}
+
 // ─────────────────────────────────────────────
 // PUBLIC API
 // ─────────────────────────────────────────────
@@ -221,6 +261,9 @@ export async function callLLM(config: CallLLMConfig): Promise<CallLLMOutcome> {
       if (!content) {
         lastError = `El LLM no devolvio contenido (${formatCompletionSnapshot(snapshot)})`;
         console.warn(`[llm:${logTag}] Respuesta sin contenido`, snapshot);
+        if (intento < maxRetries) {
+          await sleep(RETRY_BACKOFF_BASE_MS * (intento + 1));
+        }
         continue;
       }
 
@@ -230,6 +273,9 @@ export async function callLLM(config: CallLLMConfig): Promise<CallLLMOutcome> {
       } catch {
         if (snapshot.finishReason === 'length') {
           lastError = `El LLM devolvio JSON truncado (${formatCompletionSnapshot(snapshot)})`;
+          if (intento < maxRetries) {
+            await sleep(RETRY_BACKOFF_BASE_MS * (intento + 1));
+          }
         } else {
           lastError = 'El LLM devolvio JSON invalido';
         }
@@ -251,7 +297,26 @@ export async function callLLM(config: CallLLMConfig): Promise<CallLLMOutcome> {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error desconocido';
       lastError = `Error de API: ${msg}`;
-      console.error(`[llm:${logTag}] Error de API`, { model, error: msg });
+      const status = getErrorStatus(e);
+      const transient = isTransientApiError(e);
+      console.error(`[llm:${logTag}] Error de API`, { model, error: msg, status, transient });
+
+      if (transient && intento < maxRetries) {
+        await sleep(RETRY_BACKOFF_BASE_MS * (intento + 1));
+        continue;
+      }
+
+      const isNonRetriable4xx =
+        status !== null &&
+        status >= 400 &&
+        status < 500 &&
+        status !== 408 &&
+        status !== 409 &&
+        status !== 425 &&
+        status !== 429;
+      if (isNonRetriable4xx) {
+        break;
+      }
     }
   }
 
@@ -261,4 +326,3 @@ export async function callLLM(config: CallLLMConfig): Promise<CallLLMOutcome> {
     code: 'GENERATION_FAILED',
   };
 }
-

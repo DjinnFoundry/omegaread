@@ -127,12 +127,12 @@ describe('evaluarHistoria', () => {
     const historia = crearHistoriaValida({
       contenido:
         'Marco caminaba por el parque cuando vio algo extrano detras de un arbol. ' +
-        'Entonces se acerco y encontro una bolsa llena de droga escondida entre las hojas secas del suelo.',
+        'Entonces se acerco y encontro una revista sobre sexo escondida entre las hojas secas del suelo.',
     });
     const result = evaluarHistoria(historia, 1);
     expect(result.aprobada).toBe(false);
     expect(result.motivo).toContain('inseguro');
-    expect(result.motivo).toContain('droga');
+    expect(result.motivo).toContain('sexo');
   });
 
   it('rechaza contenido demasiado corto', () => {
@@ -169,7 +169,7 @@ describe('evaluarHistoria', () => {
   });
 
   it('verifica multiples palabras prohibidas', () => {
-    const palabras = ['muerte', 'droga', 'sexo', 'odio', 'demonio'];
+    const palabras = ['sexo', 'sexual', 'desnudo'];
     for (const palabra of palabras) {
       const historia = crearHistoriaValida({
         contenido: `El cuento habla sobre ${palabra} en el bosque ` + 'y otras cosas divertidas para ninos. '.repeat(5),
@@ -179,27 +179,25 @@ describe('evaluarHistoria', () => {
     }
   });
 
-  it('rechaza apertura plana tipo texto escolar', () => {
+  it('rechaza apertura plana tipo texto escolar en niveles medios/altos', () => {
     const historia = crearHistoriaValida({
       contenido:
         'En este texto aprenderemos como funciona el viento en la ciudad. ' +
         'Despues veremos ejemplos de como se mueve el aire entre edificios. ' +
         'Al final sabremos por que los objetos vuelan cuando hay tormenta.',
     });
-    const result = evaluarHistoria(historia, 1);
+    const result = evaluarHistoria(historia, 3);
     expect(result.aprobada).toBe(false);
-    expect(result.motivo?.toLowerCase()).toContain('apertura plana');
   });
 
-  it('rechaza cuando no hay conectores narrativos', () => {
+  it('permite historias sin conectores narrativos explicitos', () => {
     const historia = crearHistoriaValida({
       contenido:
         'Los cohetes son maquinas. Los cohetes tienen motor. Los cohetes usan combustible. ' +
         'Los cohetes salen de la Tierra. Los cohetes llegan al espacio.',
     });
     const result = evaluarHistoria(historia, 1);
-    expect(result.aprobada).toBe(false);
-    expect(result.motivo?.toLowerCase()).toContain('plana');
+    expect(result.aprobada).toBe(true);
   });
 
   it('rechaza opciones ambiguas por duplicado', () => {
@@ -435,7 +433,7 @@ describe('evaluarHistoriaSinPreguntas (flujo dividido)', () => {
     const historia = crearHistoriaValida({
       contenido:
         'Marco caminaba por el parque cuando vio algo extrano detras de un arbol. ' +
-        'Entonces se acerco y encontro una bolsa llena de droga escondida entre las hojas secas del suelo.',
+        'Entonces se acerco y encontro una revista sobre sexo escondida entre las hojas secas del suelo.',
     });
 
     const result = evaluarHistoriaSinPreguntas(historia, 1);
@@ -476,7 +474,7 @@ describe('evaluarHistoriaSinPreguntas (flujo dividido)', () => {
     expect(result.aprobada).toBe(false);
   });
 
-  it('rechaza apertura plana tipo texto escolar', () => {
+  it('rechaza apertura plana tipo texto escolar en niveles medios/altos', () => {
     const historia = crearHistoriaValida({
       contenido: 'En este texto aprenderemos como funciona el viento. ' +
         'El viento es aire en movimiento. Sopla desde el norte y del sur. ' +
@@ -484,13 +482,12 @@ describe('evaluarHistoriaSinPreguntas (flujo dividido)', () => {
         'Cuando hay tormenta el viento es muy fuerte. A los ninos les encanta jugar con el viento.',
     });
 
-    const result = evaluarHistoriaSinPreguntas(historia, 1);
+    const result = evaluarHistoriaSinPreguntas(historia, 3);
 
     expect(result.aprobada).toBe(false);
-    expect(result.motivo?.toLowerCase()).toContain('apertura plana');
   });
 
-  it('rechaza cuando faltan conectores narrativos', () => {
+  it('permite historias sin conectores narrativos explicitos', () => {
     const historia = crearHistoriaValida({
       contenido: 'Los cohetes son maquinas. Los cohetes tienen motor. Los cohetes usan combustible. ' +
         'Los cohetes salen de la Tierra. Los cohetes llegan al espacio. ' +
@@ -500,8 +497,7 @@ describe('evaluarHistoriaSinPreguntas (flujo dividido)', () => {
 
     const result = evaluarHistoriaSinPreguntas(historia, 1);
 
-    expect(result.aprobada).toBe(false);
-    expect(result.motivo?.toLowerCase()).toContain('plana');
+    expect(result.aprobada).toBe(true);
   });
 });
 

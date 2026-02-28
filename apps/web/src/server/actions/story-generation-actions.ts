@@ -18,6 +18,7 @@ import {
   eq,
   and,
   gte,
+  lte,
   desc,
   sql,
   type AccesibilidadConfig,
@@ -35,6 +36,7 @@ import { hasLLMKey } from '@/lib/ai/openai';
 import {
   getNivelConfig,
   getModoFromCategoria,
+  normalizarSubnivel,
   type PromptInput,
 } from '@/lib/ai/prompts';
 import {
@@ -44,6 +46,7 @@ import {
   DOMINIOS,
 } from '@/lib/data/skills';
 import { normalizarTexto } from '@/lib/utils/text';
+import { calcularEdad } from '@/lib/utils/fecha';
 import {
   elegirSiguienteSkillTechTree,
   construirContextoTechTree,
@@ -72,6 +75,8 @@ const MAX_HISTORIAS_DIA = 20;
 
 // Numero de dias hacia atras que se considera valida una historia cacheada.
 const CACHE_TTL_DIAS = 7;
+// Reutilizamos cache en una ventana de subnivel cercana para aumentar hit-rate.
+const CACHE_LEVEL_WINDOW = 0.18;
 
 /**
  * Compatibilidad con slugs legacy (pre-tech-tree) que aun pueden existir
@@ -95,8 +100,10 @@ const LEGACY_TOPIC_SLUG_MAP: Record<string, string> = {
 
 // ─── Internal helpers ───
 
-async function contarHistoriasHoy(studentId: string): Promise<number> {
-  const db = await getDb();
+async function contarHistoriasHoy(
+  db: Awaited<ReturnType<typeof getDb>>,
+  studentId: string,
+): Promise<number> {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
@@ -232,7 +239,7 @@ export async function generarHistoria(datos: {
   const db = await getDb();
   const validado = generarHistoriaSchema.parse(datos);
   const { estudiante, padre, edadAnos, nivel: nivelElo } = await getStudentContext(validado.studentId);
-  const nivel = validado.nivelOverride ?? nivelElo;
+  const nivel = normalizarSubnivel(validado.nivelOverride ?? nivelElo);
   const funModeActivo = extraerFunModeConfig(padre.config);
   const traceId = validado.progressTraceId;
   const trace = crearStoryGenerationTrace();
@@ -245,9 +252,15 @@ export async function generarHistoria(datos: {
       trace,
     });
 
-  const avanzarEtapa = async (stageId: StoryGenerationStageId, detail: string) => {
+  const avanzarEtapa = async (
+    stageId: StoryGenerationStageId,
+    detail: string,
+    persist = false,
+  ) => {
     marcarStageRunning(trace, stageId, detail);
-    await persistirTrace();
+    if (persist) {
+      await persistirTrace();
+    }
   };
 
   const completarEtapa = async (stageId: StoryGenerationStageId, detail: string) => {
@@ -279,7 +292,7 @@ export async function generarHistoria(datos: {
       funMode: funModeActivo,
     });
 
-    await avanzarEtapa('validaciones', 'Comprobando API key y limites de uso');
+    await avanzarEtapa('validaciones', 'Comprobando API key y limites de uso', true);
 
     if (!(await hasLLMKey())) {
       return await finalizarConError(
@@ -289,7 +302,7 @@ export async function generarHistoria(datos: {
       );
     }
 
-    const historiasHoy = await contarHistoriasHoy(validado.studentId);
+    const historiasHoy = await contarHistoriasHoy(db, validado.studentId);
     if (historiasHoy >= MAX_HISTORIAS_DIA) {
       return await finalizarConError(
         'validaciones',
@@ -366,11 +379,14 @@ export async function generarHistoria(datos: {
     if (!validado.forceRegenerate) {
       const ttlDate = new Date();
       ttlDate.setDate(ttlDate.getDate() - CACHE_TTL_DIAS);
+      const nivelCacheMin = Math.max(1, nivel - CACHE_LEVEL_WINDOW);
+      const nivelCacheMax = Math.min(4.8, nivel + CACHE_LEVEL_WINDOW);
       const cacheCandidates = await db.query.generatedStories.findMany({
         where: and(
           eq(generatedStories.studentId, validado.studentId),
           eq(generatedStories.topicSlug, topicSlug),
-          eq(generatedStories.nivel, nivel),
+          gte(generatedStories.nivel, nivelCacheMin),
+          lte(generatedStories.nivel, nivelCacheMax),
           eq(generatedStories.reutilizable, true),
           eq(generatedStories.aprobadaQA, true),
           gte(generatedStories.creadoEn, ttlDate),
@@ -379,10 +395,14 @@ export async function generarHistoria(datos: {
         limit: 12,
         with: { questions: true },
       });
-      const cached = cacheCandidates.find(
-        (story) =>
-          extraerFunModeHistoria(story.metadata) === funModeActivo && story.questions.length > 0,
+      const cacheCompatibles = cacheCandidates.filter(
+        (story) => extraerFunModeHistoria(story.metadata) === funModeActivo,
       );
+      const cached = cacheCompatibles.sort((a, b) => {
+        const scoreA = Math.abs(a.nivel - nivel) + (a.questions.length > 0 ? 0 : 0.15);
+        const scoreB = Math.abs(b.nivel - nivel) + (b.questions.length > 0 ? 0 : 0.15);
+        return scoreA - scoreB;
+      })[0];
 
       if (cached) {
         await completarEtapa('cache', 'Cache hit, se reutiliza historia');
@@ -393,7 +413,7 @@ export async function generarHistoria(datos: {
         );
         await persistirTrace();
 
-        await avanzarEtapa('sesion', 'Creando sesion de lectura');
+        await avanzarEtapa('sesion', 'Creando sesion de lectura', true);
         const nivelConfig = getNivelConfig(nivel);
         const [sesion] = await db
           .insert(sessions)
@@ -433,7 +453,9 @@ export async function generarHistoria(datos: {
             topicNombre: topic.nombre,
             tiempoEsperadoMs: nivelConfig.tiempoEsperadoMs,
           },
-          preguntas: cached.questions.sort((a, b) => a.orden - b.orden).map(mapPreguntaToDTO),
+          preguntas: cached.questions.length > 0
+            ? cached.questions.sort((a, b) => a.orden - b.orden).map(mapPreguntaToDTO)
+            : [],
           generationTrace: trace,
         };
       }
@@ -485,7 +507,7 @@ export async function generarHistoria(datos: {
         const hechos = extraerHechosPerfilVivo(estudiante.senalesDificultad);
         if (hechos.length === 0) return base || undefined;
         const memoria = `Hechos recientes del nino: ${hechos.join(' | ')}`;
-        return [base, memoria].filter(Boolean).join('\n').slice(0, 560);
+        return [base, memoria].filter(Boolean).join('\n').slice(0, 420);
       })(),
       historiasAnteriores: titulosPrevios.length > 0 ? titulosPrevios : undefined,
       techTreeContext: techTreeContext
@@ -508,7 +530,7 @@ export async function generarHistoria(datos: {
     });
     await completarEtapa('prompt', 'Prompt listo');
 
-    await avanzarEtapa('llm', 'Llamando al modelo para generar la narrativa');
+    await avanzarEtapa('llm', 'Llamando al modelo para generar la narrativa', true);
     const result = await generateStoryOnly(promptInput);
     if (!result.ok) {
       console.warn('[story-generation] fallo en LLM', {
@@ -553,7 +575,7 @@ export async function generarHistoria(datos: {
       .returning();
     await completarEtapa('persistencia', 'Historia guardada');
 
-    await avanzarEtapa('sesion', 'Creando sesion de lectura');
+    await avanzarEtapa('sesion', 'Creando sesion de lectura', true);
     const nivelConfig = getNivelConfig(nivel);
     const [sesion] = await db
       .insert(sessions)
@@ -666,7 +688,7 @@ export async function generarPreguntasSesion(datos: {
 }) {
   const db = await getDb();
   const validado = generarPreguntasSesionSchema.parse(datos);
-  await requireStudentOwnership(validado.studentId);
+  const { estudiante } = await requireStudentOwnership(validado.studentId);
 
   // 1. Verificar sesion y consistencia session/story/student
   const sesion = await db.query.sessions.findFirst({
@@ -729,7 +751,7 @@ export async function generarPreguntasSesion(datos: {
   }
 
   // 5. Obtener estudiante para nivel y edad
-  const { estudiante, edadAnos } = await getStudentContext(validado.studentId);
+  const edadAnos = calcularEdad(estudiante.fechaNacimiento);
 
   // 6. Generar preguntas
   const result = await generateQuestions({
