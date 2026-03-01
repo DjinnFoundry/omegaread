@@ -577,6 +577,7 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
   const recientes = historialTopics.slice(0, 8).map((t) => t.slug);
 
   // Compute suggestions per completed topic for accurate edge mapping
+  const completedSlugsForEdges = new Set(historialTopics.map((t) => t.slug));
   const suggestionEdgeMap: Record<string, string[]> = {};
   const allSuggestionsMap = new Map<string, {
     slug: string;
@@ -597,7 +598,9 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
       limite: 4,
       soloDesbloqueadas: true,
     });
-    suggestionEdgeMap[topic.slug] = topicSugs.map((s) => s.slug);
+    suggestionEdgeMap[topic.slug] = topicSugs
+      .filter((s) => !completedSlugsForEdges.has(s.slug))
+      .map((s) => s.slug);
     for (const s of topicSugs) {
       if (!allSuggestionsMap.has(s.slug)) {
         allSuggestionsMap.set(s.slug, {
@@ -612,7 +615,10 @@ export async function obtenerDashboardPadre(estudianteId: string): Promise<Dashb
     }
   }
 
-  const sugerencias = Array.from(allSuggestionsMap.values());
+  // Filter out suggestions that are already completed topics
+  const completedSlugs = new Set(historialTopics.map((t) => t.slug));
+  const sugerencias = Array.from(allSuggestionsMap.values())
+    .filter((s) => !completedSlugs.has(s.slug));
 
   const dominiosTocados = DOMINIOS.map((d) => {
     const tocados = historialTopics.filter((t) => t.dominio === d.slug).length;

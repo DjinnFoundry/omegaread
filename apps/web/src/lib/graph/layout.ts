@@ -4,6 +4,8 @@
  * No external dependencies.
  */
 
+import { getSkillBySlug } from '@/lib/data/skills';
+
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
@@ -113,7 +115,10 @@ export function computeGraphLayout(
     emoji: string;
   }>,
 ): GraphLayout {
-  // Build unified node list
+  // Build unified node list, deduplicating suggestions that already exist as completed
+  const completedSlugs = new Set(completedTopics.map((t) => t.slug));
+  const uniqueSuggestions = suggestions.filter((s) => !completedSlugs.has(s.slug));
+
   const allNodes: TopicNode[] = [
     ...completedTopics.map((t) => ({
       slug: t.slug,
@@ -123,7 +128,7 @@ export function computeGraphLayout(
       veces: t.veces,
       isSuggestion: false,
     })),
-    ...suggestions.map((s) => ({
+    ...uniqueSuggestions.map((s) => ({
       slug: s.slug,
       nombre: s.nombre,
       emoji: s.emoji,
@@ -232,16 +237,23 @@ export function computeGraphLayout(
     });
   }
 
-  // Build intra-domain edges (connect sequential completed nodes within domain)
+  // Build intra-domain edges based on actual prerequisite relationships
   const intraEdges: GraphLayout['intraEdges'] = [];
+  const positionedSlugs = new Set(positioned.map((n) => n.slug));
   for (const cluster of clusters) {
     const completed = cluster.nodes.filter((n) => !n.isSuggestion);
-    for (let i = 0; i < completed.length - 1; i++) {
-      intraEdges.push({
-        from: completed[i].slug,
-        to: completed[i + 1].slug,
-        dominio: cluster.dominio,
-      });
+    for (const node of completed) {
+      const skill = getSkillBySlug(node.slug);
+      if (!skill) continue;
+      for (const prereqSlug of skill.prerequisitos) {
+        if (positionedSlugs.has(prereqSlug)) {
+          intraEdges.push({
+            from: prereqSlug,
+            to: node.slug,
+            dominio: cluster.dominio,
+          });
+        }
+      }
     }
   }
 
